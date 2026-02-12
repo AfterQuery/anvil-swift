@@ -1,0 +1,172 @@
+diff --git a/PullToDismissTests/EdgeShadowTests.swift b/PullToDismissTests/EdgeShadowTests.swift
+new file mode 100644
+index 0000000..0539a9d
+--- /dev/null
++++ b/PullToDismissTests/EdgeShadowTests.swift
+@@ -0,0 +1,27 @@
++import XCTest
++@testable import PullToDismiss
++
++class EdgeShadowTests: XCTestCase {
++    
++    func testDefaultValues() {
++        let shadow = EdgeShadow.default
++        XCTAssertEqual(shadow.opacity, 0.5)
++        XCTAssertEqual(shadow.radius, 6.0)
++        XCTAssertEqual(shadow.color, .black)
++        XCTAssertEqual(shadow.offset, CGSize(width: 0, height: -4))
++    }
++    
++    func testCustomValues() {
++        let shadow = EdgeShadow(
++            opacity: 0.8,
++            radius: 8.0,
++            color: .darkGray,
++            offset: CGSize(width: 0, height: -10)
++        )
++        
++        XCTAssertEqual(shadow.opacity, 0.8)
++        XCTAssertEqual(shadow.radius, 8.0)
++        XCTAssertEqual(shadow.color, .darkGray)
++        XCTAssertEqual(shadow.offset, CGSize(width: 0, height: -10))
++    }
++}
+diff --git a/Sources/EdgeShadow.swift b/Sources/EdgeShadow.swift
+new file mode 100644
+index 0000000..fcd3950
+--- /dev/null
++++ b/Sources/EdgeShadow.swift
+@@ -0,0 +1,27 @@
++import UIKit
++
++public struct EdgeShadow {
++    public let opacity: Float
++    public let radius: CGFloat
++    public let color: UIColor
++    public let offset: CGSize
++    
++    public static let `default` = EdgeShadow(
++        opacity: 0.5,
++        radius: 6.0,
++        color: .black,
++        offset: CGSize(width: 0, height: -4)
++    )
++    
++    public init(
++        opacity: Float = 0.5,
++        radius: CGFloat = 6.0,
++        color: UIColor = .black,
++        offset: CGSize = CGSize(width: 0, height: -4)
++    ) {
++        self.opacity = opacity
++        self.radius = radius
++        self.color = color
++        self.offset = offset
++    }
++}
+diff --git a/Sources/PullToDismiss.swift b/Sources/PullToDismiss.swift
+index ce5c5bb..6dc0759 100644
+--- a/Sources/PullToDismiss.swift
++++ b/Sources/PullToDismiss.swift
+@@ -17,6 +17,7 @@ open class PullToDismiss: NSObject {
+     }
+     
+     open var backgroundEffect: BackgroundEffect? = ShadowEffect.default
++    open var edgeShadow: EdgeShadow?
+     
+     public var dismissAction: (() -> Void)?
+     public weak var delegateProxy: AnyObject?
+@@ -35,6 +36,7 @@ open class PullToDismiss: NSObject {
+     private var backgroundView: UIView?
+     private var navigationBarHeight: CGFloat = 0.0
+     private var blurSaturationDeltaFactor: CGFloat = 1.8
++    
+     convenience public init?(scrollView: UIScrollView) {
+         guard let viewController = type(of: self).viewControllerFromScrollView(scrollView) else {
+             print("a scrollView must be on the view controller.")
+@@ -69,7 +71,7 @@ open class PullToDismiss: NSObject {
+         targetViewController?.dismiss(animated: true, completion: nil)
+     }
+     
+-    // MARK: - shadow view
++    // MARK: - shadow and background effects
+     
+     private func makeBackgroundView() {
+         deleteBackgroundView()
+@@ -90,7 +92,6 @@ open class PullToDismiss: NSObject {
+         }
+ 
+         targetViewController?.view.clipsToBounds = false
+-
+         self.backgroundView = backgroundView
+     }
+     
+@@ -104,12 +105,24 @@ open class PullToDismiss: NSObject {
+         let rate: CGFloat = (1.0 - (targetViewOriginY / (targetViewHeight * dismissableHeightPercentage)))
+         
+         backgroundEffect.applyEffect(view: backgroundView, rate: rate)
++        
++        // Update edge shadow
++        if let shadow = edgeShadow {
++            let progress = min(1.0, targetViewOriginY / (targetViewHeight * dismissableHeightPercentage))
++            targetViewController?.view.layer.shadowColor = shadow.color.cgColor
++            targetViewController?.view.layer.shadowOffset = shadow.offset
++            targetViewController?.view.layer.shadowRadius = shadow.radius
++            targetViewController?.view.layer.shadowOpacity = shadow.opacity * Float(progress)
++        }
+     }
+     
+     private func deleteBackgroundView() {
+         backgroundView?.removeFromSuperview()
+         backgroundView = nil
+         targetViewController?.view.clipsToBounds = true
++        
++        // Reset edge shadow
++        targetViewController?.view.layer.shadowOpacity = 0
+     }
+     
+     private func resetBackgroundView() {
+@@ -117,6 +130,11 @@ open class PullToDismiss: NSObject {
+             return
+         }
+         backgroundEffect.applyEffect(view: backgroundView, rate: 1.0)
++        
++        // Reset edge shadow
++        if let shadow = edgeShadow {
++            targetViewController?.view.layer.shadowOpacity = 0
++        }
+     }
+     
+     @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
+@@ -137,19 +155,22 @@ open class PullToDismiss: NSObject {
+     fileprivate func startDragging() {
+         targetViewController?.view.layer.removeAllAnimations()
+         backgroundView?.layer.removeAllAnimations()
+-        viewPositionY = 0.0
+         makeBackgroundView()
++        
++        // Setup initial edge shadow state
++        if let shadow = edgeShadow {
++            targetViewController?.view.layer.shadowColor = shadow.color.cgColor
++            targetViewController?.view.layer.shadowOffset = shadow.offset
++            targetViewController?.view.layer.shadowRadius = shadow.radius
++            targetViewController?.view.layer.shadowOpacity = 0
++        }
+     }
+     
+     fileprivate func updateViewPosition(offset: CGFloat) {
+-        var addOffset: CGFloat = offset
+-        // avoid statusbar gone
+-        if viewPositionY >= 0 && viewPositionY < 0.05 {
+-            addOffset = min(max(-0.01, addOffset), 0.01)
+-        }
+-        viewPositionY += addOffset
+-        targetViewController?.view.frame.origin.y = max(0.0, viewPositionY)
+-        if case .some(.targetViewController) = backgroundEffect?.target {
++        guard let view = targetViewController?.view else { return }
++        viewPositionY = min(max(0.0, viewPositionY + offset), view.frame.height)
++        view.frame.origin.y = viewPositionY
++        if case .presentingViewController? = backgroundEffect?.target {
+             backgroundView?.frame.origin.y = -(targetViewController?.view.frame.origin.y ?? 0.0)
+         }
+         updateBackgroundView()

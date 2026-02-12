@@ -50,13 +50,18 @@ anvil init-dataset \
   --dataset my-dataset \
   --repo-path /path/to/your/repo \
   --base-image golang:1.22
+
+anvil init-dataset \
+  --dataset my-dataset \
+  --repo-path /Users/marvindeng/VS_Code_Projects/PullToDismiss \
+  --base-image swift:5.9
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--dataset, -d` | Dataset name (alphanumeric + hyphens) |
-| `--repo-path` | Path to your git repository |
-| `--base-image` | Docker base image (`golang:1.22`, `python:3.12`, `node:20`, etc.) |
+| Option          | Description                                                       |
+| --------------- | ----------------------------------------------------------------- |
+| `--dataset, -d` | Dataset name (alphanumeric + hyphens)                             |
+| `--repo-path`   | Path to your git repository                                       |
+| `--base-image`  | Docker base image (`golang:1.22`, `python:3.12`, `node:20`, etc.) |
 
 ### Step 2: Create Your Task Files
 
@@ -68,6 +73,7 @@ anvil init-dataset \
 Implement a GET /api/profile endpoint that returns the authenticated user's profile.
 
 Requirements:
+
 1. Add GetProfile method to UserService interface
 2. Implement the method in the service
 3. Add controller handler
@@ -175,11 +181,13 @@ anvil run-evals -d my-dataset --agent oracle -u your-username --dockerhub-repo a
 The oracle agent applies your gold patches and runs the tests. All tests should pass if your solution is correct.
 
 **Prerequisites:**
+
 - Modal account configured (`modal setup`)
 - Docker Hub credentials in `.env` or environment
 - Images published to Docker Hub (step 7)
 
 If tests fail unexpectedly:
+
 - **oracle fails**: Your gold patch doesn't satisfy the tests, or patch doesn't apply cleanly
 
 ### Step 9: Run with an Agent
@@ -214,6 +222,7 @@ def test_route_protected():
 ```
 
 **Why structural tests?**
+
 - Fast (no compilation)
 - Language-agnostic
 - Predictable results
@@ -233,12 +242,13 @@ Path("/app/my-api/routes/routes.go")
 
 Tests are classified into two categories:
 
-| Category | Before Patch | After Patch | Purpose |
-|----------|--------------|-------------|---------|
-| **FAIL_TO_PASS** | FAIL | PASS | Tests the new functionality being added |
-| **PASS_TO_PASS** | PASS | PASS | Regression tests (existing functionality) |
+| Category         | Before Patch | After Patch | Purpose                                   |
+| ---------------- | ------------ | ----------- | ----------------------------------------- |
+| **FAIL_TO_PASS** | FAIL         | PASS        | Tests the new functionality being added   |
+| **PASS_TO_PASS** | PASS         | PASS        | Regression tests (existing functionality) |
 
 **FAIL_TO_PASS** (most common):
+
 - Tests that verify the new feature or bug fix
 - These tests FAIL on the original code and PASS after applying the patch
 - If not specified, all detected tests are assumed to be FAIL_TO_PASS
@@ -251,6 +261,7 @@ anvil add-task -d my-dataset \
 ```
 
 **PASS_TO_PASS** (optional):
+
 - Regression tests that ensure existing functionality isn't broken
 - These tests PASS both before and after the patch
 - Use when you want to verify the patch doesn't break existing behavior
@@ -264,6 +275,7 @@ anvil add-task -d my-dataset \
 ```
 
 **When to use PASS_TO_PASS:**
+
 - When your patch touches code that has existing functionality
 - When you want to ensure backwards compatibility
 - When testing a bug fix that shouldn't affect other features
@@ -299,6 +311,7 @@ git checkout .
 ### Oracle Fails
 
 1. **Patch doesn't apply**
+
    ```bash
    cd my-dataset/my-repo
    git apply ../task-1/tasks.csv  # Extract patch and test
@@ -343,13 +356,13 @@ WORKDIR /app
 
 ## Command Reference
 
-| Command | Purpose |
-|---------|---------|
-| `anvil init-dataset -d NAME --repo-path PATH` | Create new dataset |
-| `anvil add-task -d NAME --problem-file F --tests-file F -c` | Add task with diff capture |
-| `anvil add-task -d NAME --problem-file F --patch-file F --tests-file F` | Add task with pre-made patch |
-| `anvil validate-dataset -d NAME` | Check structure |
-| `anvil convert-dataset -d NAME -u USER` | Generate Anvil files |
-| `anvil publish-images -d NAME -u USER --repo REPO` | Build & push images |
-| `anvil run-evals -d NAME --agent oracle -u USER --dockerhub-repo REPO` | Verify gold patches pass all tests |
-| `anvil run-evals -d NAME --agent mini-swe-agent --model M -u USER --dockerhub-repo REPO` | Run evaluation with AI agent |
+| Command                                                                                  | Purpose                            |
+| ---------------------------------------------------------------------------------------- | ---------------------------------- |
+| `anvil init-dataset -d NAME --repo-path PATH`                                            | Create new dataset                 |
+| `anvil add-task -d NAME --problem-file F --tests-file F -c`                              | Add task with diff capture         |
+| `anvil add-task -d NAME --problem-file F --patch-file F --tests-file F`                  | Add task with pre-made patch       |
+| `anvil validate-dataset -d NAME`                                                         | Check structure                    |
+| `anvil convert-dataset -d NAME -u USER`                                                  | Generate Anvil files               |
+| `anvil publish-images -d NAME -u USER --repo REPO`                                       | Build & push images                |
+| `anvil run-evals -d NAME --agent oracle -u USER --dockerhub-repo REPO`                   | Verify gold patches pass all tests |
+| `anvil run-evals -d NAME --agent mini-swe-agent --model M -u USER --dockerhub-repo REPO` | Run evaluation with AI agent       |

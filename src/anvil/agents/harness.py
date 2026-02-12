@@ -51,8 +51,8 @@ class AgentResult:
 AGENT_CONFIGS: dict[str, AgentConfig] = {
     "mini-swe-agent": AgentConfig(
         name="mini-swe-agent",
-        install_cmd="pip install -q --break-system-packages mini-swe-agent",
-        run_cmd="mini --model {model} --task {task} --yolo --exit-immediately --output {output_dir}/trajectory.traj.json --cost-limit 0",
+        install_cmd="pip install -q mini-swe-agent || pip install -q --break-system-packages mini-swe-agent",
+        run_cmd="mini -c mini.yaml -c /tmp/anvil_override.yaml --model {model} --task {task} --yolo --exit-immediately --output {output_dir}/trajectory.traj.json --cost-limit 0",
         output_format="trajectory_json",
         timeout=600,
     ),
@@ -101,12 +101,17 @@ def _build_agent_script(
         f"export MSWEA_MODEL_NAME={_sq(model)}",
         f"export MSWEA_MODEL_API_KEY={provider_env_var}",
         "export MSWEA_COST_TRACKING=ignore_errors",
+        "export LITELLM_DROP_PARAMS=True",
         before_cmd if before_cmd else "true",
         "cd /app",
         "python3 -m ensurepip 2>/dev/null || true",
         "pip install --upgrade pip -q --break-system-packages 2>/dev/null || true",
         f"mkdir -p {output_dir}",
         agent_config.install_cmd,
+        """cat > /tmp/anvil_override.yaml << 'ANVIL_CFG_EOF'
+model:
+  set_cache_control: null
+ANVIL_CFG_EOF""",
         f"{run_cmd} || true",
         """cat > .gitignore << 'GITIGNORE_EOF'
 # === Build outputs ===
@@ -165,6 +170,10 @@ IMPLEMENTATION_*.md
 # === Conversion symlinks ===
 # Created by anvil tasks convert - must not appear in patches
 afterquery/
+
+# === Docker/CI artifacts ===
+Dockerfile
+requirements.txt
 
 # === This file itself ===
 .gitignore
