@@ -1,0 +1,194 @@
+diff --git a/Sources/EdgeShadow.swift b/Sources/EdgeShadow.swift
+new file mode 100644
+index 0000000..d2e3d2f
+--- /dev/null
++++ b/Sources/EdgeShadow.swift
+@@ -0,0 +1,52 @@
++//
++//  EdgeShadow.swift
++//  PullToDismiss
++//
++//  Edge shadow effect that appears on the view being dismissed
++//
++
++import Foundation
++import UIKit
++
++/// Configuration for edge shadow effect that appears on the view being dismissed
++public struct EdgeShadow {
++    /// Shadow opacity (0.0 - 1.0)
++    public var opacity: CGFloat
++    
++    /// Shadow blur radius
++    public var radius: CGFloat
++    
++    /// Shadow color
++    public var color: UIColor
++    
++    /// Shadow offset from the edge
++    public var offset: CGSize
++    
++    /// Default edge shadow configuration
++    public static var `default`: EdgeShadow {
++        return EdgeShadow(
++            opacity: 0.6,
++            radius: 8.0,
++            color: .black,
++            offset: CGSize(width: 0, height: -10)
++        )
++    }
++    
++    /// Initialize edge shadow with custom parameters
++    /// - Parameters:
++    ///   - opacity: Shadow opacity (default: 0.6)
++    ///   - radius: Shadow blur radius (default: 8.0)
++    ///   - color: Shadow color (default: .black)
++    ///   - offset: Shadow offset (default: CGSize(width: 0, height: -10))
++    public init(
++        opacity: CGFloat = 0.6,
++        radius: CGFloat = 8.0,
++        color: UIColor = .black,
++        offset: CGSize = CGSize(width: 0, height: -10)
++    ) {
++        self.opacity = max(0.0, min(1.0, opacity))
++        self.radius = max(0.0, radius)
++        self.color = color
++        self.offset = offset
++    }
++}
+diff --git a/Sources/PullToDismiss.swift b/Sources/PullToDismiss.swift
+index ce5c5bb..a877e41 100644
+--- a/Sources/PullToDismiss.swift
++++ b/Sources/PullToDismiss.swift
+@@ -17,6 +17,7 @@ open class PullToDismiss: NSObject {
+     }
+     
+     open var backgroundEffect: BackgroundEffect? = ShadowEffect.default
++    open var edgeShadow: EdgeShadow?
+     
+     public var dismissAction: (() -> Void)?
+     public weak var delegateProxy: AnyObject?
+@@ -35,6 +36,7 @@ open class PullToDismiss: NSObject {
+     private var backgroundView: UIView?
+     private var navigationBarHeight: CGFloat = 0.0
+     private var blurSaturationDeltaFactor: CGFloat = 1.8
++    
+     convenience public init?(scrollView: UIScrollView) {
+         guard let viewController = type(of: self).viewControllerFromScrollView(scrollView) else {
+             print("a scrollView must be on the view controller.")
+@@ -119,6 +121,57 @@ open class PullToDismiss: NSObject {
+         backgroundEffect.applyEffect(view: backgroundView, rate: 1.0)
+     }
+     
++    // MARK: - edge shadow
++    
++    /// Apply edge shadow effect to the target view based on pull progress
++    private func applyEdgeShadow(with rate: CGFloat) {
++        guard let edgeShadow = edgeShadow else {
++            return
++        }
++        
++        guard let targetView = targetViewController?.view else {
++            return
++        }
++        
++        let shadowLayer = targetView.layer
++        
++        // Configure shadow properties based on edge shadow configuration
++        shadowLayer.shadowColor = edgeShadow.color.cgColor
++        shadowLayer.shadowOpacity = Float(edgeShadow.opacity * rate)
++        shadowLayer.shadowRadius = edgeShadow.radius
++        shadowLayer.shadowOffset = edgeShadow.offset
++        
++        // Ensure shadow is rendered properly
++        shadowLayer.masksToBounds = false
++    }
++    
++    /// Reset edge shadow to zero opacity
++    private func resetEdgeShadow() {
++        guard let edgeShadow = edgeShadow else {
++            return
++        }
++        
++        guard let targetView = targetViewController?.view else {
++            return
++        }
++        
++        let shadowLayer = targetView.layer
++        shadowLayer.shadowColor = edgeShadow.color.cgColor
++        shadowLayer.shadowOpacity = 0.0
++        shadowLayer.shadowRadius = edgeShadow.radius
++        shadowLayer.shadowOffset = edgeShadow.offset
++    }
++    
++    /// Remove edge shadow effect
++    private func removeEdgeShadow() {
++        guard let targetView = targetViewController?.view else {
++            return
++        }
++        
++        let shadowLayer = targetView.layer
++        shadowLayer.shadowOpacity = 0.0
++    }
++    
+     @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
+         switch gesture.state {
+         case .began:
+@@ -137,22 +190,24 @@ open class PullToDismiss: NSObject {
+     fileprivate func startDragging() {
+         targetViewController?.view.layer.removeAllAnimations()
+         backgroundView?.layer.removeAllAnimations()
+-        viewPositionY = 0.0
+         makeBackgroundView()
+     }
+     
+     fileprivate func updateViewPosition(offset: CGFloat) {
+-        var addOffset: CGFloat = offset
+-        // avoid statusbar gone
+-        if viewPositionY >= 0 && viewPositionY < 0.05 {
+-            addOffset = min(max(-0.01, addOffset), 0.01)
+-        }
+-        viewPositionY += addOffset
+-        targetViewController?.view.frame.origin.y = max(0.0, viewPositionY)
+-        if case .some(.targetViewController) = backgroundEffect?.target {
+-            backgroundView?.frame.origin.y = -(targetViewController?.view.frame.origin.y ?? 0.0)
++        let originY = targetViewController?.view.frame.origin.y ?? 0.0
++        let newOriginY = max(0.0, originY + offset)
++        targetViewController?.view.frame.origin.y = newOriginY
++        
++        if let targetViewController = targetViewController {
++            backgroundView?.frame.origin.y = -(targetViewController.view.frame.origin.y)
+         }
+         updateBackgroundView()
++        
++        // Update edge shadow based on pull progress
++        let targetViewHeight: CGFloat = targetViewController?.view.frame.height ?? 0.0
++        let dismissableHeight = targetViewHeight * dismissableHeightPercentage
++        let rate: CGFloat = min(1.0, max(0.0, newOriginY / dismissableHeight))
++        applyEdgeShadow(with: rate)
+     }
+     
+     fileprivate func finishDragging() {
+@@ -160,18 +215,22 @@ open class PullToDismiss: NSObject {
+         let dismissableHeight = (targetViewController?.view.frame.height ?? 0.0) * dismissableHeightPercentage
+         if originY > dismissableHeight {
+             deleteBackgroundView()
++            removeEdgeShadow()
+             _ = dismissAction?() ?? dismiss()
+         } else if originY != 0.0 {
+             UIView.perform(.delete, on: [], options: [.allowUserInteraction], animations: { [weak self] in
+                 self?.targetViewController?.view.frame.origin.y = 0.0
+                 self?.resetBackgroundView()
++                self?.resetEdgeShadow()
+             }) { [weak self] finished in
+                 if finished {
+                     self?.deleteBackgroundView()
++                    self?.removeEdgeShadow()
+                 }
+             }
+         } else {
+             self.deleteBackgroundView()
++            self.removeEdgeShadow()
+         }
+         viewPositionY = 0.0
+     }

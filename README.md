@@ -161,6 +161,13 @@ anvil run-evals --dataset my-dataset --agent oracle --dockerhub-username marvind
 
 
 # 6. Run against models
+anvil run-evals \
+  --dataset my-dataset \
+  --agent mini-swe-agent \
+  --dockerhub-username marvindeng \
+  --dockerhub-repo anvil-images \
+  --model openrouter/anthropic/claude-haiku-4.5 \
+  --no-continue
 
 # Claude 3.5 Sonnet
 anvil run-evals \
@@ -169,38 +176,16 @@ anvil run-evals \
   --dockerhub-username marvindeng \
   --dockerhub-repo anvil-images \
   --model openrouter/anthropic/claude-3.5-sonnet \
-  --no-continue \
-  --n-attempts 3
+  --no-continue
 
-# Gemini 1.5 Pro
+# Gemini 3 Pro
 anvil run-evals \
   --dataset my-dataset \
   --agent mini-swe-agent \
   --dockerhub-username marvindeng \
   --dockerhub-repo anvil-images \
-  --model openrouter/google/gemini-1.5-pro \
-  --no-continue \
-  --n-attempts 3
-
-# GPT-4 Turbo
-anvil run-evals \
-  --dataset my-dataset \
-  --agent mini-swe-agent \
-  --dockerhub-username marvindeng \
-  --dockerhub-repo anvil-images \
-  --model openrouter/openai/gpt-4-turbo \
-  --no-continue \
-  --n-attempts 3
-
-# DeepSeek
-anvil run-evals \
-  --dataset my-dataset \
-  --agent mini-swe-agent \
-  --dockerhub-username marvindeng \
-  --dockerhub-repo anvil-images \
-  --model openrouter/deepseek/deepseek-chat \
-  --no-continue \
-  --n-attempts 3
+  --model openrouter/google/gemini-3-pro-preview \
+  --no-continue
 
 # Llama
 anvil run-evals \
@@ -208,9 +193,8 @@ anvil run-evals \
   --agent mini-swe-agent \
   --dockerhub-username marvindeng \
   --dockerhub-repo anvil-images \
-  --model openrouter/meta-llama/llama-3-8b-instruct \
-  --no-continue \
-  --n-attempts 3
+  --model openrouter/meta-llama/llama-4-maverick \
+  --no-continue
 
 
 See **[docs/TASK_CREATION_GUIDE.md](docs/TASK_CREATION_GUIDE.md)** for the complete guide including:
