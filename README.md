@@ -114,17 +114,18 @@ Swift Repos
 ### Quick Start
 
 ```bash
+# Clone Repo and setup tasks
 git clone https://github.com/sgr-ksmt/PullToDismiss.git
 
-# Task 1:
-git reset --hard 6b286c5
+# Pull golden patch for an issue
+curl -L https://github.com/mssun/passforios/pull/496.diff -o solution.diff
 
 # 1. Initialize dataset with your repository
 source .venv/bin/activate
 
 anvil init-dataset -d my-dataset --repo-path ./my-repo --base-image golang:1.22
 
-anvil init-dataset -d my-dataset --repo-path /Users/marvindeng/VS_Code_Projects/PullToDismiss --base-image swift:5.9
+anvil init-dataset -d GPX-Tracker --repo-path /Users/marvindeng/VS_Code_Projects/anvil/repos/iOS-Open-GPX-Tracker --base-image swift:5.9
 
 # 2. Add tasks (problem statement + solution patch + tests)
 anvil add-task -d my-dataset \
@@ -133,23 +134,23 @@ anvil add-task -d my-dataset \
   --tests-file tests.py \
   --fail-to-pass "test_feature_works,test_edge_case"
 
-anvil add-task -d my-dataset \
-  --problem-file templates/task-1/problem.md \
-  --patch-file templates/task-1/solution.diff \
-  --tests-file templates/task-1/tests.py \
-  --base-commit 6b286c5
+anvil add-task -d datasets/GPX-Tracker \
+  --problem-file templates/GPX-Tracker/task-1/problem.md \
+  --patch-file templates/GPX-Tracker/task-1/solution.diff \
+  --tests-file templates/GPX-Tracker/task-1/tests.py \
+  --base-commit 3d3ae151d854187f5e0090dc08faf4246473df7d
 
 # 3. Convert to Anvil evaluation format
 [Dockerhub](https://hub.docker.com/repositories/marvindeng)
 
 anvil convert-dataset -d my-dataset -u <dockerhub-username>
 
-anvil convert-dataset -d my-dataset -u marvindeng
+anvil convert-dataset -d datasets/GPX-Tracker -u marvindeng
 
 # 4. Publish image
 anvil publish-images -d my-dataset -u <dockerhub-username> --repo anvil-images
 
-anvil publish-images --dataset my-dataset -u marvindeng --repo anvil-images
+anvil publish-images --dataset datasets/GPX-Tracker -u marvindeng --repo anvil-images
 
 # Remove cached builds
 docker builder prune -f
@@ -157,44 +158,91 @@ docker builder prune -f
 # 5. Run Oracle
 anvil run-evals -d my-dataset --agent oracle -u <dockerhub-username> --dockerhub-repo anvil-images --no-continue
 
-anvil run-evals --dataset my-dataset --agent oracle --dockerhub-username marvindeng --dockerhub-repo anvil-images --no-continue
+anvil run-evals --dataset datasets/GPX-Tracker --agent oracle --dockerhub-username marvindeng --dockerhub-repo anvil-images --no-continue
 
 
 # 6. Run against models
-anvil run-evals \
-  --dataset my-dataset \
-  --agent mini-swe-agent \
-  --dockerhub-username marvindeng \
-  --dockerhub-repo anvil-images \
-  --model openrouter/anthropic/claude-haiku-4.5 \
-  --no-continue
 
-# Claude 3.5 Sonnet
+# Claude Sonnet 4.5 
 anvil run-evals \
-  --dataset my-dataset \
+  --dataset datasets/GPX-Tracker \
   --agent mini-swe-agent \
   --dockerhub-username marvindeng \
   --dockerhub-repo anvil-images \
-  --model openrouter/anthropic/claude-3.5-sonnet \
-  --no-continue
+  --model openrouter/anthropic/claude-sonnet-4.5 \
+  --no-continue \
+  --n-attempts 4
+
+# Claude Opus 4.6
+anvil run-evals \
+  --dataset datasets/GPX-Tracker \
+  --agent mini-swe-agent \
+  --dockerhub-username marvindeng \
+  --dockerhub-repo anvil-images \
+  --model openrouter/anthropic/claude-opus-4.6 \
+  --no-continue \
+  --n-attempts 4
+
+# GPT 5.2
+anvil run-evals \
+  --dataset datasets/GPX-Tracker \
+  --agent mini-swe-agent \
+  --dockerhub-username marvindeng \
+  --dockerhub-repo anvil-images \
+  --model openrouter/openai/gpt-5.2 \
+  --no-continue \
+  --n-attempts 4
+
+# GPT 5.2 Codex
+anvil run-evals \
+  --dataset datasets/GPX-Tracker \
+  --agent mini-swe-agent \
+  --dockerhub-username marvindeng \
+  --dockerhub-repo anvil-images \
+  --model openrouter/openai/gpt-5.2-codex \
+  --no-continue \
+  --n-attempts 4
+
 
 # Gemini 3 Pro
 anvil run-evals \
-  --dataset my-dataset \
+  --dataset datasets/GPX-Tracker \
   --agent mini-swe-agent \
   --dockerhub-username marvindeng \
   --dockerhub-repo anvil-images \
   --model openrouter/google/gemini-3-pro-preview \
-  --no-continue
+  --no-continue \
+  --n-attempts 4
 
-# Llama
+# Llama 4 Maverick
 anvil run-evals \
-  --dataset my-dataset \
+  --dataset datasets/GPX-Tracker \
   --agent mini-swe-agent \
   --dockerhub-username marvindeng \
   --dockerhub-repo anvil-images \
   --model openrouter/meta-llama/llama-4-maverick \
-  --no-continue
+  --no-continue \
+  --n-attempts 4
+
+# Qwen 3 Coder Next
+anvil run-evals \
+  --dataset datasets/GPX-Tracker \
+  --agent mini-swe-agent \
+  --dockerhub-username marvindeng \
+  --dockerhub-repo anvil-images \
+  --model openrouter/qwen/qwen3-coder-next \
+  --no-continue \
+  --n-attempts 4
+
+# Deepseek V3.2
+anvil run-evals \
+  --dataset datasets/GPX-Tracker \
+  --agent mini-swe-agent \
+  --dockerhub-username marvindeng \
+  --dockerhub-repo anvil-images \
+  --model openrouter/deepseek/deepseek-v3.2 \
+  --no-continue \
+  --n-attempts 4
 
 
 See **[docs/TASK_CREATION_GUIDE.md](docs/TASK_CREATION_GUIDE.md)** for the complete guide including:
