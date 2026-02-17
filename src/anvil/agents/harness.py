@@ -130,7 +130,11 @@ def _build_agent_script(
 model:
   set_cache_control: null
 ANVIL_CFG_EOF""",
-        f"{run_cmd} || true",
+        # Redirect stdin from /dev/null so that if mini-swe-agent hits cost/step
+        # limits and drops to an interactive prompt (InteractiveAgent catches
+        # LimitsExceeded and calls input()), it immediately gets EOF and exits
+        # instead of hanging forever.
+        f"{run_cmd} < /dev/null || true",
         """cat > .gitignore << 'GITIGNORE_EOF'
 # === Build outputs ===
 build/
@@ -251,7 +255,9 @@ async def run_agent_in_modal(
             env_secrets.append(modal.Secret.from_dict(agent_config.extra_env))
 
         sandbox = await modal.Sandbox.create.aio(
-            "bash", "-lc", script,
+            "bash",
+            "-lc",
+            script,
             image=img,
             timeout=agent_config.timeout,
             app=app,
@@ -339,9 +345,7 @@ async def run_agent_in_modal(
 
         error_msg = str(e)
         if "timeout" in error_msg.lower() or "Sandbox exceeded" in error_msg:
-            error_msg = (
-                f"Sandbox timed out after {agent_config.timeout}s: {error_msg}"
-            )
+            error_msg = f"Sandbox timed out after {agent_config.timeout}s: {error_msg}"
 
         logger.warning(
             "Agent %s failed on %s after %.1fs: %s | partial_stdout=%d bytes, partial_stderr=%d bytes",
