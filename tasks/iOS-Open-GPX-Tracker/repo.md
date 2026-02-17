@@ -3,24 +3,28 @@ Mobile GPS Logger: https://github.com/merlos/iOS-Open-GPX-Tracker
 ## Tasks
 
 1. Fix Scale Bar Color: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/296
+
 - Type: Bug Fix
 - Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/296.diff -o solution.diff
 - Patch Commit: 972b742
 - Base Commit: 3d3ae151d854187f5e0090dc08faf4246473df7d
 
 2. Migrate to UIAlertController: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/86
+
 - Type: Refactor
 - Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/86.diff -o solution.diff
 - Patch Commit: 7072e70
 - Base Commit: 19f7c55db93c8526649b783c7bd8a3e480bf5628
 
 3. Add ScaleView on map: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/285
+
 - Type: Feature + Fix
 - Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/285.diff -o solution.diff
 - Patch Commit: 93e20d4
 - Base Commit: 72c1e361d4ab27c71e46d1384dcaa29dea667f3c
 
 4. Fix IPad Orientation: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/111
+
 - Type: Fix
 - Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/111.diff -o solution.diff
 - Patch Commit: 1d3f1b7
@@ -33,6 +37,8 @@ Mobile GPS Logger: https://github.com/merlos/iOS-Open-GPX-Tracker
 git clone https://github.com/merlos/iOS-Open-GPX-Tracker.git repos/iOS-Open-GPX-Tracker
 
 # 2. Initialize dataset
+source .venv/bin/activate
+
 anvil init-dataset -d datasets/iOS-Open-GPX-Tracker --repo-path repos/iOS-Open-GPX-Tracker --base-image swift:5.9
 
 # 3. Add all tasks

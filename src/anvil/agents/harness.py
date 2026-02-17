@@ -32,7 +32,7 @@ class AgentConfig:
     install_cmd: str
     run_cmd: str  # Placeholders: {model}, {task}, {output_dir}
     output_format: Literal["trajectory_json", "git_only", "stdout"] = "git_only"
-    timeout: int = 1800
+    timeout: int = 1200
     extra_env: dict[str, str] = field(default_factory=dict)
 
 
