@@ -1,0 +1,116 @@
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index 4935395..80615a3 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -113,9 +113,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         manager.distanceFilter = 2 // meters
+         manager.headingFilter = 3 // degrees (1 is default)
+         manager.pausesLocationUpdatesAutomatically = false
+-        if #available(iOS 9.0, *) {
+-            manager.allowsBackgroundLocationUpdates = true
+-        }
++        manager.allowsBackgroundLocationUpdates = true
+         return manager
+     }()
+     
+@@ -271,6 +269,9 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+     /// Follow user button (bottom bar)
+     var followUserButton: UIButton
+     
++    /// Scale bar to display map scale
++    var scaleView: MKScaleView
++    
+     /// New pin button (bottom bar)
+     var newPinButton: UIButton
+     
+@@ -335,6 +336,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         self.currentSegmentDistanceLabel = DistanceLabel(coder: aDecoder)!
+         
+         self.followUserButton = UIButton(coder: aDecoder)!
++        self.scaleView = MKScaleView(coder: aDecoder)!
+         self.newPinButton = UIButton(coder: aDecoder)!
+         self.folderButton = UIButton(coder: aDecoder)!
+         self.resetButton = UIButton(coder: aDecoder)!
+@@ -614,6 +616,11 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         resetButton.titleLabel?.adjustsFontSizeToFitWidth = true
+         map.addSubview(resetButton)
+         
++        // Scale View
++        scaleView.mapView = map
++        scaleView.translatesAutoresizingMaskIntoConstraints = false
++        map.addSubview(scaleView)
++        
+         addConstraints(isIPhoneX)
+         
+         map.rotationGesture.delegate = self
+@@ -623,12 +630,10 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+             shareActivityColor = .mainUIColor
+         }
+         
+-        if #available(iOS 11, *) {
+-            let compassButton = MKCompassButton(mapView: map)
+-            self.view.addSubview(compassButton)
+-            compassButton.translatesAutoresizingMaskIntoConstraints = false
+-            addConstraintsToCompassView(compassButton)
+-        }
++        let compassButton = MKCompassButton(mapView: map)
++        self.view.addSubview(compassButton)
++        compassButton.translatesAutoresizingMaskIntoConstraints = false
++        addConstraintsToCompassView(compassButton)
+         
+         self.textColorAdaptations()
+     }
+@@ -644,6 +649,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         addConstraintsToAppTitleBar()
+         addConstraintsToTopInteractableElements()
+         addConstraintsToButtonBar(isIPhoneX)
++        addConstraintsToScaleView()
+     }
+     
+     /// Adds constraints to subviews forming the app title bar (top bar)
+@@ -785,13 +791,23 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         NSLayoutConstraint(item: resetButton, attribute: .width, relatedBy: .equal, toItem: nil, attribute: .notAnAttribute, multiplier: 1, constant: kButtonSmallSize).isActive = true
+     }
+     
+-    @available(iOS 11, *)
+     func addConstraintsToCompassView(_ view: MKCompassButton) {
+         NSLayoutConstraint(item: view, attribute: .top, relatedBy: .equal, toItem: self.signalAccuracyLabel, attribute: .bottom, multiplier: 1, constant: 8).isActive = true
+         
+         NSLayoutConstraint(item: view, attribute: .centerX, relatedBy: .equal, toItem: self.view, attribute: .centerX, multiplier: 1, constant: 0).isActive = true
+     }
+     
++    /// Adds constraints to position the scale view above the tracker button
++    func addConstraintsToScaleView() {
++        scaleView.translatesAutoresizingMaskIntoConstraints = false
++        
++        // Position above tracker button with some spacing
++        NSLayoutConstraint(item: scaleView, attribute: .bottom, relatedBy: .equal, toItem: trackerButton, attribute: .top, multiplier: 1, constant: -16).isActive = true
++        
++        // Center horizontally on the map
++        NSLayoutConstraint(item: scaleView, attribute: .centerX, relatedBy: .equal, toItem: map, attribute: .centerX, multiplier: 1, constant: 0).isActive = true
++    }
++    
+     /// For handling compass location changes when orientation is switched.
+     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+         super.viewWillTransition(to: size, with: coordinator)
+@@ -913,7 +929,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+     ///
+     @objc func applicationDidBecomeActive() {
+         DispatchQueue.global().async {
+-            print("viewController:: applicationDidBecomeActive wasSentToBackground: \(self.wasSentToBackground) locationServices: \(CLLocationManager.locationServicesEnabled())")
++            print("viewController:: applicationDidBecomeActive wasSentToBackground: \(self.wasSentToBackground)")
+         }
+ 
+         // If the app was never sent to background do nothing
+@@ -1224,11 +1240,6 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+             return
+         }
+         
+-        // Are location services enabled?
+-        guard CLLocationManager.locationServicesEnabled() else {
+-            displayLocationServicesDisabledAlert()
+-            return
+-        }
+     }
+     ///
+     /// Displays an alert that informs the user that location services are disabled.

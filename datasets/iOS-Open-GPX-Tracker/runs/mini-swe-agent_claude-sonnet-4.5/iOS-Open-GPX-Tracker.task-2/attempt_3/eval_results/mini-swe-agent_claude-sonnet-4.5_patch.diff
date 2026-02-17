@@ -1,260 +1,8 @@
-diff --git a/BEFORE_AFTER_COMPARISON.md b/BEFORE_AFTER_COMPARISON.md
-new file mode 100644
-index 0000000..ebb4761
---- /dev/null
-+++ b/BEFORE_AFTER_COMPARISON.md
-@@ -0,0 +1,246 @@
-+# Before and After Comparison
-+
-+## ViewController.swift
-+
-+### 1. Save Session Alert
-+
-+#### BEFORE (Deprecated)
-+```swift
-+@objc func saveButtonTapped() {
-+    print("save Button tapped")
-+    if (gpxTrackingStatus == .notStarted) && !self.hasWaypoints {
-+        return
-+    }
-+    
-+    let alert = UIAlertView(title: "Save as", message: "Enter GPX session name", delegate: self, cancelButtonTitle: "Cancel")
-+    
-+    alert.addButton(withTitle: "Save")
-+    alert.alertViewStyle = .plainTextInput
-+    alert.tag = kSaveSessionAlertViewTag
-+    alert.textField(at: 0)?.clearButtonMode = .always
-+    alert.textField(at: 0)?.text = lastGpxFilename.isEmpty ? defaultFilename() : lastGpxFilename
-+    alert.show()
-+}
-+
-+// Delegate method (separate location in file)
-+extension ViewController: UIAlertViewDelegate {
-+    func alertView(_ alertView: UIAlertView, clickedButtonAt buttonIndex: Int) {
-+        switch alertView.tag {
-+        case kSaveSessionAlertViewTag:
-+            switch buttonIndex {
-+            case 0: //cancel
-+                print("Save canceled")
-+            case 1: //Save
-+                let filename = (alertView.textField(at: 0)?.text!.utf16.count == 0) ? defaultFilename() : alertView.textField(at: 0)?.text
-+                print("Save File \(String(describing: filename))")
-+                let gpxString = self.map.exportToGPXString()
-+                GPXFileManager.save(filename!, gpxContents: gpxString)
-+                self.lastGpxFilename = filename!
-+            default:
-+                print("[ERROR] it seems there are more than two buttons on the alertview.")
-+            }
-+        ...
-+        }
-+    }
-+}
-+```
-+
-+#### AFTER (Modern)
-+```swift
-+@objc func saveButtonTapped() {
-+    print("save Button tapped")
-+    if (gpxTrackingStatus == .notStarted) && !self.hasWaypoints {
-+        return
-+    }
-+    
-+    let alert = UIAlertController(title: "Save as", message: "Enter GPX session name", preferredStyle: .alert)
-+    
-+    alert.addTextField { textField in
-+        textField.clearButtonMode = .always
-+        textField.text = self.lastGpxFilename.isEmpty ? self.defaultFilename() : self.lastGpxFilename
-+    }
-+    
-+    let saveAction = UIAlertAction(title: "Save", style: .default) { _ in
-+        let filename = (alert.textFields?[0].text?.utf16.count == 0) ? self.defaultFilename() : alert.textFields?[0].text
-+        print("Save File \(String(describing: filename))")
-+        //export to a file
-+        let gpxString = self.map.exportToGPXString()
-+        GPXFileManager.save(filename!, gpxContents: gpxString)
-+        self.lastGpxFilename = filename!
-+    }
-+    
-+    let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { _ in
-+        print("Save canceled")
-+    }
-+    
-+    alert.addAction(saveAction)
-+    alert.addAction(cancelAction)
-+    
-+    present(alert, animated: true, completion: nil)
-+}
-+```
-+
-+### 2. Location Services Disabled Alert
-+
-+#### BEFORE (Deprecated)
-+```swift
-+func displayLocationServicesDisabledAlert() {
-+    let alert = UIAlertView(title: "Location services disabled", message: "Go to settings and enable location.", delegate: self, cancelButtonTitle: "Settings")
-+    alert.addButton(withTitle: "Cancel")
-+    alert.tag = kLocationServicesDisabledAlertViewTag
-+    alert.show()
-+}
-+
-+// Handled in delegate method
-+```
-+
-+#### AFTER (Modern)
-+```swift
-+func displayLocationServicesDisabledAlert() {
-+    let alert = UIAlertController(title: "Location services disabled", message: "Go to settings and enable location.", preferredStyle: .alert)
-+    
-+    let settingsAction = UIAlertAction(title: "Settings", style: .default) { _ in
-+        print("Settings button")
-+        if let url = NSURL(string: UIApplication.openSettingsURLString) as URL? {
-+            UIApplication.shared.openURL(url)
-+        }
-+    }
-+    
-+    let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { _ in
-+        print("Cancel button")
-+    }
-+    
-+    alert.addAction(settingsAction)
-+    alert.addAction(cancelAction)
-+    
-+    present(alert, animated: true, completion: nil)
-+}
-+```
-+
-+### 3. Location Services Denied Alert
-+
-+#### BEFORE (Deprecated)
-+```swift
-+func displayLocationServicesDeniedAlert() {
-+    if isDisplayingLocationServicesDenied {
-+        return
-+    }
-+    let alert = UIAlertView(title: "Access to location denied", message: "On Location settings, allow always access to location for GPX Tracker ", delegate: self, cancelButtonTitle: "Settings")
-+    alert.addButton(withTitle: "Cancel")
-+    alert.tag = kLocationServicesDeniedAlertViewTag
-+    alert.show()
-+}
-+
-+// Handled in delegate method
-+```
-+
-+#### AFTER (Modern)
-+```swift
-+func displayLocationServicesDeniedAlert() {
-+    if isDisplayingLocationServicesDenied {
-+        return // display it only once.
-+    }
-+    let alert = UIAlertController(title: "Access to location denied", message: "On Location settings, allow always access to location for GPX Tracker ", preferredStyle: .alert)
-+    
-+    let settingsAction = UIAlertAction(title: "Settings", style: .default) { _ in
-+        self.isDisplayingLocationServicesDenied = false
-+        print("Settings button")
-+        if let url = NSURL(string: UIApplication.openSettingsURLString) as URL? {
-+            UIApplication.shared.openURL(url)
-+        }
-+    }
-+    
-+    let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { _ in
-+        self.isDisplayingLocationServicesDenied = false
-+        print("Cancel button")
-+    }
-+    
-+    alert.addAction(settingsAction)
-+    alert.addAction(cancelAction)
-+    
-+    present(alert, animated: true, completion: nil)
-+}
-+```
-+
-+## MapViewDelegate.swift
-+
-+### 1. Class Declaration
-+
-+#### BEFORE (Deprecated)
-+```swift
-+class MapViewDelegate: NSObject, MKMapViewDelegate, UIAlertViewDelegate {
-+```
-+
-+#### AFTER (Modern)
-+```swift
-+class MapViewDelegate: NSObject, MKMapViewDelegate {
-+```
-+
-+### 2. Edit Waypoint Alert
-+
-+#### BEFORE (Deprecated)
-+```swift
-+case kEditWaypointAccesoryButtonTag:
-+    print("[calloutAccesoryControlTapped: EDIT] editing waypoint with name \(waypoint.name ?? "''")")
-+    let alert = UIAlertView(title: "Edit Waypoint",
-+        message: "Hint: To change the waypoint location drag and drop the pin",
-+        delegate: self, cancelButtonTitle: "Cancel")
-+    alert.addButton(withTitle: "Save")
-+    alert.tag = kEditWaypointAlertViewTag
-+    alert.alertViewStyle = .plainTextInput
-+    alert.textField(at: 0)?.text = waypoint.title
-+    alert.show()
-+    self.waypointBeingEdited = waypoint
-+    alert.textField(at: 0)?.selectAll(self)
-+
-+// Delegate method (separate location)
-+func alertView(_ alertView: UIAlertView, clickedButtonAt buttonIndex: Int) {
-+    switch alertView.tag {
-+    case kEditWaypointAlertViewTag:
-+        print("Edit waypoint alert view")
-+        self.waypointBeingEdited.title = alertView.textField(at: 0)?.text
-+    default:
-+        print("[ERROR] it seems that the AlertView is not handled properly.")
-+    }
-+}
-+```
-+
-+#### AFTER (Modern)
-+```swift
-+case kEditWaypointAccesoryButtonTag:
-+    print("[calloutAccesoryControlTapped: EDIT] editing waypoint with name \(waypoint.name ?? "''")")
-+    self.waypointBeingEdited = waypoint
-+    
-+    let alert = UIAlertController(title: "Edit Waypoint",
-+        message: "Hint: To change the waypoint location drag and drop the pin",
-+        preferredStyle: .alert)
-+    
-+    alert.addTextField { textField in
-+        textField.text = waypoint.title
-+    }
-+    
-+    let saveAction = UIAlertAction(title: "Save", style: .default) { _ in
-+        print("Edit waypoint alert view")
-+        self.waypointBeingEdited.title = alert.textFields?[0].text
-+    }
-+    
-+    let cancelAction = UIAlertAction(title: "Cancel", style: .cancel, handler: nil)
-+    
-+    alert.addAction(saveAction)
-+    alert.addAction(cancelAction)
-+    
-+    // Need to present from the view controller
-+    if let mapView = mapView as? GPXMapView,
-+       let viewController = mapView.window?.rootViewController {
-+        viewController.present(alert, animated: true, completion: nil)
-+    }
-+```
-+
-+## Key Improvements
-+
-+1. **Inline Logic**: Alert handling logic is now inline with presentation, making code easier to read and maintain
-+2. **Type Safety**: Closure-based actions eliminate the need for tag-based switching
-+3. **Modern Swift**: Uses trailing closures and optional chaining
-+4. **No Deprecated APIs**: All UIAlertView removed, no compiler warnings
-+5. **Better Encapsulation**: Related code is grouped together
-+6. **Cleaner Code**: No need for separate delegate extensions
 diff --git a/OpenGpxTracker/MapViewDelegate.swift b/OpenGpxTracker/MapViewDelegate.swift
-index b4ba03a..a820c5d 100644
+index b4ba03a..60cfa35 100644
 --- a/OpenGpxTracker/MapViewDelegate.swift
 +++ b/OpenGpxTracker/MapViewDelegate.swift
-@@ -1,7 +1,7 @@
+@@ -1,11 +1,14 @@
  import MapKit
  import CoreGPX
  
@@ -263,48 +11,63 @@ index b4ba03a..a820c5d 100644
  
      /// The Waypoint is being edited (if there is any)
      var waypointBeingEdited: GPXWaypoint = GPXWaypoint()
-@@ -67,16 +67,31 @@ class MapViewDelegate: NSObject, MKMapViewDelegate, UIAlertViewDelegate {
+     
++    /// Weak reference to the presenting view controller for alert presentation
++    weak var presentingViewController: UIViewController?
++    
+     
+     func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+         if annotation.isKind(of: MKUserLocation.self) {
+@@ -63,20 +66,38 @@ class MapViewDelegate: NSObject, MKMapViewDelegate, UIAlertViewDelegate {
+         
+         switch button.tag {
+         case kDeleteWaypointAccesoryButtonTag:
+-            print("[calloutAccesoryControlTapped: DELETE button] deleting waypoint with name \(waypoint.name ?? "''")")
++            print("[calloutAccesoryControlTapped: DELETE button] deleting waypoint with name \(waypoint.name ?? "")")
              map.removeWaypoint(waypoint)
          case kEditWaypointAccesoryButtonTag:
-             print("[calloutAccesoryControlTapped: EDIT] editing waypoint with name \(waypoint.name ?? "''")")
+-            print("[calloutAccesoryControlTapped: EDIT] editing waypoint with name \(waypoint.name ?? "''")")
 -            let alert = UIAlertView(title: "Edit Waypoint",
--                message: "Hint: To change the waypoint location drag and drop the pin",
++            print("[calloutAccesoryControlTapped: EDIT] editing waypoint with name \(waypoint.name ?? "")")
++            
++            let alert = UIAlertController(title: "Edit Waypoint",
+                 message: "Hint: To change the waypoint location drag and drop the pin",
 -                delegate: self, cancelButtonTitle: "Cancel")
 -            alert.addButton(withTitle: "Save")
 -            alert.tag = kEditWaypointAlertViewTag
 -            alert.alertViewStyle = .plainTextInput
 -            alert.textField(at: 0)?.text = waypoint.title
 -            alert.show()
-             self.waypointBeingEdited = waypoint
--            alert.textField(at: 0)?.selectAll(self) //display text selected <-- TODO Not working WTF!
-+            
-+            let alert = UIAlertController(title: "Edit Waypoint",
-+                message: "Hint: To change the waypoint location drag and drop the pin",
 +                preferredStyle: .alert)
 +            
 +            alert.addTextField { textField in
 +                textField.text = waypoint.title
 +            }
 +            
-+            let saveAction = UIAlertAction(title: "Save", style: .default) { _ in
-+                print("Edit waypoint alert view")
-+                self.waypointBeingEdited.title = alert.textFields?[0].text
-+            }
-+            
 +            let cancelAction = UIAlertAction(title: "Cancel", style: .cancel, handler: nil)
 +            
-+            alert.addAction(saveAction)
-+            alert.addAction(cancelAction)
++            let saveAction = UIAlertAction(title: "Save", style: .default) { [weak self] _ in
++                guard let self = self else { return }
++                self.waypointBeingEdited.title = alert.textFields?[0].text
++                print("Edit waypoint alert view - saved with title: \(String(describing: self.waypointBeingEdited.title))")
++            }
 +            
-+            // Need to present from the view controller
-+            if let mapView = mapView as? GPXMapView,
-+               let viewController = mapView.window?.rootViewController {
-+                viewController.present(alert, animated: true, completion: nil)
++            alert.addAction(cancelAction)
++            alert.addAction(saveAction)
++            
+             self.waypointBeingEdited = waypoint
+-            alert.textField(at: 0)?.selectAll(self) //display text selected <-- TODO Not working WTF!
++            
++            if let presenter = presentingViewController {
++                presenter.present(alert, animated: true) {
++                    // Select all text after presentation
++                    alert.textFields?[0].selectAll(nil)
++                }
 +            }
              
          default:
              print("[calloutAccesoryControlTapped ERROR] unknown control")
-@@ -146,18 +161,4 @@ class MapViewDelegate: NSObject, MKMapViewDelegate, UIAlertViewDelegate {
+@@ -146,18 +167,4 @@ class MapViewDelegate: NSObject, MKMapViewDelegate, UIAlertViewDelegate {
      ///
      func addHeadingView(toAnnotationView annotationView: MKAnnotationView) {
             }
@@ -493,30 +256,53 @@ index 0000000..b4ba03a
 +    }
 +}
 diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
-index d6f9743..675f95d 100644
+index d6f9743..3d86b13 100644
 --- a/OpenGpxTracker/ViewController.swift
 +++ b/OpenGpxTracker/ViewController.swift
-@@ -837,16 +837,32 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate  {
+@@ -28,10 +28,6 @@ let kNotGettingLocationText = "Not getting location"
+ let kUnknownAccuracyText = "±···m"
+ let kUnknownSpeedText = "·.··"
+ 
+-let kEditWaypointAlertViewTag = 33
+-let kSaveSessionAlertViewTag = 88
+-let kLocationServicesDeniedAlertViewTag = 69
+-let kLocationServicesDisabledAlertViewTag = 70
+ 
+ /// Size for small buttons
+ let  kButtonSmallSize: CGFloat = 48.0
+@@ -321,6 +317,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate  {
+ 
+         // Map configuration Stuff
+         map.delegate = mapViewDelegate
++        mapViewDelegate.presentingViewController = self
+         map.showsUserLocation = true
+         let mapH: CGFloat = self.view.bounds.size.height - (isIPhoneX ? 0.0 : 20.0)
+         map.frame = CGRect(x: 0.0, y: (isIPhoneX ? 0.0 : 20.0), width: self.view.bounds.size.width, height: mapH)
+@@ -837,15 +834,31 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate  {
              return
          }
          
 -        let alert = UIAlertView(title: "Save as", message: "Enter GPX session name", delegate: self, cancelButtonTitle: "Cancel")
--        
++        let alert = UIAlertController(title: "Save as", message: "Enter GPX session name", preferredStyle: .alert)
+         
 -        alert.addButton(withTitle: "Save")
 -        alert.alertViewStyle = .plainTextInput
 -        alert.tag = kSaveSessionAlertViewTag
 -        alert.textField(at: 0)?.clearButtonMode = .always
 -        alert.textField(at: 0)?.text = lastGpxFilename.isEmpty ? defaultFilename() : lastGpxFilename
 -        alert.show()
-+        
-+        let alert = UIAlertController(title: "Save as", message: "Enter GPX session name", preferredStyle: .alert)
-+        
+-        //alert.textFieldAtIndex(0)?.selectAll(self)
 +        alert.addTextField { textField in
 +            textField.clearButtonMode = .always
 +            textField.text = self.lastGpxFilename.isEmpty ? self.defaultFilename() : self.lastGpxFilename
 +        }
 +        
++        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { _ in
++            print("Save canceled")
++        }
++        
 +        let saveAction = UIAlertAction(title: "Save", style: .default) { _ in
++            print("alertViewDelegate for Save Session")
 +            let filename = (alert.textFields?[0].text?.utf16.count == 0) ? self.defaultFilename() : alert.textFields?[0].text
 +            print("Save File \(String(describing: filename))")
 +            //export to a file
@@ -525,20 +311,14 @@ index d6f9743..675f95d 100644
 +            self.lastGpxFilename = filename!
 +        }
 +        
-+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { _ in
-+            print("Save canceled")
-+        }
-+        
-+        alert.addAction(saveAction)
 +        alert.addAction(cancelAction)
++        alert.addAction(saveAction)
 +        
-+        present(alert, animated: true, completion: nil)
-         //alert.textFieldAtIndex(0)?.selectAll(self)
--    }
++        self.present(alert, animated: true, completion: nil)
+     }
      
      ///
-     /// There was a memory warning. Right now, it does nothing but to log a line.
-@@ -882,11 +898,23 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate  {
+@@ -882,12 +895,26 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate  {
      /// When location services are disabled is for all applications, not only this one.
      ///
      func displayLocationServicesDisabledAlert() {
@@ -546,7 +326,6 @@ index d6f9743..675f95d 100644
 -        alert.addButton(withTitle: "Cancel")
 -        alert.tag = kLocationServicesDisabledAlertViewTag
 -        alert.show()
--    }
 +        let alert = UIAlertController(title: "Location services disabled", message: "Go to settings and enable location.", preferredStyle: .alert)
 +        
 +        let settingsAction = UIAlertAction(title: "Settings", style: .default) { _ in
@@ -563,11 +342,14 @@ index d6f9743..675f95d 100644
 +        alert.addAction(settingsAction)
 +        alert.addAction(cancelAction)
 +        
-+        present(alert, animated: true, completion: nil)
++        self.present(alert, animated: true, completion: nil)
+     }
  
++
      
      ///
-@@ -897,73 +925,26 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate  {
+     /// Displays an alert that informs the user that access to location was denied for this app (other apps may have access).
+@@ -897,75 +924,31 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate  {
          if isDisplayingLocationServicesDenied {
              return // display it only once.
          }
@@ -589,7 +371,8 @@ index d6f9743..675f95d 100644
 -
 -extension ViewController: UIAlertViewDelegate {
 -    func alertView(_ alertView: UIAlertView, clickedButtonAt buttonIndex: Int) {
--        
++        let alert = UIAlertController(title: "Access to location denied", message: "On Location settings, allow always access to location for GPX Tracker ", preferredStyle: .alert)
+         
 -        switch alertView.tag {
 -        case kSaveSessionAlertViewTag:
 -            print("alertViewDelegate for Save Session")
@@ -621,7 +404,12 @@ index d6f9743..675f95d 100644
 -                    print("Cancel button")
 -                default:
 -                    print("[ERROR] it seems there are more than two buttons on the alertview.")
--            }
++        let settingsAction = UIAlertAction(title: "Settings", style: .default) { _ in
++            self.isDisplayingLocationServicesDenied = false
++            print("Settings button")
++            if let url = NSURL(string: UIApplication.openSettingsURLString) as URL? {
++                UIApplication.shared.openURL(url)
+             }
 -        case kLocationServicesDisabledAlertViewTag:
 -            switch buttonIndex {
 -            case 0:
@@ -633,18 +421,10 @@ index d6f9743..675f95d 100644
 -                print("Cancel button")
 -            default:
 -                print("[ERROR] it seems there are more than two buttons on the alertview.")
-+        let alert = UIAlertController(title: "Access to location denied", message: "On Location settings, allow always access to location for GPX Tracker ", preferredStyle: .alert)
-+        
-+        let settingsAction = UIAlertAction(title: "Settings", style: .default) { _ in
-+            self.isDisplayingLocationServicesDenied = false
-+            print("Settings button")
-+            if let url = NSURL(string: UIApplication.openSettingsURLString) as URL? {
-+                UIApplication.shared.openURL(url)
-             }
+-            }
 -        default:
 -            print("[ERROR] it seems that the AlertView is not handled properly." )
          }
--    }
 +        
 +        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { _ in
 +            self.isDisplayingLocationServicesDenied = false
@@ -654,11 +434,16 @@ index d6f9743..675f95d 100644
 +        alert.addAction(settingsAction)
 +        alert.addAction(cancelAction)
 +        
-+        present(alert, animated: true, completion: nil)
++        self.present(alert, animated: true, completion: nil)
+     }
++
 +
  }
  
++
  // MARK: StopWatchDelegate
+ 
+ ///
 diff --git a/OpenGpxTracker/ViewController.swift.backup b/OpenGpxTracker/ViewController.swift.backup
 new file mode 100644
 index 0000000..d6f9743
@@ -1853,46 +1638,3 @@ index 0000000..d6f9743
 +    }
 +}
 +
-diff --git a/check_deprecated_alerts.sh b/check_deprecated_alerts.sh
-new file mode 100755
-index 0000000..0588172
---- /dev/null
-+++ b/check_deprecated_alerts.sh
-@@ -0,0 +1,37 @@
-+#!/bin/bash
-+echo "===== Checking for deprecated UIAlertView usage ====="
-+echo ""
-+
-+FILES=$(find ./OpenGpxTracker -type f \( -name "*.swift" -o -name "*.m" -o -name "*.h" \))
-+
-+ALERT_VIEW_COUNT=0
-+ALERT_CONTROLLER_COUNT=0
-+
-+for file in $FILES; do
-+    count=$(grep -c "UIAlertView" "$file" 2>/dev/null || echo "0")
-+    if [ "$count" -gt 0 ]; then
-+        echo "File: $file"
-+        echo "  UIAlertView occurrences: $count"
-+        grep -n "UIAlertView" "$file"
-+        ALERT_VIEW_COUNT=$((ALERT_VIEW_COUNT + count))
-+        echo ""
-+    fi
-+    
-+    count=$(grep -c "UIAlertController" "$file" 2>/dev/null || echo "0")
-+    if [ "$count" -gt 0 ]; then
-+        ALERT_CONTROLLER_COUNT=$((ALERT_CONTROLLER_COUNT + count))
-+    fi
-+done
-+
-+echo "===== Summary ====="
-+echo "Total UIAlertView (deprecated): $ALERT_VIEW_COUNT"
-+echo "Total UIAlertController (modern): $ALERT_CONTROLLER_COUNT"
-+echo ""
-+
-+if [ "$ALERT_VIEW_COUNT" -gt 0 ]; then
-+    echo "❌ ISSUE DETECTED: Deprecated UIAlertView is still being used!"
-+    exit 1
-+else
-+    echo "✅ SUCCESS: No deprecated UIAlertView found!"
-+    exit 0
-+fi
