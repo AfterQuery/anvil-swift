@@ -138,7 +138,7 @@ source .venv/bin/activate
 
 anvil init-dataset -d my-dataset --repo-path ./my-repo --base-image golang:1.22
 
-anvil init-dataset -d NYTimesPhotoViewer --repo-path /Users/marvindeng/VS_Code_Projects/anvil/repos/NYTPhotoViewer --base-image swift:5.9
+anvil init-dataset -d iOS-Open-GPX-Tracker --repo-path /Users/marvindeng/VS_Code_Projects/anvil/repos/iOS-Open-GPX-Tracker --base-image swift:5.9
 
 # 2. Add tasks (problem statement + solution patch + tests)
 anvil add-task -d my-dataset \

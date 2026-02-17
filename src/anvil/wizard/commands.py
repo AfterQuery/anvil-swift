@@ -139,7 +139,7 @@ def _parse_comma_separated(value: str | None) -> list[str]:
 
 
 def init_dataset(
-    dataset_id: Annotated[str, typer.Option("--dataset", "-d", help="Dataset identifier")],
+    dataset_id: Annotated[str, typer.Option("--dataset", "-d", help="Dataset identifier or path (e.g. datasets/my-dataset)")],
     repo_path: Annotated[
         Path | None, typer.Option("--repo-path", help="Local path to repository")
     ] = None,
@@ -177,8 +177,12 @@ def init_dataset(
         base_image = typer.prompt("Base Docker image", default=base_image)
         language = typer.prompt("Primary language", default=language)
 
+    # Support paths (e.g. "datasets/my-dataset") — extract the name for validation
+    dataset_input = Path(dataset_id)
+    dataset_name = dataset_input.name
+
     # Validation
-    errors = validate_dataset_id(dataset_id)
+    errors = validate_dataset_id(dataset_name)
     if errors:
         for err in errors:
             typer.secho(f"Error: {err}", fg=typer.colors.RED)
@@ -193,9 +197,12 @@ def init_dataset(
 
     # Determine output directory
     if output_dir:
-        dataset_path = output_dir / dataset_id
+        dataset_path = output_dir / dataset_name
+    elif dataset_input.parts and len(dataset_input.parts) > 1:
+        # Path given (e.g. "datasets/my-dataset") — resolve relative to cwd
+        dataset_path = Path.cwd() / dataset_input if not dataset_input.is_absolute() else dataset_input
     else:
-        dataset_path = Path.cwd() / dataset_id
+        dataset_path = Path.cwd() / dataset_name
 
     if dataset_path.exists():
         if not typer.confirm(f"Directory {dataset_path} already exists. Overwrite?"):
@@ -203,7 +210,7 @@ def init_dataset(
 
     # Create dataset object
     dataset = Dataset(
-        dataset_id=dataset_id,
+        dataset_id=dataset_name,
         repo_path=repo_path,
         repo_url=repo_url,
         base_image=base_image,
