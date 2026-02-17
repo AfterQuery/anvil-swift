@@ -147,11 +147,7 @@ anvil add-task -d my-dataset \
   --tests-file tests.py \
   --fail-to-pass "test_feature_works,test_edge_case"
 
-anvil add-task -d datasets/GPX-Tracker \
-  --problem-file templates/GPX-Tracker/task-4/problem.md \
-  --patch-file templates/GPX-Tracker/task-4/solution.diff \
-  --tests-file templates/GPX-Tracker/task-4/tests.py \
-  --base-commit fa320f1cc5cfe1e58ac538c22e5165a08dc34b8a
+anvil add-task -d datasets/GPX-Tracker -n 4 --base-commit fa320f1cc5cfe1e58ac538c22e5165a08dc34b8a
 
 # 3. Convert to Anvil evaluation format
 [Dockerhub](https://hub.docker.com/repositories/marvindeng)

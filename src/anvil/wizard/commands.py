@@ -275,6 +275,9 @@ def init_dataset(
 
 def add_task(
     dataset: Annotated[str, typer.Option("--dataset", "-d", help="Dataset path or ID")],
+    task_number: Annotated[
+        int | None, typer.Option("--task-number", "-n", help="Task number - auto-resolves files from tasks/<project>/task-<N>/")
+    ] = None,
     task_id: Annotated[
         str | None, typer.Option("--task-id", help="Task ID (auto-generated if omitted)")
     ] = None,
@@ -322,6 +325,12 @@ def add_task(
 
     Creates all required files in a new task directory.
 
+    With --task-number, auto-resolves files from tasks/<project>/task-<N>/:
+      anvil add-task -d datasets/GPX-Tracker -n 4 --base-commit abc123
+
+    Or provide files explicitly:
+      anvil add-task -d datasets/GPX-Tracker --problem-file p.md --patch-file s.diff --tests-file t.py
+
     Use --capture-diff to interactively make changes to the repo:
     1. Records current commit as base
     2. Prompts you to make changes
@@ -332,6 +341,32 @@ def add_task(
     dataset_path = Path(dataset)
     if not dataset_path.is_absolute():
         dataset_path = Path.cwd() / dataset
+
+    # When --task-number is given, resolve files from tasks/<project>/task-<N>/
+    if task_number is not None:
+        project_name = dataset_path.name
+        tasks_dir = dataset_path.parents[0].parent / "tasks" / project_name / f"task-{task_number}"
+
+        if not tasks_dir.exists():
+            typer.secho(
+                f"Error: Tasks directory not found: {tasks_dir}",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
+
+        if not task_id:
+            task_id = f"task-{task_number}"
+        if not problem_file:
+            problem_file = tasks_dir / "problem.md"
+        if not patch_file:
+            patch_file = tasks_dir / "solution.diff"
+        if not tests_file:
+            tests_file = tasks_dir / "tests.py"
+
+        typer.echo(f"Resolved from tasks/{project_name}/task-{task_number}/:")
+        typer.echo(f"  problem:  {problem_file}")
+        typer.echo(f"  patch:    {patch_file}")
+        typer.echo(f"  tests:    {tests_file}")
 
     if not dataset_path.exists():
         typer.secho(f"Error: Dataset directory does not exist: {dataset_path}", fg=typer.colors.RED)
