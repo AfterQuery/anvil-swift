@@ -41,6 +41,7 @@ def _parse_instance_info(instance_info_path: Path) -> dict:
 
 def _parse_tasks_csv(csv_path: Path) -> dict:
     """Parse tasks.csv file and return the first data row as dict."""
+    csv.field_size_limit(1_000_000)
     content = csv_path.read_text()
     reader = csv.DictReader(io.StringIO(content))
     for row in reader:
