@@ -77,19 +77,29 @@ def load_task_from_directory(task_dir: Path) -> Task | None:
         fail_to_pass = eval(fail_str) if fail_str else []
     except Exception as e:
         import sys
-        print(f"Warning: Failed to parse fail_to_pass in {task_dir.name}: {e}", file=sys.stderr)
+
+        print(
+            f"Warning: Failed to parse fail_to_pass in {task_dir.name}: {e}",
+            file=sys.stderr,
+        )
         fail_to_pass = []
 
     try:
         pass_to_pass = eval(pass_str) if pass_str else []
     except Exception as e:
         import sys
-        print(f"Warning: Failed to parse pass_to_pass in {task_dir.name}: {e}", file=sys.stderr)
+
+        print(
+            f"Warning: Failed to parse pass_to_pass in {task_dir.name}: {e}",
+            file=sys.stderr,
+        )
         pass_to_pass = []
 
     return Task(
         task_id=task_dir.name,
-        instance_id=instance_info.get("instance_id", f"{task_dir.parent.name}.{task_dir.name}"),
+        instance_id=instance_info.get(
+            "instance_id", f"{task_dir.parent.name}.{task_dir.name}"
+        ),
         problem_statement=csv_data.get("problem_statement", ""),
         patch=csv_data.get("patch", ""),
         test_code=tests_path.read_text(),
@@ -171,10 +181,21 @@ def generate_combined_tasks_csv(tasks: list[Task]) -> str:
 
     # Header
     header = [
-        "repo", "instance_id", "base_commit", "patch", "test_patch",
-        "problem_statement", "requirements", "interface", "repo_language",
-        "fail_to_pass", "pass_to_pass", "issue_specificity", "issue_categories",
-        "before_repo_set_cmd", "selected_test_files_to_run",
+        "repo",
+        "instance_id",
+        "base_commit",
+        "patch",
+        "test_patch",
+        "problem_statement",
+        "requirements",
+        "interface",
+        "repo_language",
+        "fail_to_pass",
+        "pass_to_pass",
+        "issue_specificity",
+        "issue_categories",
+        "before_repo_set_cmd",
+        "selected_test_files_to_run",
     ]
     writer.writerow(header)
 
@@ -231,8 +252,12 @@ def convert_to_anvil_structure(
 
     # Create output directories
     output_path.mkdir(parents=True, exist_ok=True)
-    dockerfiles_base_dir = output_path / "dockerfiles" / "docker_image_creation" / project_name
-    dockerfiles_base_dockerfile_dir = output_path / "dockerfiles" / "base_dockerfile" / project_name
+    dockerfiles_base_dir = (
+        output_path / "dockerfiles" / "docker_image_creation" / project_name
+    )
+    dockerfiles_base_dockerfile_dir = (
+        output_path / "dockerfiles" / "base_dockerfile" / project_name
+    )
     dockerfiles_instance_dir = output_path / "dockerfiles" / "instance_dockerfile"
     run_scripts_dir = output_path / "run_scripts"
 
@@ -295,12 +320,20 @@ def convert_to_anvil_structure(
         instance_docker_dir = dockerfiles_instance_dir / task.instance_id
         instance_docker_dir.mkdir(parents=True, exist_ok=True)
 
-        # Copy task Dockerfile
+        # Generate instance Dockerfile with base_commit checkout
+        dest = instance_docker_dir / "Dockerfile"
         task_dockerfile = dataset_path / task.task_id / "Dockerfile"
         if task_dockerfile.exists():
-            dest = instance_docker_dir / "Dockerfile"
-            shutil.copy(task_dockerfile, dest)
-            created_files["dockerfiles"].append(dest)
+            content = task_dockerfile.read_text()
+        else:
+            content = (
+                f"FROM {dockerhub_username}/{dockerhub_repo}:{project_name}.base\n"
+                "WORKDIR /app\n"
+            )
+        if task.base_commit:
+            content += f"RUN git reset --hard {task.base_commit}\n"
+        dest.write_text(content)
+        created_files["dockerfiles"].append(dest)
 
         # Create run_scripts directory for this instance
         instance_scripts_dir = run_scripts_dir / task.instance_id
@@ -354,7 +387,10 @@ def convert_dataset(
         dataset_path = Path.cwd() / dataset
 
     if not dataset_path.exists():
-        typer.secho(f"Error: Dataset directory does not exist: {dataset_path}", fg=typer.colors.RED)
+        typer.secho(
+            f"Error: Dataset directory does not exist: {dataset_path}",
+            fg=typer.colors.RED,
+        )
         raise typer.Exit(1)
 
     # Determine output directory
@@ -390,4 +426,6 @@ def convert_dataset(
 
     typer.echo("\nNext steps:")
     typer.echo(f"  1. Publish images: anvil publish-images --dataset {dataset_path}")
-    typer.echo(f"  2. Run evaluation: anvil run-evals --dataset {dataset_path} --agent oracle")
+    typer.echo(
+        f"  2. Run evaluation: anvil run-evals --dataset {dataset_path} --agent oracle"
+    )
