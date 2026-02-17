@@ -1,61 +1,65 @@
-"""Structural tests for GPX-Tracker task-2: Replace UIAlertView with UIAlertController.
-
-These tests verify only what the problem statement requires:
-  1. UIAlertView is no longer instantiated in either file
-  2. UIAlertViewDelegate conformance removed from ViewController
-  3. Both ViewController and MapViewDelegate use UIAlertController and UIAlertAction
-"""
-
 from pathlib import Path
+import re
 
-VIEW_CONTROLLER = Path("/app/OpenGpxTracker/ViewController.swift")
-MAP_VIEW_DELEGATE = Path("/app/OpenGpxTracker/MapViewDelegate.swift")
+ROOT = Path("/app/OpenGpxTracker")
 
-
-def test_no_uialertview_in_viewcontroller():
-    """ViewController must not instantiate the deprecated UIAlertView."""
-    content = VIEW_CONTROLLER.read_text()
-    assert "UIAlertView(" not in content, \
-        "ViewController should not instantiate UIAlertView"
-
-
-def test_no_uialertview_in_mapviewdelegate():
-    """MapViewDelegate must not instantiate the deprecated UIAlertView."""
-    content = MAP_VIEW_DELEGATE.read_text()
-    assert "UIAlertView(" not in content, \
-        "MapViewDelegate should not instantiate UIAlertView"
+# Files that use UIAlertView in the base code and must be migrated
+MIGRATED_FILES = [
+    ROOT / "MapViewDelegate.swift",
+    ROOT / "ViewController.swift",
+]
 
 
-def test_no_uialertviewdelegate_in_viewcontroller():
-    """ViewController should not conform to the deprecated UIAlertViewDelegate."""
-    content = VIEW_CONTROLLER.read_text()
-    assert "UIAlertViewDelegate" not in content, \
-        "ViewController should not use UIAlertViewDelegate"
+def swift_files():
+    return list(ROOT.rglob("*.swift"))
 
 
-def test_uialertcontroller_used_in_viewcontroller():
-    """ViewController should use UIAlertController for alerts."""
-    content = VIEW_CONTROLLER.read_text()
-    assert "UIAlertController(" in content, \
-        "ViewController should use UIAlertController"
+def all_code():
+    return "\n".join(p.read_text() for p in swift_files())
 
 
-def test_uialertaction_used_in_viewcontroller():
-    """ViewController should use UIAlertAction for action-based callbacks."""
-    content = VIEW_CONTROLLER.read_text()
-    assert "UIAlertAction(" in content, \
-        "ViewController should use UIAlertAction for button handlers"
+def migrated_code():
+    return "\n".join(p.read_text() for p in MIGRATED_FILES if p.exists())
 
 
-def test_uialertcontroller_used_in_mapviewdelegate():
-    """MapViewDelegate should use UIAlertController for alerts."""
-    content = MAP_VIEW_DELEGATE.read_text()
-    assert "UIAlertController(" in content, \
-        "MapViewDelegate should use UIAlertController"
+def test_no_uialertview_usage():
+    """Deprecated UIAlertView must be fully removed."""
+    code = all_code()
+    assert "UIAlertView" not in code, "UIAlertView should not be used anywhere"
 
 
-def test_uialertaction_used_in_mapviewdelegate():
-    """MapViewDelegate should use UIAlertAction for action-based callbacks."""
-    content = MAP_VIEW_DELEGATE.read_text()
-    assert "UIAlertAction(" in content, \
-        "MapViewDelegate should use UIAlertAction for button handlers"
+def test_no_uialertviewdelegate_usage():
+    """UIAlertViewDelegate should not remain after migration."""
+    code = all_code()
+    assert "UIAlertViewDelegate" not in code, "UIAlertViewDelegate should be removed"
+
+
+def test_modern_alert_api_present():
+    """
+    Each migrated file must use UIAlertController for presenting alerts.
+
+    Checked per-file so that pre-existing UIAlertController usage in one
+    file cannot mask a missing migration in another.
+    """
+    for path in MIGRATED_FILES:
+        code = path.read_text() if path.exists() else ""
+        count = code.count("UIAlertController")
+        assert count >= 1, (
+            f"{path.name} should use UIAlertController after migration"
+        )
+
+
+def test_action_handlers_used():
+    """
+    Each migrated file should use action handlers instead of delegate callbacks.
+
+    Checked per-file to ensure every file that had UIAlertView delegate
+    callbacks now uses UIAlertAction handlers or handler closures.
+    """
+    for path in MIGRATED_FILES:
+        code = path.read_text() if path.exists() else ""
+        has_action = "UIAlertAction" in code
+        has_handler = bool(re.search(r"handler\s*:\s*\{", code))
+        assert has_action or has_handler, (
+            f"{path.name} should use action handlers instead of delegate callbacks"
+        )

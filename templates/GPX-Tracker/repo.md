@@ -17,3 +17,9 @@ Mobile GPS Logger: https://github.com/merlos/iOS-Open-GPX-Tracker
 - Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/285.diff -o solution.diff
 - Patch Commit: 93e20d4
 - Base Commit: 72c1e361d4ab27c71e46d1384dcaa29dea667f3c
+
+4. Fix IPad Orientation: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/111
+- Type: Fix
+- Patch: curl -L  https://github.com/merlos/iOS-Open-GPX-Tracker/pull/111.diff -o solution.diff
+- Patch Commit: 1d3f1b7
+- Base Commit: fa320f1cc5cfe1e58ac538c22e5165a08dc34b8a

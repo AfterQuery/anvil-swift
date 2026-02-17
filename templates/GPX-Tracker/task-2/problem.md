@@ -1,31 +1,30 @@
 ### Title
+
 Replace deprecated UIAlertView usage with UIAlertController
 
 ### Background
-The application currently uses `UIAlertView` to present alerts to users. `UIAlertView` has been deprecated since iOS 9 and is no longer supported in modern iOS development practices.
 
-Apple recommends using `UIAlertController` with `preferredStyle: .alert` or `.actionSheet` to present alerts.
+The application currently uses `UIAlertView` to present alerts.  
+`UIAlertView` has been deprecated since iOS 9 and is no longer supported in modern iOS development.
 
-Continuing to use deprecated APIs may cause compatibility issues, warnings during compilation, and potential runtime problems on newer iOS versions.
+Apple recommends using `UIAlertController` with `preferredStyle: .alert` or `.actionSheet`.
 
-### Current Behavior
-The codebase still contains usages of:
-
-- `UIAlertView`
-- delegate-based alert handling
-- `show()` calls on alert views
-
-These APIs are deprecated and should no longer be used.
+Continuing to use deprecated APIs can cause compatibility issues, compiler warnings, and runtime problems on newer iOS versions.
 
 ### Expected Behavior
-All alert dialogs should be presented using `UIAlertController`, ensuring:
 
-- compatibility with modern iOS versions
-- proper presentation via a view controller
-- replacement of delegate-based callbacks with action handlers
+All alert dialogs must be presented using `UIAlertController`.
 
-### Constraints
-- Do not change user-facing behavior.
+The new implementation should:
+
+- present alerts from a view controller
+- use `UIAlertAction` handlers instead of delegate callbacks
+- maintain the same user-facing behavior and alert flow
+
+### Requirements
+
+- Remove all usages of `UIAlertView`.
+- Present alerts using `UIAlertController`.
+- Do not change user-visible behavior or messaging.
 - Do not introduce deprecated APIs.
-- Ensure alerts are presented on the main thread.
-- Maintain compatibility with the app’s current navigation structure.
+- Ensure alerts are presented within the current navigation flow.

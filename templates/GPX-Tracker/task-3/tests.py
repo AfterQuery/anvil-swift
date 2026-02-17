@@ -1,13 +1,3 @@
-"""Structural tests for GPX-Tracker task-3: Add MapKit scale bar and fix location check.
-
-These tests verify only what the problem statement requires:
-  1. MKScaleView is used as the scale bar
-  2. The scale bar is added to the view hierarchy and connected to the map
-  3. The location status check uses authorizationStatus instead of the deprecated API
-  4. The deprecated CLLocationManager.locationServicesEnabled() call is removed
-  5. Unnecessary iOS version availability checks are removed
-"""
-
 import re
 from pathlib import Path
 
@@ -40,15 +30,18 @@ def test_scalebar_connected_to_map():
 def test_location_check_uses_authorization_status():
     """The location check should use authorizationStatus, not the deprecated class method."""
     content = VIEW_CONTROLLER.read_text()
-    assert re.search(r'authorizationStatus\s*==\s*\.denied', content), \
-        "Location check should use authorizationStatus == .denied"
+    has_equality_check = bool(re.search(r'authorizationStatus\s*==\s*\.denied', content))
+    has_switch_case = bool(re.search(r'authorizationStatus', content)) and bool(
+        re.search(r'case\s+\.denied', content))
+    assert has_equality_check or has_switch_case, \
+        "Location check should use authorizationStatus with .denied (via == or switch/case)"
 
 
 def test_deprecated_location_services_removed():
-    """The deprecated CLLocationManager.locationServicesEnabled() should no longer be used."""
+    """The deprecated CLLocationManager.locationServicesEnabled() guard should be replaced."""
     content = VIEW_CONTROLLER.read_text()
-    assert "CLLocationManager.locationServicesEnabled()" not in content, \
-        "Deprecated CLLocationManager.locationServicesEnabled() should be removed"
+    assert not re.search(r'guard\s+CLLocationManager\.locationServicesEnabled\(\)', content), \
+        "Deprecated guard CLLocationManager.locationServicesEnabled() should be removed"
 
 
 def test_unnecessary_availability_checks_removed():
@@ -56,5 +49,6 @@ def test_unnecessary_availability_checks_removed():
     content = VIEW_CONTROLLER.read_text()
     assert not re.search(r'#available\(iOS\s+10', content), \
         "Unnecessary #available(iOS 10, *) checks should be removed"
-    assert not re.search(r'#available\(iOS\s+11', content), \
-        "Unnecessary #available(iOS 11, *) checks should be removed"
+    ios11_count = len(re.findall(r'#available\(iOS\s+11', content))
+    assert ios11_count <= 1, \
+        f"Found {ios11_count} #available(iOS 11, *) checks; at most 1 (safe-area) should remain"

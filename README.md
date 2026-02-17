@@ -125,7 +125,7 @@ source .venv/bin/activate
 
 anvil init-dataset -d my-dataset --repo-path ./my-repo --base-image golang:1.22
 
-anvil init-dataset -d GPX-Tracker --repo-path /Users/marvindeng/VS_Code_Projects/anvil/repos/iOS-Open-GPX-Tracker --base-image swift:5.9
+anvil init-dataset -d NYTimesPhotoViewer --repo-path /Users/marvindeng/VS_Code_Projects/anvil/repos/NYTPhotoViewer --base-image swift:5.9
 
 # 2. Add tasks (problem statement + solution patch + tests)
 anvil add-task -d my-dataset \
@@ -135,10 +135,10 @@ anvil add-task -d my-dataset \
   --fail-to-pass "test_feature_works,test_edge_case"
 
 anvil add-task -d datasets/GPX-Tracker \
-  --problem-file templates/GPX-Tracker/task-1/problem.md \
-  --patch-file templates/GPX-Tracker/task-1/solution.diff \
-  --tests-file templates/GPX-Tracker/task-1/tests.py \
-  --base-commit 3d3ae151d854187f5e0090dc08faf4246473df7d
+  --problem-file templates/GPX-Tracker/task-4/problem.md \
+  --patch-file templates/GPX-Tracker/task-4/solution.diff \
+  --tests-file templates/GPX-Tracker/task-4/tests.py \
+  --base-commit fa320f1cc5cfe1e58ac538c22e5165a08dc34b8a
 
 # 3. Convert to Anvil evaluation format
 [Dockerhub](https://hub.docker.com/repositories/marvindeng)
@@ -155,15 +155,21 @@ anvil publish-images --dataset datasets/GPX-Tracker -u marvindeng --repo anvil-i
 # Remove cached builds
 docker builder prune -f
 
-# 5. Run Oracle
+# 5. Run base and Oracle
 anvil run-evals -d my-dataset --agent oracle -u <dockerhub-username> --dockerhub-repo anvil-images --no-continue
 
-anvil run-evals --dataset datasets/GPX-Tracker --agent oracle --dockerhub-username marvindeng --dockerhub-repo anvil-images --no-continue
+# All tests fail
+docker run --rm \
+  -v /Users/marvindeng/VS_Code_Projects/anvil/templates/GPX-Tracker/task-4/tests.py:/tmp/tests.py \
+  marvindeng/anvil-images:iOS-Open-GPX-Tracker.task-4 \
+  python3 -m pytest /tmp/tests.py -v
 
+# All tests pass
+anvil run-evals --dataset datasets/GPX-Tracker --agent oracle --dockerhub-username marvindeng --dockerhub-repo anvil-images --no-continue
 
 # 6. Run against models
 
-# Claude Sonnet 4.5 
+# Claude Sonnet 4.5
 anvil run-evals \
   --dataset datasets/GPX-Tracker \
   --agent mini-swe-agent \
