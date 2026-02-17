@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 from dataclasses import dataclass, field
@@ -19,6 +20,8 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -29,7 +32,7 @@ class AgentConfig:
     install_cmd: str
     run_cmd: str  # Placeholders: {model}, {task}, {output_dir}
     output_format: Literal["trajectory_json", "git_only", "stdout"] = "git_only"
-    timeout: int = 600
+    timeout: int = 1800
     extra_env: dict[str, str] = field(default_factory=dict)
 
 
@@ -54,7 +57,7 @@ AGENT_CONFIGS: dict[str, AgentConfig] = {
         install_cmd="pip install -q mini-swe-agent || pip install -q --break-system-packages mini-swe-agent",
         run_cmd="mini -c mini.yaml -c /tmp/anvil_override.yaml --model {model} --task {task} --yolo --exit-immediately --output {output_dir}/trajectory.traj.json --cost-limit 0",
         output_format="trajectory_json",
-        timeout=600,
+        timeout=1200,
     ),
 }
 
@@ -217,6 +220,7 @@ async def run_agent_in_modal(
     image_name = instance.get("image_name", "")
 
     start_time = time.time()
+    sandbox = None
 
     try:
         img = modal.Image.from_registry(image_name, secret=registry_secret)
@@ -276,6 +280,17 @@ async def run_agent_in_modal(
 
         duration = time.time() - start_time
 
+        logger.info(
+            "Agent %s finished %s in %.1fs (exit_code=%s, patch=%d bytes, stdout=%d bytes, stderr=%d bytes)",
+            agent_config.name,
+            instance_id,
+            duration,
+            exit_code,
+            len(patch),
+            len(stdout),
+            len(stderr),
+        )
+
         return AgentResult(
             instance_id=instance_id,
             patch=patch,
@@ -288,15 +303,50 @@ async def run_agent_in_modal(
 
     except Exception as e:
         duration = time.time() - start_time
+
+        # Try to recover partial stdout/stderr from the sandbox on failure
+        # (e.g., timeout). This gives us diagnostic output even when the
+        # sandbox is killed before the script finishes.
+        partial_stdout = ""
+        partial_stderr = ""
+        partial_patch = ""
+        try:
+            if sandbox is not None:
+                partial_stdout = await sandbox.stdout.read.aio()
+                partial_stderr = await sandbox.stderr.read.aio()
+                partial_patch = _extract_between_markers(
+                    partial_stdout, PATCH_START_MARKER, PATCH_END_MARKER
+                )
+                # Best-effort cleanup
+                await sandbox.terminate.aio()
+        except Exception:
+            pass  # sandbox may already be dead
+
+        error_msg = str(e)
+        if "timeout" in error_msg.lower() or "Sandbox exceeded" in error_msg:
+            error_msg = (
+                f"Sandbox timed out after {agent_config.timeout}s: {error_msg}"
+            )
+
+        logger.warning(
+            "Agent %s failed on %s after %.1fs: %s | partial_stdout=%d bytes, partial_stderr=%d bytes",
+            agent_config.name,
+            instance_id,
+            duration,
+            error_msg,
+            len(partial_stdout),
+            len(partial_stderr),
+        )
+
         return AgentResult(
             instance_id=instance_id,
-            patch="",
-            stdout="",
-            stderr="",
+            patch=partial_patch,
+            stdout=partial_stdout,
+            stderr=partial_stderr,
             trajectory=None,
             exit_code=-1,
             duration_seconds=duration,
-            error=str(e),
+            error=error_msg,
         )
 
 
