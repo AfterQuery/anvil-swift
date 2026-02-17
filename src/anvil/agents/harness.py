@@ -90,6 +90,7 @@ def _build_agent_script(
     """Build the bash script to run inside the Modal sandbox."""
     task = instance.get("problem_statement", "")
     before_cmd = instance.get("before_repo_set_cmd", "")
+    base_commit = instance.get("base_commit", "")
     output_dir = "/workspace/output"
 
     run_cmd = agent_config.run_cmd.format(
@@ -98,6 +99,19 @@ def _build_agent_script(
         output_dir=output_dir,
     )
 
+    # Runtime reset to base commit as a safety net — no-op if the image is
+    # already at the correct commit, but guards against image/commit drift.
+    if base_commit:
+        reset_cmds = [
+            "cd /app",
+            "if [ -d .git ]; then",
+            f"    git reset --hard {base_commit} 2>/dev/null || true",
+            f"    git checkout {base_commit} 2>/dev/null || true",
+            "fi",
+        ]
+    else:
+        reset_cmds = []
+
     lines = [
         "set -e",
         "export MSWEA_CONFIGURED=true",
@@ -105,6 +119,7 @@ def _build_agent_script(
         f"export MSWEA_MODEL_API_KEY={provider_env_var}",
         "export MSWEA_COST_TRACKING=ignore_errors",
         "export LITELLM_DROP_PARAMS=True",
+        *reset_cmds,
         before_cmd if before_cmd else "true",
         "cd /app",
         "python3 -m ensurepip 2>/dev/null || true",
