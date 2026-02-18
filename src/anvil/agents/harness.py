@@ -202,7 +202,7 @@ requirements.txt
 GITIGNORE_EOF
 """,
         f'echo "{PATCH_START_MARKER}"',
-        "git add -A && git reset --quiet HEAD -- afterquery/ .gitignore 2>/dev/null || true && git diff --cached || true",
+        f"git add -A && git diff {base_commit if base_commit else 'HEAD'} -- . ':!afterquery/' ':!.gitignore' || true",
         f'echo "{PATCH_END_MARKER}"',
         f"echo '=== Files in {output_dir}:' && ls -la {output_dir}/ 2>/dev/null || echo '(none)'",
         f'echo "{TRAJECTORY_START_MARKER}"',
