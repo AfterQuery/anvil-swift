@@ -163,12 +163,18 @@ def _update_instances_yaml(
 
 def publish_images(
     dataset_id: str = typer.Option(..., "--dataset", help="Dataset ID"),
-    dockerhub_username: str = typer.Option(..., "--dockerhub-username", "-u", help="Docker Hub username"),
+    dockerhub_username: str = typer.Option("", "--dockerhub-username", "-u", help="Docker Hub username (defaults to REGISTRY_USERNAME from .env)"),
     platform: str = typer.Option("linux/amd64", "--platform", help="Docker platform"),
-    repo_name: str = typer.Option("anvil-images", "--repo", help="Docker Hub repository name"),
+    repo_name: str = typer.Option("", "--repo", help="Docker Hub repository name"),
     max_workers: int = typer.Option(4, "--max-workers", "-j", help="Max parallel builds (lower to avoid rate limits)"),
 ) -> None:
     """Build and push dataset images to your private Docker Hub."""
+    dockerhub_username = dockerhub_username or os.environ.get("REGISTRY_USERNAME", "")
+    repo_name = repo_name or os.environ.get("REGISTRY_REPO", "anvil-images")
+    if not dockerhub_username:
+        typer.echo("Docker Hub username required. Set REGISTRY_USERNAME in .env or pass -u.", err=True)
+        raise typer.Exit(1)
+
     tasks_dir = Path(dataset_id) / "tasks"
 
     if not _docker_logged_in():

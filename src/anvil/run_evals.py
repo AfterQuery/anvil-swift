@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Annotated, Literal
 
 import typer
@@ -47,13 +48,19 @@ def run_evals(
         None, "--output", help="Output directory override"
     ),
     dockerhub_username: str = typer.Option(
-        ..., "--dockerhub-username", help="DockerHub username"
+        "", "--dockerhub-username", "-u", help="DockerHub username (defaults to REGISTRY_USERNAME from .env)"
     ),
     dockerhub_repo: str = typer.Option(
-        ..., "--dockerhub-repo", help="DockerHub repo name"
+        "", "--dockerhub-repo", help="DockerHub repo name"
     ),
 ) -> None:
     """Run evaluation with an agent on a dataset."""
+    dockerhub_username = dockerhub_username or os.environ.get("REGISTRY_USERNAME", "")
+    dockerhub_repo = dockerhub_repo or os.environ.get("REGISTRY_REPO", "anvil-images")
+    if not dockerhub_username:
+        typer.echo("Docker Hub username required. Set REGISTRY_USERNAME in .env or pass -u.", err=True)
+        raise typer.Exit(1)
+
     from .evals import run_evaluation
 
     rc = run_evaluation(

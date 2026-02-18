@@ -7,6 +7,7 @@ and the tests actually detect the missing feature / bug fix.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -99,8 +100,8 @@ def _run_tests_on_image(
 
 def verify_base(
     dataset_id: str = typer.Option(..., "--dataset", "-d", help="Dataset path"),
-    dockerhub_username: str = typer.Option(..., "--dockerhub-username", "-u", help="Docker Hub username"),
-    dockerhub_repo: str = typer.Option("anvil-images", "--dockerhub-repo", help="Docker Hub repository name"),
+    dockerhub_username: str = typer.Option("", "--dockerhub-username", "-u", help="Docker Hub username (defaults to REGISTRY_USERNAME from .env)"),
+    dockerhub_repo: str = typer.Option("", "--dockerhub-repo", help="Docker Hub repository name"),
 ) -> None:
     """Run tests against base (unpatched) images to verify fail_to_pass tests fail.
 
@@ -108,6 +109,9 @@ def verify_base(
     WITHOUT the gold patch applied.  All fail_to_pass tests must FAIL for the
     harness to be considered valid.
     """
+    dockerhub_username = dockerhub_username or os.environ.get("REGISTRY_USERNAME", "")
+    dockerhub_repo = dockerhub_repo or os.environ.get("REGISTRY_REPO", "anvil-images")
+
     dataset_path = Path(dataset_id)
     if not dataset_path.is_absolute():
         dataset_path = Path.cwd() / dataset_id

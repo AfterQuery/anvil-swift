@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 import json
 import shutil
 from pathlib import Path
@@ -368,11 +369,11 @@ def convert_to_anvil_structure(
 def convert_dataset(
     dataset: Annotated[str, typer.Option("--dataset", "-d", help="Dataset path")],
     dockerhub_username: Annotated[
-        str, typer.Option("--dockerhub-username", "-u", help="Docker Hub username")
-    ] = "afterquery",
+        str, typer.Option("--dockerhub-username", "-u", help="Docker Hub username (defaults to REGISTRY_USERNAME from .env)")
+    ] = "",
     dockerhub_repo: Annotated[
         str, typer.Option("--dockerhub-repo", help="Docker Hub repository name")
-    ] = "anvil-images",
+    ] = "",
     output_dir: Annotated[
         Path | None, typer.Option("--output-dir", "-o", help="Output directory")
     ] = None,
@@ -382,6 +383,9 @@ def convert_dataset(
     Generates instances.yaml, gold_patches.json, and the directory structure
     required for Anvil's publish-images and run-evals commands.
     """
+    dockerhub_username = dockerhub_username or os.environ.get("REGISTRY_USERNAME", "")
+    dockerhub_repo = dockerhub_repo or os.environ.get("REGISTRY_REPO", "anvil-images")
+
     # Resolve dataset path
     dataset_path = Path(dataset)
     if not dataset_path.is_absolute():
