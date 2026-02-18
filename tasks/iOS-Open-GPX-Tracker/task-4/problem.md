@@ -16,5 +16,5 @@ In the **iOS-Open-GPX-Tracker** application, there is a regression/persistent bu
 - UI updates should be triggered correctly during `viewWillTransition(to:with:)` without requiring arbitrary delays.  
 
 ## Technical Constraints
-- The fix should ideally move away from hardcoded frame math towards `NSLayoutConstraints` to handle different screen sizes (iPad Pro 10.5", iPhone X, etc.) natively.  
+- The fix must migrate from hardcoded frame math to `NSLayoutConstraints` to handle different screen sizes (iPad Pro 10.5", iPhone X, etc.) natively.  
 - Ensure that the `viewWillTransition` logic is clean and does not introduce unnecessary `DispatchQueue` delays unless absolutely required by the UIKit lifecycle.

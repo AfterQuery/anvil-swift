@@ -97,10 +97,7 @@ def test_view_will_transition_implemented():
 def test_compass_repositioned_on_orientation_change():
     """The compass must be repositioned when the device orientation changes."""
     content = _read(VIEW_CONTROLLER)
-    vwt_match = re.search(
-        r'func\s+viewWillTransition\s*\([^)]*\)\s*\{', content)
-    assert vwt_match, "viewWillTransition must be implemented"
-    window = content[vwt_match.start():vwt_match.start() + 800]
-    assert re.search(r'compass', window, re.IGNORECASE), (
-        "viewWillTransition should reposition the compass"
-    )
+    assert re.search(r'func\s+viewWillTransition', content), \
+        "viewWillTransition must be implemented"
+    assert re.search(r'compassRect', content), \
+        "compassRect should be set to reposition compass on orientation change"

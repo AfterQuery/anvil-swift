@@ -3,9 +3,9 @@ from pathlib import Path
 
 ROOT = Path("/app/ACHNBrowserUI")
 
-ITEM = ROOT / "packages/Backend/Sources/Backend/models/Item.swift"
-VIEW_MODEL = ROOT / "viewModels/ActiveCrittersViewModel.swift"
-VIEW = ROOT / "views/critters/ActiveCrittersView.swift"
+ITEM = ROOT / "ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift"
+VIEW_MODEL = ROOT / "ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift"
+VIEW = ROOT / "ACHNBrowserUI/views/critters/ActiveCrittersView.swift"
 
 
 def _read(path):

@@ -31,7 +31,7 @@ def test_scalebar_connected_to_map():
     """The scale bar must be connected to the map view so it reflects zoom level."""
     content = VIEW_CONTROLLER.read_text()
     has_mapview_assignment = bool(re.search(r'\w*[sS]cale\w*\.mapView\s*=\s*map', content))
-    has_init_with_map = bool(re.search(r'MKScaleView\(mapView:\s*map', content))
+    has_init_with_map = bool(re.search(r'MKScaleView\(mapView:\s*(?:self\.)?map', content))
     assert has_mapview_assignment or has_init_with_map, \
         "Scale bar should be connected to the map (via .mapView or init)"
 

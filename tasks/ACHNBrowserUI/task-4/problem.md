@@ -2,7 +2,7 @@
 
 ### Problem Description
 
-In the **ACHNBrowserUI** app (PR #190, resolving issue #187), the Villagers list view displays all villagers but provides no way to sort them. Users who want to find villagers by name or browse by species have to manually scan through the entire unsorted list.
+In the **ACHNBrowserUI** app, the Villagers list view displays all villagers but provides no way to sort them. Users who want to find villagers by name or browse by species have to manually scan through the entire unsorted list.
 
 This makes it difficult for users to organize and browse the villager catalog efficiently.
 

@@ -3,9 +3,9 @@ from pathlib import Path
 
 ROOT = Path("/app/ACHNBrowserUI")
 
-TURNIPS_VIEW = ROOT / "views/turnips/TurnipsView.swift"
-ROWS_DIR = ROOT / "views/turnips/rows"
-SHARED_DIR = ROOT / "views/shared"
+TURNIPS_VIEW = ROOT / "ACHNBrowserUI/views/turnips/TurnipsView.swift"
+ROWS_DIR = ROOT / "ACHNBrowserUI/views/turnips/rows"
+SHARED_DIR = ROOT / "ACHNBrowserUI/views/shared"
 
 
 def _read(path):
@@ -122,7 +122,7 @@ def test_erase_to_any_view_for_row_removed():
     """
     content = _read(TURNIPS_VIEW)
     # Also check the View extension file
-    view_ext = _read(ROOT / "extensions/View.swift")
+    view_ext = _read(ROOT / "ACHNBrowserUI/extensions/View.swift")
     combined = content + view_ext
     assert 'eraseToAnyViewForRow' not in combined, (
         "eraseToAnyViewForRow() should be removed — "
