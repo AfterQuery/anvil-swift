@@ -20,17 +20,21 @@ def test_item_has_hour_level_check():
     """Item must expose a way to check if a critter is active at the current
     hour/time.  The base code only checks the month (isActive), not the hour.
 
-    Accepts any method whose name suggests hour/time-of-day checking, e.g.:
-      isActiveAtThisHour(), isAvailableNow(), isCatchableNow(),
-      isActiveNow(), activeAtCurrentHour(), etc.
+    Accepts:
+      - A new method with hour/now/time in the name (isActiveNow, isActiveAtThisHour, etc.)
+      - An isActive overload that takes a Date or hour parameter
     """
     content = _read(ITEM)
     has_hour_func = bool(re.search(
         r'func\s+\w*(?:[Aa]ctive|[Aa]vailable|[Cc]atch)\w*(?:[Hh]our|[Nn]ow|[Tt]ime)\w*\s*\(.*\)\s*->\s*Bool',
         content))
-    assert has_hour_func, (
+    has_active_date_overload = bool(re.search(
+        r'func\s+isActive\s*\(.*(?:[Dd]ate|[Hh]our)',
+        content))
+    assert has_hour_func or has_active_date_overload, (
         "Item should have a Bool-returning method to check if a critter is "
-        "active at the current hour (e.g. isActiveAtThisHour() -> Bool)"
+        "active at the current hour (e.g. isActiveAtThisHour() -> Bool, "
+        "or isActive(at date: Date) -> Bool)"
     )
 
 

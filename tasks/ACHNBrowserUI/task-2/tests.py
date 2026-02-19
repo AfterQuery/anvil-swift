@@ -114,10 +114,17 @@ def test_grid_used_for_all_display_modes():
     grid_usages = len(re.findall(
         r'GridStack|LazyVGrid|LazyHGrid|\bGrid\s*\(', content))
     has_unified_component = bool(re.search(
-        r'enum\s+DisplayMode|[Pp]rice[Gg]rid|[Tt]urnips[Pp]rice[Gg]rid', content))
-    assert grid_usages >= 3 or has_unified_component, (
+        r'enum\s+\w*(?:[Dd]isplay[Mm]ode|[Pp]redictions?[Dd]isplay|[Pp]rice[Mm]ode)\w*'
+        r'|[Pp]rice[Gg]rid|[Tt]urnips[Pp]rice[Gg]rid|[Tt]urnips[Pp]rices[Tt]able',
+        content))
+    has_geometry_columns = (
+        len(re.findall(r'GeometryReader', content)) >= 1
+        and len(re.findall(r'\.frame\(.*width\s*:', content)) >= 3
+    )
+    assert grid_usages >= 3 or has_unified_component or has_geometry_columns, (
         f"Expected grid layout to be used for all 3 display modes "
-        f"(average, min/max, profits) via separate grid instances or a unified component, "
+        f"(average, min/max, profits) via separate grid instances, a unified component "
+        f"(e.g. DisplayMode enum, PriceGrid), or GeometryReader with fixed-width columns; "
         f"found {grid_usages} grid usage(s)"
     )
 

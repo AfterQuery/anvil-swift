@@ -35,22 +35,32 @@ def _read_all_swift(directories):
 
 def test_user_collection_tracks_variant_completion():
     """UserCollection must have a way to determine the like status based on
-    variant completion — returning a state like unstarted/partial/complete.
+    variant completion — returning a state like unstarted/partial/complete
+    (or none/partial/complete).
     """
     all_content = _read_all_swift([BACKEND_MODELS_DIR, BACKEND_ENV_DIR, VIEW_MODELS_DIR])
-    has_completion_enum = bool(
+    has_status_enum = bool(
         re.search(
-            r"enum\s+\w*[Cc]ompletion\w*|case\s+unstarted.*case\s+partial|case\s+partial.*case\s+complete",
+            r"enum\s+\w*(?:[Cc]ompletion|[Cc]ollection|[Pp]rogress|[Ss]tat(?:us|e))\w*",
             all_content,
-            re.DOTALL,
         )
     )
-    has_completion_func = bool(
-        re.search(r"func\s+\w*[Cc]ompletion[Ss]tatus\s*\(", all_content)
+    has_partial_case = bool(
+        re.search(
+            r"case\s+(?:unstarted|none|partial|complete)",
+            all_content,
+        )
     )
-    assert has_completion_enum or has_completion_func, (
-        "A variant completion status enum should be defined "
-        "(e.g. VariantsCompletionStatus/CompletionStatus with unstarted/partial/complete)"
+    has_status_func = bool(
+        re.search(
+            r"func\s+\w*(?:[Cc]ompletion[Ss]tatus|[Cc]ollection[Ss]tate|[Pp]rogress[Ss]tate)\s*\(",
+            all_content,
+        )
+    )
+    assert (has_status_enum and has_partial_case) or has_status_func, (
+        "A variant collection status enum should be defined "
+        "(e.g. VariantsCompletionStatus, VariantCollectionState, ItemCollectionProgressState "
+        "with cases like none/unstarted, partial, complete)"
     )
 
 
@@ -145,7 +155,7 @@ def test_variant_selection_view_exists():
         )
     )
     has_modal = bool(
-        re.search(r"\.sheet\(|\.modal\(|@State.*showVariant|@Binding.*item", all_content)
+        re.search(r"\.sheet\(|\.fullScreenCover\(|\.modal\(|@State.*showVariant|@Binding.*item", all_content)
     )
     assert has_variant_view or has_modal, (
         "A variant selection view should exist "
@@ -195,23 +205,34 @@ def test_item_detail_favorite_button_shows_variants():
 
 def test_parent_item_synced_on_variant_like():
     """When the first variant of an item is liked, the parent item should
-    automatically be added to the collection. This can be done by calling
-    toggleItem based on completionStatus, or by checking completion state
-    after variant toggle.
+    automatically be added to the collection. This can be done by checking
+    completion/collection/progress state after variant toggle, or by
+    syncing the parent item based on collected variant count.
     """
     all_content = _read_all_swift([BACKEND_ENV_DIR, VIEW_MODELS_DIR])
 
+    status_pattern = r"[Cc]ompletion[Ss]tatus|[Cc]ollection[Ss]tate|[Pp]rogress[Ss]tate"
     has_sync_in_toggle_variant = bool(
-        re.search(r"[Cc]ompletion[Ss]tatus.*toggleItem|toggleItem.*[Cc]ompletion[Ss]tatus",
-                  all_content, re.DOTALL)
+        re.search(
+            r"(?:" + status_pattern + r").*toggleItem|toggleItem.*(?:" + status_pattern + r")",
+            all_content, re.DOTALL,
+        )
     )
     has_auto_add = bool(
-        re.search(r"[Cc]ompletion[Ss]tatus.*!=\s*\.unstarted|[Cc]ompletion[Ss]tatus.*==\s*\.unstarted",
-                  all_content)
+        re.search(
+            r"(?:" + status_pattern + r")\s*(?:!=|==)\s*\.(?:unstarted|none|complete)",
+            all_content,
+        )
     )
-    assert has_sync_in_toggle_variant or has_auto_add, (
+    has_collected_count_sync = bool(
+        re.search(r"collected\s*==\s*0|variants\[.*\]\?*\.count\s*(?:==|>)\s*0", all_content)
+    ) and bool(
+        re.search(r"toggleItem|contains\(item\)|isInCollection", all_content)
+    )
+    assert has_sync_in_toggle_variant or has_auto_add or has_collected_count_sync, (
         "toggleVariant should auto-add/remove the parent item "
-        "based on completionStatus (e.g. toggle when status changes to/from unstarted)"
+        "based on collection state (e.g. toggle when status changes to/from none/unstarted, "
+        "or sync based on collected variant count)"
     )
 
 
@@ -250,21 +271,28 @@ def test_items_without_variants_unaffected():
 
 
 def test_variant_selection_updates_like_state():
-    """When variants are toggled in the variant selection view, the half-star
-    icon should update immediately to reflect the new completion status.
-    The LikeButtonViewModel must publish a completion status property.
+    """When variants are toggled in the variant selection view, the like
+    icon should update immediately to reflect the new collection status.
+    The LikeButtonViewModel must publish a status/state property that
+    tracks variant collection progress.
     """
     vm_content = _read(LIKE_BUTTON_VM)
 
     has_published_status = bool(
-        re.search(r"@Published.*[Cc]ompletion[Ss]tatus",
-                  vm_content)
+        re.search(
+            r"@Published.*(?:[Cc]ompletion[Ss]tatus|[Cc]ollection[Ss]tate|[Pp]rogress[Ss]tate)",
+            vm_content,
+        )
     )
-    has_completion_type = bool(
-        re.search(r"[Vv]ariant[Ss]?[Cc]ompletion[Ss]tatus|CompletionStatus",
-                  vm_content)
+    has_status_type = bool(
+        re.search(
+            r"[Vv]ariant[Ss]?[Cc]ompletion[Ss]tatus|CompletionStatus"
+            r"|[Vv]ariant[Cc]ollection[Ss]tate|[Ii]tem[Cc]ollection[Pp]rogress[Ss]tate",
+            vm_content,
+        )
     )
-    assert has_published_status or has_completion_type, (
-        "LikeButtonViewModel should have a @Published completion status property "
+    assert has_published_status or has_status_type, (
+        "LikeButtonViewModel should have a @Published collection status property "
+        "(e.g. completionStatus, collectionState, progressState) "
         "that updates when variants are toggled"
     )

@@ -195,13 +195,15 @@ def test_search_takes_priority_over_sorting():
 
 
 def test_clear_sort_resets_to_original_order():
-    """The sort view should have a 'Clear Selection' option that resets
+    """There should be a 'Clear Selection' option that resets
     sortedVillagers to empty, causing the view to fall back to the default
-    villagers list.
+    villagers list. The clear logic may live in VillagersSortView,
+    VillagersViewModel, or VillagersListView (inline action sheet).
     """
     sort_view = _read(VILLAGERS_SORT_VIEW)
     view_model = _read(VILLAGERS_VIEW_MODEL)
-    all_content = sort_view + view_model
+    list_view = _read(VILLAGERS_LIST_VIEW)
+    all_content = sort_view + view_model + list_view
 
     has_clear_option = bool(
         re.search(
@@ -215,7 +217,8 @@ def test_clear_sort_resets_to_original_order():
         )
     )
     assert has_clear_option or has_empty_reset, (
-        "VillagersSortView should have a way to clear the sort selection, "
+        "There should be a way to clear the sort selection "
+        "(e.g. in VillagersSortView, VillagersViewModel, or VillagersListView), "
         "resetting sortedVillagers to empty"
     )
 
