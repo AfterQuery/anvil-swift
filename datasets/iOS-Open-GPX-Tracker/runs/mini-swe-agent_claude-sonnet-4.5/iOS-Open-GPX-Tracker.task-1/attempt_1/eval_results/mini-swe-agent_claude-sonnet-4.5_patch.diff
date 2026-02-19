@@ -1,0 +1,114 @@
+diff --git a/OpenGpxTracker/GPXScaleBar.swift b/OpenGpxTracker/GPXScaleBar.swift
+index 169518a..bcd44b2 100644
+--- a/OpenGpxTracker/GPXScaleBar.swift
++++ b/OpenGpxTracker/GPXScaleBar.swift
+@@ -551,6 +551,53 @@ class GPXScaleBar: UIView {
+     public func updateUnits(useImperial: Bool) {
+         self.useImperial = useImperial
+     }
++    
++    /// Updates the color scheme of the scale bar based on the tile server's imagery.
++    ///
++    /// This method allows the scale bar to adapt its colors to the tile server background,
++    /// ensuring good visibility regardless of whether the map has light or dark imagery.
++    ///
++    /// ## Color Scheme Logic:
++    /// - `nil`: Use system appearance (`.label` color adapts to light/dark mode)
++    /// - `true`: Light background → use dark (black) colors for visibility
++    /// - `false`: Dark background → use light (white) colors for visibility
++    ///
++    /// ## Example:
++    ///
++    /// ```swift
++    /// // When tile server changes
++    /// func didUpdateTileServer(_ tileServer: GPXTileServer) {
++    ///     scaleBar.updateColorScheme(basedOn: tileServer.hasLightImagery)
++    /// }
++    /// ```
++    ///
++    /// - Parameter lightBackground: `true` for light tile imagery (uses dark colors),
++    ///                               `false` for dark tile imagery (uses white colors),
++    ///                               or `nil` to follow system appearance.
++    public func updateColorScheme(basedOn lightBackground: Bool?) {
++        let color: UIColor
++        
++        if let isLight = lightBackground {
++            // Override based on tile server imagery
++            color = isLight ? .black : .white
++        } else {
++            // Follow system appearance
++            if #available(iOS 13.0, *) {
++                color = .label
++            } else {
++                color = .black
++            }
++        }
++        
++        // Update all visual elements
++        scaleBar.backgroundColor = color
++        for tick in ticks {
++            tick.backgroundColor = color
++        }
++        for label in labels {
++            label.textColor = color
++        }
++    }
+ }
+ 
+ // MARK: - Usage Example
+diff --git a/OpenGpxTracker/GPXTileServer.swift b/OpenGpxTracker/GPXTileServer.swift
+index 247bf14..c69553e 100644
+--- a/OpenGpxTracker/GPXTileServer.swift
++++ b/OpenGpxTracker/GPXTileServer.swift
+@@ -162,6 +162,37 @@ enum GPXTileServer: Int {
+     var needForceDarkMode: Bool {
+         return self == .appleSatellite
+     }
++    
++    /// Indicates whether the tile server has light-colored imagery.
++    /// 
++    /// This property is used to determine appropriate overlay colors (scalebar, labels) that
++    /// will be visible against the tile server's background.
++    ///
++    /// - Returns: `true` if the tile server displays light-colored maps (requiring dark overlays),
++    ///            `false` if it displays dark-colored maps (requiring light overlays),
++    ///            or `nil` if it should follow the system appearance mode.
++    ///
++    /// ## Examples:
++    /// - `.apple` returns `nil` → follows system appearance (light mode = light map, dark mode = dark map)
++    /// - `.appleSatellite` returns `false` → dark imagery, needs light (white) overlays
++    /// - `.openStreetMap` returns `true` → light imagery, needs dark (black) overlays
++    var hasLightImagery: Bool? {
++        switch self {
++        case .apple:
++            // Apple maps adapt to system appearance
++            return nil
++        case .appleSatellite:
++            // Satellite imagery is dark
++            return false
++        case .openStreetMap, .cartoDB, .cartoDBRetina, .openTopoMap:
++            // These tile servers have light-colored maps
++            return true
++        case .openSeaMap:
++            // OpenSeaMap is an overlay, typically used with other maps
++            // Assume light background since it's usually overlaid on light maps
++            return true
++        }
++    }
+ 
+     /// Returns the number of tile servers currently defined
+     static var count: Int { return GPXTileServer.openSeaMap.rawValue + 1}
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index fe592ce..31f9288 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -1309,6 +1309,9 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         self.speedLabel.textColor = needForceDarkMode ? .white : nil
+         self.totalTrackedDistanceLabel.textColor = needForceDarkMode ? .white : nil
+         self.currentSegmentDistanceLabel.textColor = needForceDarkMode ? .white : nil
++        
++        // Update scalebar color based on tile server imagery
++        self.scaleBar.updateColorScheme(basedOn: self.map.tileServer.hasLightImagery)
+     }
+ 
+ }

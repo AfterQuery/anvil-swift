@@ -1,0 +1,451 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
+index 80d9cd2..dbd02c8 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
+@@ -18,6 +18,7 @@ class LikeButtonViewModel: ObservableObject {
+     let villager: Villager?
+     
+     @Published var isInCollection = false
++    @Published var variantCollectionState: VariantCollectionState = .none
+     
+     private let collection: UserCollection
+     private var cancellable: AnyCancellable?
+@@ -42,6 +43,9 @@ class LikeButtonViewModel: ObservableObject {
+                         self.isInCollection = variants.contains(for: item, variant: variant)
+                         return
+                     }
++                    // Update variant collection state for multi-variant items
++                    self.variantCollectionState = self.collection.variantCollectionState(for: item)
++                    
+                     self.isInCollection = items.contains(item) || critters.contains(item)
+                     return
+                 } else if let villager = villager {
+@@ -51,6 +55,11 @@ class LikeButtonViewModel: ObservableObject {
+                 
+         }
+     }
++    
++    var hasMultipleVariants: Bool {
++        guard let item = item else { return false }
++        return (item.variations?.count ?? 0) > 1
++    }
+         
+     func toggleCollection() -> Bool {
+         var added = false
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/items/VariantSelectionSheet.swift b/ACHNBrowserUI/ACHNBrowserUI/views/items/VariantSelectionSheet.swift
+new file mode 100644
+index 0000000..b0df3d1
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/items/VariantSelectionSheet.swift
+@@ -0,0 +1,86 @@
++//
++//  VariantSelectionSheet.swift
++//  ACHNBrowserUI
++//
++//  Created for per-variant collection tracking feature
++//
++
++import SwiftUI
++import Backend
++import UI
++
++struct VariantSelectionSheet: View {
++    @EnvironmentObject private var collection: UserCollection
++    @Environment(\.presentationMode) var presentationMode
++    
++    let item: Item
++    let variants: [Variant]
++    
++    @State private var selectedVariants: Set<Int> = []
++    
++    init(item: Item) {
++        self.item = item
++        self.variants = item.variations ?? []
++    }
++    
++    var body: some View {
++        NavigationView {
++            List {
++                Section(header: Text("Select variants you own")) {
++                    ForEach(variants) { variant in
++                        HStack {
++                            ItemImage(path: variant.content.image, size: 50)
++                                .cornerRadius(8)
++                            
++                            Spacer()
++                            
++                            if isVariantSelected(variant) {
++                                Image(systemName: "checkmark.circle.fill")
++                                    .foregroundColor(.acTabBarTint)
++                                    .imageScale(.large)
++                            } else {
++                                Image(systemName: "circle")
++                                    .foregroundColor(.gray)
++                                    .imageScale(.large)
++                            }
++                        }
++                        .contentShape(Rectangle())
++                        .onTapGesture {
++                            toggleVariant(variant)
++                        }
++                    }
++                }
++            }
++            .listStyle(InsetGroupedListStyle())
++            .navigationBarTitle(item.localizedName.capitalized, displayMode: .inline)
++            .navigationBarItems(trailing: Button("Done") {
++                presentationMode.wrappedValue.dismiss()
++            })
++        }
++        .onAppear {
++            loadSelectedVariants()
++        }
++    }
++    
++    private func isVariantSelected(_ variant: Variant) -> Bool {
++        selectedVariants.contains(variant.id)
++    }
++    
++    private func toggleVariant(_ variant: Variant) {
++        let wasAdded = collection.toggleVariant(item: item, variant: variant)
++        
++        if wasAdded {
++            selectedVariants.insert(variant.id)
++        } else {
++            selectedVariants.remove(variant.id)
++        }
++        
++        FeedbackGenerator.shared.triggerSelection()
++    }
++    
++    private func loadSelectedVariants() {
++        guard let filename = item.filename else { return }
++        let collectedVariants = collection.variants[filename] ?? []
++        selectedVariants = Set(collectedVariants.map { $0.id })
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
+index c0bc1d7..d99575c 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
+@@ -11,6 +11,7 @@ import Backend
+ 
+ struct LikeButtonView: View {
+     @StateObject private var viewModel: LikeButtonViewModel
++    @State private var showVariantSheet = false
+     
+     init(item: Item, variant: Variant?) {
+         _viewModel = StateObject(wrappedValue: LikeButtonViewModel(item: item, variant: variant))
+@@ -25,7 +26,24 @@ struct LikeButtonView: View {
+             if viewModel.item?.isCritter == true {
+                 return viewModel.isInCollection ? "checkmark.seal.fill" : "checkmark.seal"
+             } else {
+-                return viewModel.isInCollection ? "star.fill" : "star"
++                // Check if this is a variant-specific button
++                if viewModel.variant != nil {
++                    return viewModel.isInCollection ? "star.fill" : "star"
++                }
++                
++                // For multi-variant items without specific variant, show 3 states
++                if viewModel.hasMultipleVariants {
++                    switch viewModel.variantCollectionState {
++                    case .none:
++                        return "star"
++                    case .partial:
++                        return "star.leadinghalf.filled"
++                    case .complete:
++                        return "star.fill"
++                    }
++                } else {
++                    return viewModel.isInCollection ? "star.fill" : "star"
++                }
+             }
+         } else {
+             return viewModel.isInCollection ? "heart.fill" : "heart"
+@@ -42,16 +60,47 @@ struct LikeButtonView: View {
+         return .red
+     }
+     
++    var scaleEffect: CGFloat {
++        if viewModel.variant != nil {
++            return viewModel.isInCollection ? 1.3 : 1.0
++        }
++        
++        if viewModel.hasMultipleVariants {
++            switch viewModel.variantCollectionState {
++            case .none:
++                return 1.0
++            case .partial:
++                return 1.15
++            case .complete:
++                return 1.3
++            }
++        } else {
++            return viewModel.isInCollection ? 1.3 : 1.0
++        }
++    }
++    
+     var body: some View {
+         Button(action: {
+-            let added = self.viewModel.toggleCollection()
+-            FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++            // For multi-variant items without a specific variant, show selection sheet
++            if viewModel.hasMultipleVariants && viewModel.variant == nil {
++                showVariantSheet = true
++            } else {
++                // For single-variant items or specific variants, toggle directly
++                let added = self.viewModel.toggleCollection()
++                FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++            }
+         }) {
+             Image(systemName: imageName).foregroundColor(color)
+         }
+-        .scaleEffect(viewModel.isInCollection ? 1.3 : 1.0)
++        .scaleEffect(scaleEffect)
+         .buttonStyle(BorderlessButtonStyle())
+         .animation(.spring(response: 0.5, dampingFraction: 0.3, blendDuration: 0.5))
++        .sheet(isPresented: $showVariantSheet) {
++            if let item = viewModel.item {
++                VariantSelectionSheet(item: item)
++                    .environmentObject(UserCollection.shared)
++            }
++        }
+     }
+ }
+ 
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+index f5642f1..5baf85b 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+@@ -136,18 +136,35 @@ public class UserCollection: ObservableObject {
+         guard let filename = item.filename else {
+             return false
+         }
++        
++        let wasAdded: Bool
++        
+         if variants[filename]?.contains(variant) == true {
++            // Remove variant
+             variants[filename]?.removeAll(where: { $0 == variant })
+-            save()
+-            return false
++            wasAdded = false
++            
++            // Auto-remove parent item if this was the last variant
++            let remainingVariants = variants[filename]?.count ?? 0
++            if remainingVariants == 0 {
++                _ = items.toggle(item: item)
++            }
+         } else {
++            // Add variant
+             if variants[filename] == nil {
+                 variants[filename] = []
+             }
+             variants[filename]?.append(variant)
+-            save()
+-            return true
++            wasAdded = true
++            
++            // Auto-add parent item if this is the first variant
++            if variants[filename]?.count == 1 && !items.contains(item) {
++                _ = items.toggle(item: item)
++            }
+         }
++        
++        save()
++        return wasAdded
+     }
+     
+     public func toggleCritters(critter: Item) -> Bool {
+@@ -506,3 +523,34 @@ public extension Dictionary where Key == String, Value == [Variant] {
+         return self[filename]?.contains(variant) == true
+     }
+ }
++
++// MARK: - Variant Collection State
++public enum VariantCollectionState {
++    case none       // No variants collected
++    case partial    // Some but not all variants collected
++    case complete   // All variants collected
++}
++
++public extension UserCollection {
++    func variantCollectionState(for item: Item) -> VariantCollectionState {
++        // Items with 0 or 1 variant use binary state
++        guard let variants = item.variations, variants.count > 1 else {
++            return .none
++        }
++        
++        guard let filename = item.filename else {
++            return .none
++        }
++        
++        let collectedVariants = self.variants[filename] ?? []
++        let collectedCount = collectedVariants.count
++        
++        if collectedCount == 0 {
++            return .none
++        } else if collectedCount == variants.count {
++            return .complete
++        } else {
++            return .partial
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Tests/BackendTests/CollectionTest.swift b/ACHNBrowserUI/Packages/Backend/Tests/BackendTests/CollectionTest.swift
+index a4cb0e1..169d570 100644
+--- a/ACHNBrowserUI/Packages/Backend/Tests/BackendTests/CollectionTest.swift
++++ b/ACHNBrowserUI/Packages/Backend/Tests/BackendTests/CollectionTest.swift
+@@ -28,3 +28,152 @@ final class CollectionTests: XCTestCase {
+         XCTAssert(collection.villagers.isEmpty, "villagers should be empty")
+     }
+ }
++
++    // MARK: - Variant Collection Tests
++    
++    func testVariantCollectionState_NoVariants() {
++        // Item with no variants should return .none
++        let itemNoVariants = Item(name: "Test Item", image: nil, filename: "test", 
++                                  house: nil, itemImage: nil, iconImage: nil, 
++                                  furnitureImage: nil, obtainedFrom: nil, 
++                                  obtainedFromNew: nil, sourceNotes: nil, 
++                                  dIY: nil, customize: nil, movementSpeed: nil, 
++                                  variations: nil, category: "Housewares", 
++                                  materials: nil, buy: nil, sell: nil, shadow: nil, 
++                                  activeMonths: nil, set: nil, tag: nil, 
++                                  styles: nil, themes: nil, colors: nil)
++        
++        let state = collection.variantCollectionState(for: itemNoVariants)
++        XCTAssertEqual(state, .none, "Item with no variants should return .none state")
++    }
++    
++    func testVariantCollectionState_SingleVariant() {
++        // Item with 1 variant should return .none (uses binary behavior)
++        let variant = Variant(id: 1, content: Variant.Content(image: "test.png", colors: nil))
++        let itemSingleVariant = Item(name: "Test Item", image: nil, filename: "test_single", 
++                                     house: nil, itemImage: nil, iconImage: nil, 
++                                     furnitureImage: nil, obtainedFrom: nil, 
++                                     obtainedFromNew: nil, sourceNotes: nil, 
++                                     dIY: nil, customize: nil, movementSpeed: nil, 
++                                     variations: [variant], category: "Housewares", 
++                                     materials: nil, buy: nil, sell: nil, shadow: nil, 
++                                     activeMonths: nil, set: nil, tag: nil, 
++                                     styles: nil, themes: nil, colors: nil)
++        
++        let state = collection.variantCollectionState(for: itemSingleVariant)
++        XCTAssertEqual(state, .none, "Item with single variant should return .none state")
++    }
++    
++    func testVariantCollectionState_MultipleVariants_None() {
++        // Item with multiple variants, none collected
++        let variant1 = Variant(id: 1, content: Variant.Content(image: "test1.png", colors: nil))
++        let variant2 = Variant(id: 2, content: Variant.Content(image: "test2.png", colors: nil))
++        let itemMulti = Item(name: "Test Multi", image: nil, filename: "test_multi", 
++                            house: nil, itemImage: nil, iconImage: nil, 
++                            furnitureImage: nil, obtainedFrom: nil, 
++                            obtainedFromNew: nil, sourceNotes: nil, 
++                            dIY: nil, customize: nil, movementSpeed: nil, 
++                            variations: [variant1, variant2], category: "Housewares", 
++                            materials: nil, buy: nil, sell: nil, shadow: nil, 
++                            activeMonths: nil, set: nil, tag: nil, 
++                            styles: nil, themes: nil, colors: nil)
++        
++        let state = collection.variantCollectionState(for: itemMulti)
++        XCTAssertEqual(state, .none, "Item with no collected variants should return .none")
++    }
++    
++    func testVariantCollectionState_MultipleVariants_Partial() {
++        // Item with multiple variants, some collected
++        let variant1 = Variant(id: 1, content: Variant.Content(image: "test1.png", colors: nil))
++        let variant2 = Variant(id: 2, content: Variant.Content(image: "test2.png", colors: nil))
++        let variant3 = Variant(id: 3, content: Variant.Content(image: "test3.png", colors: nil))
++        let itemMulti = Item(name: "Test Partial", image: nil, filename: "test_partial", 
++                            house: nil, itemImage: nil, iconImage: nil, 
++                            furnitureImage: nil, obtainedFrom: nil, 
++                            obtainedFromNew: nil, sourceNotes: nil, 
++                            dIY: nil, customize: nil, movementSpeed: nil, 
++                            variations: [variant1, variant2, variant3], category: "Housewares", 
++                            materials: nil, buy: nil, sell: nil, shadow: nil, 
++                            activeMonths: nil, set: nil, tag: nil, 
++                            styles: nil, themes: nil, colors: nil)
++        
++        // Add one variant
++        _ = collection.toggleVariant(item: itemMulti, variant: variant1)
++        
++        let state = collection.variantCollectionState(for: itemMulti)
++        XCTAssertEqual(state, .partial, "Item with some variants collected should return .partial")
++        
++        // Clean up
++        _ = collection.toggleVariant(item: itemMulti, variant: variant1)
++    }
++    
++    func testVariantCollectionState_MultipleVariants_Complete() {
++        // Item with multiple variants, all collected
++        let variant1 = Variant(id: 10, content: Variant.Content(image: "test1.png", colors: nil))
++        let variant2 = Variant(id: 20, content: Variant.Content(image: "test2.png", colors: nil))
++        let itemMulti = Item(name: "Test Complete", image: nil, filename: "test_complete", 
++                            house: nil, itemImage: nil, iconImage: nil, 
++                            furnitureImage: nil, obtainedFrom: nil, 
++                            obtainedFromNew: nil, sourceNotes: nil, 
++                            dIY: nil, customize: nil, movementSpeed: nil, 
++                            variations: [variant1, variant2], category: "Housewares", 
++                            materials: nil, buy: nil, sell: nil, shadow: nil, 
++                            activeMonths: nil, set: nil, tag: nil, 
++                            styles: nil, themes: nil, colors: nil)
++        
++        // Add all variants
++        _ = collection.toggleVariant(item: itemMulti, variant: variant1)
++        _ = collection.toggleVariant(item: itemMulti, variant: variant2)
++        
++        let state = collection.variantCollectionState(for: itemMulti)
++        XCTAssertEqual(state, .complete, "Item with all variants collected should return .complete")
++        
++        // Clean up
++        _ = collection.toggleVariant(item: itemMulti, variant: variant1)
++        _ = collection.toggleVariant(item: itemMulti, variant: variant2)
++    }
++    
++    func testToggleVariant_AutoAddsParentItem() {
++        // When first variant is added, parent item should be auto-added
++        let variant1 = Variant(id: 100, content: Variant.Content(image: "test1.png", colors: nil))
++        let itemAutoAdd = Item(name: "Test Auto Add", image: nil, filename: "test_auto_add", 
++                              house: nil, itemImage: nil, iconImage: nil, 
++                              furnitureImage: nil, obtainedFrom: nil, 
++                              obtainedFromNew: nil, sourceNotes: nil, 
++                              dIY: nil, customize: nil, movementSpeed: nil, 
++                              variations: [variant1], category: "Housewares", 
++                              materials: nil, buy: nil, sell: nil, shadow: nil, 
++                              activeMonths: nil, set: nil, tag: nil, 
++                              styles: nil, themes: nil, colors: nil)
++        
++        XCTAssertFalse(collection.items.contains(itemAutoAdd), "Item should not be in collection initially")
++        
++        _ = collection.toggleVariant(item: itemAutoAdd, variant: variant1)
++        
++        XCTAssertTrue(collection.items.contains(itemAutoAdd), "Parent item should be auto-added when first variant is added")
++        
++        // Clean up
++        _ = collection.toggleVariant(item: itemAutoAdd, variant: variant1)
++    }
++    
++    func testToggleVariant_AutoRemovesParentItem() {
++        // When last variant is removed, parent item should be auto-removed
++        let variant1 = Variant(id: 200, content: Variant.Content(image: "test1.png", colors: nil))
++        let itemAutoRemove = Item(name: "Test Auto Remove", image: nil, filename: "test_auto_remove", 
++                                 house: nil, itemImage: nil, iconImage: nil, 
++                                 furnitureImage: nil, obtainedFrom: nil, 
++                                 obtainedFromNew: nil, sourceNotes: nil, 
++                                 dIY: nil, customize: nil, movementSpeed: nil, 
++                                 variations: [variant1], category: "Housewares", 
++                                 materials: nil, buy: nil, sell: nil, shadow: nil, 
++                                 activeMonths: nil, set: nil, tag: nil, 
++                                 styles: nil, themes: nil, colors: nil)
++        
++        // Add variant (which auto-adds parent)
++        _ = collection.toggleVariant(item: itemAutoRemove, variant: variant1)
++        XCTAssertTrue(collection.items.contains(itemAutoRemove), "Parent item should be in collection")
++        
++        // Remove variant (should auto-remove parent)
++        _ = collection.toggleVariant(item: itemAutoRemove, variant: variant1)
++        XCTAssertFalse(collection.items.contains(itemAutoRemove), "Parent item should be auto-removed when last variant is removed")
++    }

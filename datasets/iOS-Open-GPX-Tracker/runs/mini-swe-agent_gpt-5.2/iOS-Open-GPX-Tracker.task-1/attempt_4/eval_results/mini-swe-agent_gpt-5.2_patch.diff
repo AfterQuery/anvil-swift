@@ -1,0 +1,261 @@
+diff --git a/OpenGpxTracker/GPXScaleBar.swift b/OpenGpxTracker/GPXScaleBar.swift
+index 169518a..87f57bb 100644
+--- a/OpenGpxTracker/GPXScaleBar.swift
++++ b/OpenGpxTracker/GPXScaleBar.swift
+@@ -45,6 +45,15 @@ class GPXScaleBar: UIView {
+             }
+         }
+     }
++
++    /// Optional override for the scalebar foreground color (bar, ticks and labels).
++    ///
++    /// When nil, the scalebar uses system-adaptive colors (e.g. `.label` on iOS 13+).
++    public var foregroundColorOverride: UIColor? {
++        didSet {
++            updateColors()
++        }
++    }
+     
+     /// The horizontal bar representing the scale distance.
+     private let scaleBar = UIView()
+@@ -145,6 +154,26 @@ class GPXScaleBar: UIView {
+     
+     // MARK: - Setup
+     
++
++    private var defaultForegroundColor: UIColor {
++        if #available(iOS 13.0, *) {
++            return .label
++        } else {
++            return .black
++        }
++    }
++
++    private var resolvedForegroundColor: UIColor {
++        foregroundColorOverride ?? defaultForegroundColor
++    }
++
++    private func updateColors() {
++        let color = resolvedForegroundColor
++        scaleBar.backgroundColor = color
++        ticks.forEach { $0.backgroundColor = color }
++        labels.forEach { $0.textColor = color }
++    }
++
+     /// Configures the visual appearance and layout of all scale view subviews.
+     ///
+     /// This method sets up:
+@@ -154,24 +183,13 @@ class GPXScaleBar: UIView {
+     private func setupViews() {
+         // Configure background - transparent, no border
+         backgroundColor = .clear
+-        
+         // Configure scale bar
+-        if #available(iOS 13.0, *) {
+-            scaleBar.backgroundColor = .label
+-        } else {
+-            scaleBar.backgroundColor = .black
+-        }
+         scaleBar.layer.cornerRadius = barHeight / 2
+         addSubview(scaleBar)
+         
+         // Create ticks (numberOfSegments + 1 for start and end)
+         for _ in 0...numberOfSegments {
+             let tick = UIView()
+-            if #available(iOS 13.0, *) {
+-                tick.backgroundColor = .label
+-            } else {
+-                tick.backgroundColor = .black
+-            }
+             tick.layer.cornerRadius = tickWidth / 2
+             addSubview(tick)
+             ticks.append(tick)
+@@ -181,16 +199,14 @@ class GPXScaleBar: UIView {
+         for _ in 0...numberOfSegments {
+             let label = UILabel()
+             label.font = .systemFont(ofSize: 11, weight: .medium)
+-            if #available(iOS 13.0, *) {
+-                label.textColor = .label
+-            } else {
+-                label.textColor = .black
+-            }
+             label.textAlignment = .center
+             addSubview(label)
+             labels.append(label)
+         }
+         
++        // Apply initial colors
++        updateColors()
++
+         // Set intrinsic size
+         translatesAutoresizingMaskIntoConstraints = false
+     }
+diff --git a/OpenGpxTracker/GPXTileServer.swift b/OpenGpxTracker/GPXTileServer.swift
+index 247bf14..bef007b 100644
+--- a/OpenGpxTracker/GPXTileServer.swift
++++ b/OpenGpxTracker/GPXTileServer.swift
+@@ -8,6 +8,19 @@
+ 
+ import Foundation
+ 
++
++/// Overlay foreground (text/lines) color preference to keep UI readable on top of map tiles.
++///
++/// - system: follow the system appearance (light/dark)
++/// - forceBlack: always use black overlay elements
++/// - forceWhite: always use white overlay elements
++enum GPXOverlayForegroundPreference {
++    case system
++    case forceBlack
++    case forceWhite
++}
++
++
+ ///
+ /// Configuration for supported tile servers.
+ ///
+@@ -163,6 +176,24 @@ enum GPXTileServer: Int {
+         return self == .appleSatellite
+     }
+ 
++
++    /// Preferred overlay foreground color for labels and scalebar.
++    ///
++    /// Apple standard map follows system appearance.
++    ///
++    /// Some tile servers have a predominantly light/dark imagery regardless of system appearance.
++    /// This preference allows forcing overlay elements to remain readable.
++    var overlayForegroundPreference: GPXOverlayForegroundPreference {
++        switch self {
++        case .apple:
++            return .system
++        case .appleSatellite:
++            return .forceWhite
++        default:
++            return .forceBlack
++        }
++    }
++
+     /// Returns the number of tile servers currently defined
+     static var count: Int { return GPXTileServer.openSeaMap.rawValue + 1}
+ }
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index fe592ce..2ddfe4c 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -471,7 +471,11 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         // CoordLabel
+         coordsLabel.textAlignment = .right
+         coordsLabel.font = font12
+-        coordsLabel.textColor = UIColor.white
++        if #available(iOS 13.0, *) {
++            coordsLabel.textColor = .label
++        } else {
++            coordsLabel.textColor = .black
++        }
+         coordsLabel.text = kNotGettingLocationText
+         self.view.addSubview(coordsLabel)
+         
+@@ -631,9 +635,8 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+ 		compassButton.translatesAutoresizingMaskIntoConstraints = false
+ 		addConstraintsToCompassView(compassButton)
+ 		
++				addScaleBarOnTopOfTrackButton()
+ 		self.textColorAdaptations()
+-		
+-		addScaleBarOnTopOfTrackButton()
+     }
+ 	
+     // MARK: - Add Constraints for views
+@@ -1300,15 +1303,44 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         present(alertController, animated: true)
+         isDisplayingLocationServicesDenied = false
+     }
+-    
+-    /// force dark mode (i.e. white text, if map content is known to be dark)
++    /// Adjusts overlay labels and scalebar colors to keep them readable on top of current tile imagery.
++    ///
++    /// - For Apple standard map: follow system appearance (dynamic colors).
++    /// - For light-themed tile servers: force black overlay elements.
++    /// - For dark-themed tile servers: force white overlay elements.
+     func textColorAdaptations() {
+-        let needForceDarkMode = self.map.tileServer.needForceDarkMode
+-        self.signalAccuracyLabel.textColor = needForceDarkMode ? .white : nil
+-        self.timeLabel.textColor = needForceDarkMode ? .white : nil
+-        self.speedLabel.textColor = needForceDarkMode ? .white : nil
+-        self.totalTrackedDistanceLabel.textColor = needForceDarkMode ? .white : nil
+-        self.currentSegmentDistanceLabel.textColor = needForceDarkMode ? .white : nil
++        let systemForegroundColor: UIColor
++        if #available(iOS 13.0, *) {
++            systemForegroundColor = .label
++        } else {
++            systemForegroundColor = .black
++        }
++
++        let colorOverride: UIColor?
++        switch self.map.tileServer.overlayForegroundPreference {
++        case .system:
++            colorOverride = nil
++        case .forceBlack:
++            colorOverride = .black
++        case .forceWhite:
++            colorOverride = .white
++        }
++
++        let resolvedForegroundColor = colorOverride ?? systemForegroundColor
++
++        // Status labels
++        self.signalAccuracyLabel.textColor = resolvedForegroundColor
++        self.timeLabel.textColor = resolvedForegroundColor
++        self.speedLabel.textColor = resolvedForegroundColor
++        self.totalTrackedDistanceLabel.textColor = resolvedForegroundColor
++        self.currentSegmentDistanceLabel.textColor = resolvedForegroundColor
++        self.coordsLabel.textColor = resolvedForegroundColor
++
++        // Scalebar
++        // NOTE: pass the override (not the resolved system color) so GPXScaleBar can keep using
++        // dynamic colors when the tile server preference is `.system`.
++        self.map.scaleBar?.foregroundColorOverride = colorOverride
++        self.scaleBar.foregroundColorOverride = colorOverride
+     }
+ 
+ }
+diff --git a/scripts/repro_scalebar_colors.sh b/scripts/repro_scalebar_colors.sh
+new file mode 100755
+index 0000000..108bab8
+--- /dev/null
++++ b/scripts/repro_scalebar_colors.sh
+@@ -0,0 +1,33 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++fail() { echo "FAIL: $*" >&2; exit 1; }
++
++[ -f OpenGpxTracker/GPXTileServer.swift ] || fail "Missing GPXTileServer.swift"
++[ -f OpenGpxTracker/GPXScaleBar.swift ] || fail "Missing GPXScaleBar.swift"
++[ -f OpenGpxTracker/ViewController.swift ] || fail "Missing ViewController.swift"
++
++grep -q "enum GPXOverlayForegroundPreference" OpenGpxTracker/GPXTileServer.swift || fail "GPXOverlayForegroundPreference missing"
++grep -q "var overlayForegroundPreference" OpenGpxTracker/GPXTileServer.swift || fail "overlayForegroundPreference missing"
++
++overlay_block=$(
++  awk '
++    /var overlayForegroundPreference: GPXOverlayForegroundPreference/ {flag=1}
++    flag {print}
++    flag && /^    }/ {exit}
++  ' OpenGpxTracker/GPXTileServer.swift
++)
++
++echo "$overlay_block" | grep -q "case \\.apple:" || fail "overlayForegroundPreference missing case .apple"
++echo "$overlay_block" | grep -q "case \\.appleSatellite:" || fail "overlayForegroundPreference missing case .appleSatellite"
++
++echo "$overlay_block" | grep -n "case \\.apple:" -A1 | grep -q "return \\.system" || fail "Apple must return .system"
++echo "$overlay_block" | grep -n "case \\.appleSatellite:" -A1 | grep -q "return \\.forceWhite" || fail "Apple Satellite must return .forceWhite"
++echo "$overlay_block" | grep -n "default:" -A1 | grep -q "return \\.forceBlack" || fail "Default must return .forceBlack"
++
++grep -q "foregroundColorOverride" OpenGpxTracker/GPXScaleBar.swift || fail "GPXScaleBar.foregroundColorOverride missing"
++
++grep -q "scaleBar\\?\\.foregroundColorOverride" OpenGpxTracker/ViewController.swift || fail "ViewController must update scalebar foreground override"
++grep -q "func didUpdateTileServer" OpenGpxTracker/ViewController.swift || fail "didUpdateTileServer not found"
++
++echo "OK: static checks passed."

@@ -1,0 +1,126 @@
+diff --git a/OpenGpxTracker/GPXScaleBar.swift b/OpenGpxTracker/GPXScaleBar.swift
+index 169518a..0c901ce 100644
+--- a/OpenGpxTracker/GPXScaleBar.swift
++++ b/OpenGpxTracker/GPXScaleBar.swift
+@@ -551,6 +551,32 @@ class GPXScaleBar: UIView {
+     public func updateUnits(useImperial: Bool) {
+         self.useImperial = useImperial
+     }
++
++    // MARK: - Appearance
++
++    /// Updates the scale bar appearance based on the tile server overlay style preference.
++    public func updateOverlayStyle(_ style: GPXTileServer.OverlayStyle) {
++        switch style {
++        case .system:
++            if #available(iOS 13.0, *) {
++                scaleBar.backgroundColor = .label
++                for tick in ticks { tick.backgroundColor = .label }
++                for label in labels { label.textColor = .label }
++            } else {
++                scaleBar.backgroundColor = .black
++                for tick in ticks { tick.backgroundColor = .black }
++                for label in labels { label.textColor = .black }
++            }
++        case .forceDark:
++            scaleBar.backgroundColor = .white
++            for tick in ticks { tick.backgroundColor = .white }
++            for label in labels { label.textColor = .white }
++        case .forceLight:
++            scaleBar.backgroundColor = .black
++            for tick in ticks { tick.backgroundColor = .black }
++            for label in labels { label.textColor = .black }
++        }
++    }
+ }
+ 
+ // MARK: - Usage Example
+diff --git a/OpenGpxTracker/GPXTileServer.swift b/OpenGpxTracker/GPXTileServer.swift
+index 247bf14..a2d6f2b 100644
+--- a/OpenGpxTracker/GPXTileServer.swift
++++ b/OpenGpxTracker/GPXTileServer.swift
+@@ -159,9 +159,26 @@ enum GPXTileServer: Int {
+         }
+     }
+     
+-    var needForceDarkMode: Bool {
+-        return self == .appleSatellite
++    /// Defines the style of overlay elements (scalebar, labels)
++    enum OverlayStyle {
++        case system     // Follows system appearance
++        case forceDark  // Force Dark Mode appearance (White text/elements)
++        case forceLight // Force Light Mode appearance (Black text/elements)
+     }
++    
++    var overlayStyle: OverlayStyle {
++        switch self {
++        case .apple:
++            return .system
++        case .appleSatellite:
++            return .forceDark // Dark Map -> White text
++        case .openSeaMap:
++            return .system // Overlay, depends on base map
++        default:
++            return .forceLight // Light Maps -> Black text
++        }
++    }
++
+ 
+     /// Returns the number of tile servers currently defined
+     static var count: Int { return GPXTileServer.openSeaMap.rawValue + 1}
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index fe592ce..68e620c 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -631,9 +631,9 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+ 		compassButton.translatesAutoresizingMaskIntoConstraints = false
+ 		addConstraintsToCompassView(compassButton)
+ 		
+-		self.textColorAdaptations()
+-		
+ 		addScaleBarOnTopOfTrackButton()
++		
++		self.textColorAdaptations()
+     }
+ 	
+     // MARK: - Add Constraints for views
+@@ -1301,14 +1301,32 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         isDisplayingLocationServicesDenied = false
+     }
+     
+-    /// force dark mode (i.e. white text, if map content is known to be dark)
++    /// Adapts the color of overlay elements (labels, scalebar) based on the current tile server's style.
+     func textColorAdaptations() {
+-        let needForceDarkMode = self.map.tileServer.needForceDarkMode
+-        self.signalAccuracyLabel.textColor = needForceDarkMode ? .white : nil
+-        self.timeLabel.textColor = needForceDarkMode ? .white : nil
+-        self.speedLabel.textColor = needForceDarkMode ? .white : nil
+-        self.totalTrackedDistanceLabel.textColor = needForceDarkMode ? .white : nil
+-        self.currentSegmentDistanceLabel.textColor = needForceDarkMode ? .white : nil
++        let style = self.map.tileServer.overlayStyle
++        
++        // Update scale bar style
++        self.scaleBar?.updateOverlayStyle(style)
++        
++        let color: UIColor
++        switch style {
++        case .forceDark:
++             color = .white
++        case .forceLight:
++             color = .black
++        case .system:
++             if #available(iOS 13.0, *) {
++                 color = .label
++             } else {
++                 color = .black
++             }
++        }
++        
++        self.signalAccuracyLabel.textColor = color
++        self.timeLabel.textColor = color
++        self.speedLabel.textColor = color
++        self.totalTrackedDistanceLabel.textColor = color
++        self.currentSegmentDistanceLabel.textColor = color
+     }
+ 
+ }

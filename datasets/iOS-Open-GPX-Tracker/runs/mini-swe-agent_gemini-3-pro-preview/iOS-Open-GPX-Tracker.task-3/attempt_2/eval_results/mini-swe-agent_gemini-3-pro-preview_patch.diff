@@ -1,0 +1,148 @@
+diff --git a/OpenGpxTracker-Watch Extension/InterfaceController.swift b/OpenGpxTracker-Watch Extension/InterfaceController.swift
+index fe24613..a15d377 100644
+--- a/OpenGpxTracker-Watch Extension/InterfaceController.swift	
++++ b/OpenGpxTracker-Watch Extension/InterfaceController.swift	
+@@ -316,7 +316,12 @@ class InterfaceController: WKInterfaceController {
+     /// - Seealso: displayLocationServicesDisabledAlert, displayLocationServicesDeniedAlert
+     ///
+     func checkLocationServicesStatus() {
+-        let authorizationStatus = CLLocationManager.authorizationStatus()
++        let authorizationStatus: CLAuthorizationStatus
++        if #available(watchOS 7.0, *) {
++            authorizationStatus = locationManager.authorizationStatus
++        } else {
++            authorizationStatus = CLLocationManager.authorizationStatus()
++        }
+         
+         // Has the user already made a permission choice?
+         guard authorizationStatus != .notDetermined else {
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index 4935395..654c1ad 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -113,9 +113,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         manager.distanceFilter = 2 // meters
+         manager.headingFilter = 3 // degrees (1 is default)
+         manager.pausesLocationUpdatesAutomatically = false
+-        if #available(iOS 9.0, *) {
+             manager.allowsBackgroundLocationUpdates = true
+-        }
+         return manager
+     }()
+     
+@@ -393,7 +391,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         
+         // Because of the edges, iPhone X* is slightly different on the layout.
+         // So, Is the current device an iPhone X?
+-        if UIDevice.current.userInterfaceIdiom == .phone, #available(iOS 11, *) {
++        if UIDevice.current.userInterfaceIdiom == .phone {
+             self.isIPhoneX = UIApplication.shared.delegate?.window??.safeAreaInsets.top ?? 0 > 40
+         }
+         
+@@ -446,6 +444,18 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         let region = MKCoordinateRegion(center: center, span: span)
+         map.setRegion(region, animated: true)
+         self.view.addSubview(map)
++
++        // Add a scale view
++            let scale = MKScaleView(mapView: map)
++            scale.scaleVisibility = .visible
++            scale.translatesAutoresizingMaskIntoConstraints = false
++            self.view.addSubview(scale)
++            
++            let guide = self.view.safeAreaLayoutGuide
++            NSLayoutConstraint.activate([
++                scale.leftAnchor.constraint(equalTo: guide.leftAnchor, constant: 10),
++                scale.topAnchor.constraint(equalTo: guide.topAnchor, constant: 10)
++            ])
+         
+         addNotificationObservers()
+         
+@@ -623,12 +633,10 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+             shareActivityColor = .mainUIColor
+         }
+         
+-        if #available(iOS 11, *) {
+             let compassButton = MKCompassButton(mapView: map)
+             self.view.addSubview(compassButton)
+             compassButton.translatesAutoresizingMaskIntoConstraints = false
+             addConstraintsToCompassView(compassButton)
+-        }
+         
+         self.textColorAdaptations()
+     }
+@@ -1209,7 +1217,12 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+     /// - Seealso: displayLocationServicesDisabledAlert, displayLocationServicesDeniedAlert
+     ///
+     func checkLocationServicesStatus() {
+-        let authorizationStatus = CLLocationManager.authorizationStatus()
++        let authorizationStatus: CLAuthorizationStatus
++        if #available(iOS 14.0, *) {
++            authorizationStatus = locationManager.authorizationStatus
++        } else {
++            authorizationStatus = CLLocationManager.authorizationStatus()
++        }
+         
+         // Has the user already made a permission choice?
+         guard authorizationStatus != .notDetermined else {
+@@ -1240,11 +1253,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         let alertController = UIAlertController(title: NSLocalizedString("LOCATION_SERVICES_DISABLED", comment: "no comment"), message: NSLocalizedString("ENABLE_LOCATION_SERVICES", comment: "no comment"), preferredStyle: .alert)
+         let settingsAction = UIAlertAction(title: NSLocalizedString("SETTINGS", comment: "no comment"), style: .default) { _ in
+             if let url = URL(string: UIApplication.openSettingsURLString) {
+-                if #available(iOS 10, *) {
+-                    UIApplication.shared.open(url)
+-                } else {
+-                    UIApplication.shared.openURL(url)
+-                }
++                UIApplication.shared.open(url)
+             }
+         }
+         let cancelAction = UIAlertAction(title: NSLocalizedString("CANCEL", comment: "no comment"), style: .cancel) { _ in }
+@@ -1270,11 +1279,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         let settingsAction = UIAlertAction(title: NSLocalizedString("SETTINGS", comment: "no comment"),
+                                            style: .default) { _ in
+             if let url = URL(string: UIApplication.openSettingsURLString) {
+-                if #available(iOS 10, *) {
+-                    UIApplication.shared.open(url)
+-                } else {
+-                    UIApplication.shared.openURL(url)
+-                }
++                UIApplication.shared.open(url)
+             }
+         }
+         let cancelAction = UIAlertAction(title: NSLocalizedString("CANCEL",
+diff --git a/remove_obsolete_checks.py b/remove_obsolete_checks.py
+new file mode 100644
+index 0000000..1efbd7b
+--- /dev/null
++++ b/remove_obsolete_checks.py
+@@ -0,0 +1,29 @@
++import sys
++
++with open("OpenGpxTracker/ViewController.swift", "r") as f:
++    lines = f.readlines()
++
++new_lines = []
++skip_closing = 0
++
++for i, line in enumerate(lines):
++    stripped = line.strip()
++    
++    # Check for specific obsolete checks
++    # iOS 9.0, 11, 11.0
++    if (stripped.startswith("if #available(iOS 9.0, *) {") or 
++        stripped.startswith("if #available(iOS 11, *) {") or
++        stripped.startswith("if #available(iOS 11.0, *) {") ):
++        skip_closing += 1
++        continue
++    
++    # Check closing brace
++    # Assuming closing brace is on its own line for these blocks
++    if stripped == "}" and skip_closing > 0:
++        skip_closing -= 1
++        continue
++    
++    new_lines.append(line)
++
++with open("OpenGpxTracker/ViewController.swift", "w") as f:
++    f.writelines(new_lines)

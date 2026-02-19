@@ -1,0 +1,565 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/extensions/View.swift b/ACHNBrowserUI/ACHNBrowserUI/extensions/View.swift
+index ef9ec86..df01578 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/extensions/View.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/extensions/View.swift
+@@ -79,7 +79,6 @@ extension View {
+     }
+ 
+     func eraseToAnyView() -> AnyView { AnyView(self) }
+-    func eraseToAnyViewForRow() -> VStack<AnyView> { VStack { eraseToAnyView() } }
+ }
+ 
+ extension View {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsPricesGridView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsPricesGridView.swift
+new file mode 100644
+index 0000000..795ccba
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsPricesGridView.swift
+@@ -0,0 +1,231 @@
++//
++//  TurnipsPricesGridView.swift
++//  ACHNBrowserUI
++//
++//  A unified grid view for turnip prices that ensures proper column alignment
++//
++
++import SwiftUI
++
++struct TurnipsPricesGridView: View {
++    enum DisplayMode {
++        case average
++        case minMax
++        case profits
++    }
++    
++    let mode: DisplayMode
++    let labels: [String]
++    let averagePrices: [[Int]]?
++    let minMaxPrices: [[[Int]]]?
++    let averageProfits: [[Int]]?
++    
++    var body: some View {
++        VStack(alignment: .leading, spacing: 0) {
++            // Header row
++            headerRow
++                .padding(.vertical, 8)
++            
++            Divider()
++            
++            // Data rows
++            ForEach(0..<labels.count, id: \.self) { index in
++                dataRow(for: index)
++                    .padding(.vertical, 8)
++                if index < labels.count - 1 {
++                    Divider()
++                }
++            }
++        }
++    }
++    
++    private var headerRow: some View {
++        HStack(spacing: 0) {
++            Text("Day")
++                .font(.subheadline)
++                .foregroundColor(.acSecondaryText)
++                .frame(width: 60, alignment: .leading)
++            
++            Spacer()
++            
++            Text("AM")
++                .font(.subheadline)
++                .foregroundColor(.acSecondaryText)
++                .frame(minWidth: 80, alignment: .trailing)
++            
++            Spacer()
++            
++            Text("PM")
++                .font(.subheadline)
++                .foregroundColor(.acSecondaryText)
++                .frame(minWidth: 80, alignment: .trailing)
++        }
++        .padding(.horizontal)
++    }
++    
++    private func dataRow(for index: Int) -> some View {
++        HStack(spacing: 0) {
++            Text(LocalizedStringKey(labels[index]))
++                .font(.body)
++                .foregroundColor(.acText)
++                .frame(width: 60, alignment: .leading)
++            
++            Spacer()
++            
++            amValue(for: index)
++                .frame(minWidth: 80, alignment: .trailing)
++            
++            Spacer()
++            
++            pmValue(for: index)
++                .frame(minWidth: 80, alignment: .trailing)
++        }
++        .padding(.horizontal)
++    }
++    
++    @ViewBuilder
++    private func amValue(for index: Int) -> some View {
++        switch mode {
++        case .average:
++            if let prices = averagePrices?[index], prices.count > 0 {
++                Text("\(prices[0])")
++                    .font(.headline)
++                    .fontWeight(.bold)
++                    .foregroundColor(averageColor(for: index, meridian: .am))
++            }
++        case .minMax:
++            if let prices = minMaxPrices?[index], prices.count > 0 {
++                Text(minMaxText(prices: prices[0], index: index, meridian: .am))
++                    .font(.headline)
++                    .fontWeight(.bold)
++                    .foregroundColor(minMaxColor(for: index, meridian: .am))
++            }
++        case .profits:
++            if let prices = averageProfits?[index], prices.count > 0 {
++                Text("\(prices[0])")
++                    .font(.headline)
++                    .fontWeight(.bold)
++                    .foregroundColor(profitColor(for: index, meridian: .am))
++            }
++        }
++    }
++    
++    @ViewBuilder
++    private func pmValue(for index: Int) -> some View {
++        switch mode {
++        case .average:
++            if let prices = averagePrices?[index], prices.count > 1 {
++                Text("\(prices[1])")
++                    .font(.headline)
++                    .fontWeight(.bold)
++                    .foregroundColor(averageColor(for: index, meridian: .pm))
++            }
++        case .minMax:
++            if let prices = minMaxPrices?[index], prices.count > 1 {
++                Text(minMaxText(prices: prices[1], index: index, meridian: .pm))
++                    .font(.headline)
++                    .fontWeight(.bold)
++                    .foregroundColor(minMaxColor(for: index, meridian: .pm))
++            }
++        case .profits:
++            if let prices = averageProfits?[index], prices.count > 1 {
++                Text("\(prices[1])")
++                    .font(.headline)
++                    .fontWeight(.bold)
++                    .foregroundColor(profitColor(for: index, meridian: .pm))
++            }
++        }
++    }
++    
++    // MARK: - Helper methods for min/max display
++    
++    private enum Meridian { case am, pm }
++    
++    private func minMaxText(prices: [Int], index: Int, meridian: Meridian) -> String {
++        guard prices.count >= 2 else { return "" }
++        let min = prices[0]
++        let max = prices[1]
++        
++        if isEntered(index: index, meridian: meridian) {
++            return "\(min)"
++        } else {
++            return "\(min) - \(max)"
++        }
++    }
++    
++    // MARK: - Color helpers
++    
++    private func averageColor(for index: Int, meridian: Meridian) -> Color {
++        guard let prices = averagePrices?[index] else { return .clear }
++        if isEntered(index: index, meridian: meridian) {
++            return .acText
++        }
++        let price = meridian == .am ? prices[0] : prices[1]
++        return priceColor(price)
++    }
++    
++    private func minMaxColor(for index: Int, meridian: Meridian) -> Color {
++        guard let prices = minMaxPrices?[index] else { return .clear }
++        if isEntered(index: index, meridian: meridian) {
++            return .acText
++        }
++        // Use the average of min and max for color
++        let minMaxArray = meridian == .am ? prices[0] : prices[1]
++        guard minMaxArray.count >= 2 else { return .clear }
++        let avgPrice = (minMaxArray[0] + minMaxArray[1]) / 2
++        return priceColor(avgPrice)
++    }
++    
++    private func profitColor(for index: Int, meridian: Meridian) -> Color {
++        guard let prices = averageProfits?[index] else { return .clear }
++        let price = meridian == .am ? prices[0] : prices[1]
++        return priceColor(price)
++    }
++    
++    private func priceColor(_ price: Int) -> Color {
++        if price <= 90 {
++            return .red
++        } else if price >= 150 {
++            return .acTabBarBackground
++        } else {
++            return .acSecondaryText
++        }
++    }
++    
++    private func isEntered(index: Int, meridian: Meridian) -> Bool {
++        guard let avgPrices = averagePrices?[index],
++              let minMax = minMaxPrices?[index] else {
++            return false
++        }
++        
++        let meridianIndex = meridian == .am ? 0 : 1
++        guard avgPrices.count > meridianIndex,
++              minMax.count > meridianIndex,
++              minMax[meridianIndex].count >= 2 else {
++            return false
++        }
++        
++        let avgPrice = avgPrices[meridianIndex]
++        let minPrice = minMax[meridianIndex][0]
++        let maxPrice = minMax[meridianIndex][1]
++        
++        return avgPrice == minPrice && avgPrice == maxPrice && minPrice == maxPrice
++    }
++}
++
++struct TurnipsPricesGridView_Previews: PreviewProvider {
++    static var previews: some View {
++        List {
++            Section {
++                TurnipsPricesGridView(
++                    mode: .minMax,
++                    labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
++                    averagePrices: [[90, 95], [85, 100], [80, 105], [75, 110], [70, 115], [65, 120]],
++                    minMaxPrices: [[[90, 90], [81, 141]], [[80, 90], [90, 110]], [[70, 90], [95, 115]], [[60, 90], [100, 120]], [[50, 80], [105, 125]], [[40, 70], [110, 130]]],
++                    averageProfits: nil
++                )
++            }
++        }
++        .listStyle(GroupedListStyle())
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+index 6fbd2c8..8bf1ba7 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+@@ -156,27 +156,39 @@ extension TurnipsView {
+                         Text("Profits estimates are computed using the average of the current period")
+                             .foregroundColor(.acSecondaryText)
+                     }
+-                    HStack {
+-                        Text("Day").fontWeight(.bold)
+-                        Spacer()
+-                        Text("AM").fontWeight(.bold)
+-                        Spacer()
+-                        Text("PM").fontWeight(.bold)
+-                    }
+-                }
+-                if turnipsDisplay == .average {
+-                    ForEach(uniqueLabels(for: "average"), id: \.1, content: averagePriceRow(day:identifier:))
+-                }
+-                else if turnipsDisplay == .minMax {
+-                    ForEach(uniqueLabels(for: "min max"), id: \.1, content: minMaxPriceRow(day:identifier:))
+-                } else if turnipsDisplay == .profits {
+-                    if viewModel.averagesProfits != nil {
+-                        ForEach(uniqueLabels(for: "profits"), id: \.1, content: averageProfitRow(day:identifier:))
+-                    } else {
+-                        Text("Please add the amount of turnips you bought and for how much")
+-                            .foregroundColor(.acHeaderBackground)
+-                            .onTapGesture {
+-                                self.presentedSheet = .turnipsForm(subManager: self.subManager)
++                    
++                    // Unified grid view for all display modes
++                    if turnipsDisplay == .average {
++                        TurnipsPricesGridView(
++                            mode: .average,
++                            labels: labels,
++                            averagePrices: viewModel.averagesPrices,
++                            minMaxPrices: viewModel.minMaxPrices,
++                            averageProfits: nil
++                        )
++                    } else if turnipsDisplay == .minMax {
++                        TurnipsPricesGridView(
++                            mode: .minMax,
++                            labels: labels,
++                            averagePrices: viewModel.averagesPrices,
++                            minMaxPrices: viewModel.minMaxPrices,
++                            averageProfits: nil
++                        )
++                    } else if turnipsDisplay == .profits {
++                        if viewModel.averagesProfits != nil {
++                            TurnipsPricesGridView(
++                                mode: .profits,
++                                labels: labels,
++                                averagePrices: viewModel.averagesPrices,
++                                minMaxPrices: viewModel.minMaxPrices,
++                                averageProfits: viewModel.averagesProfits
++                            )
++                        } else {
++                            Text("Please add the amount of turnips you bought and for how much")
++                                .foregroundColor(.acHeaderBackground)
++                                .onTapGesture {
++                                    self.presentedSheet = .turnipsForm(subManager: self.subManager)
++                            }
+                         }
+                     }
+                 } else if turnipsDisplay == .chart {
+@@ -242,40 +254,6 @@ extension TurnipsView {
+     }
+ }
+ 
+-extension TurnipsView {
+-    private func averagePriceRow(day: String, identifier: String) -> some View {
+-        guard let dayNumber = labels.firstIndex(of: day),
+-            let prices = viewModel.averagesPrices?[dayNumber],
+-            let minMaxPrices = viewModel.minMaxPrices?[dayNumber] else {
+-                return EmptyView().eraseToAnyViewForRow()
+-        }
+-        return TurnipsAveragePriceRow(label: day, prices: prices, minMaxPrices: minMaxPrices)
+-            .eraseToAnyViewForRow()
+-    }
+-
+-    private func minMaxPriceRow(day: String, identifier: String) -> some View {
+-        guard let dayNumber = labels.firstIndex(of: day),
+-            let prices = viewModel.minMaxPrices?[dayNumber],
+-            let averagePrices = viewModel.averagesPrices?[dayNumber] else {
+-                return EmptyView().eraseToAnyViewForRow()
+-        }
+-        return TurnipsMinMaxPriceRow(label: day, prices: prices, averagePrices: averagePrices)
+-            .eraseToAnyViewForRow()
+-    }
+-
+-    private func averageProfitRow(day: String, identifier: String) -> some View {
+-        guard let dayNumber = labels.firstIndex(of: day),
+-            let prices = viewModel.averagesProfits?[dayNumber] else {
+-                return EmptyView().eraseToAnyViewForRow()
+-        }
+-        return TurnipsAveragePriceRow(label: day, prices: prices, minMaxPrices: [])
+-            .eraseToAnyViewForRow()
+-    }
+-
+-    private func uniqueLabels(for uniqueIdentifier: String) -> [(String, String)] {
+-        labels.map { ($0, uniqueIdentifier + $0) }
+-    }
+-}
+ 
+ struct TurnipsView_Previews: PreviewProvider {
+     static var previews: some View {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
+deleted file mode 100644
+index e6edb8f..0000000
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
++++ /dev/null
+@@ -1,60 +0,0 @@
+-//
+-//  TurnipsAveragePriceRow.swift
+-//  ACHNBrowserUI
+-//
+-//  Created by Thomas Ricouard on 29/04/2020.
+-//  Copyright © 2020 Thomas Ricouard. All rights reserved.
+-//
+-
+-import SwiftUI
+-
+-struct TurnipsAveragePriceRow: View {
+-    let label: String
+-    let prices: [Int]
+-    let minMaxPrices: [[Int]]
+-
+-    var body: some View {
+-        HStack {
+-            Text(LocalizedStringKey(label))
+-                .font(.body)
+-                .foregroundColor(.acText)
+-            Spacer()
+-            Text("\(prices.first!)")
+-                .font(.headline)
+-                .fontWeight(.bold)
+-                .foregroundColor(color(meridian: .am))
+-            Spacer()
+-            Text("\(prices.last!)")
+-                .font(.headline)
+-                .fontWeight(.bold)
+-                .foregroundColor(color(meridian: .pm))
+-        }
+-    }
+-}
+-
+-extension TurnipsAveragePriceRow: TurnipsPriceRow {
+-    enum Meridian { case am, pm }
+-
+-    var averagePrices: [Int] { prices }
+-
+-    func color(meridian: Meridian) -> Color {
+-        if isEntered(meridian: meridian) {
+-            return .acText
+-        } else if let price = meridian == .am ? prices.first : prices.last {
+-            return color(price: price)
+-        } else {
+-            return .clear
+-        }
+-    }
+-}
+-
+-struct TurnipsAveragePriceRow_Previews: PreviewProvider {
+-    static var previews: some View {
+-        NavigationView {
+-            List {
+-                TurnipsAveragePriceRow(label: "Mon", prices: [90, 95], minMaxPrices: [[90, 90], [81, 141]])
+-                TurnipsAveragePriceRow(label: "Mon", prices: [40, 600], minMaxPrices: [[40, 81], [250, 600]])
+-            }
+-        }
+-    }
+-}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift
+deleted file mode 100644
+index 5a311a9..0000000
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift
++++ /dev/null
+@@ -1,84 +0,0 @@
+-//
+-//  TurnipsMinMaxPriceRow.swift
+-//  ACHNBrowserUI
+-//
+-//  Created by Renaud JENNY on 22/05/2020.
+-//  Copyright © 2020 Thomas Ricouard. All rights reserved.
+-//
+-
+-import SwiftUI
+-
+-struct TurnipsMinMaxPriceRow: View {
+-    let label: String
+-    let prices: [[Int]]
+-    let averagePrices: [Int]
+-
+-    typealias Meridian = TurnipsAveragePriceRow.Meridian
+-
+-    var body: some View {
+-        HStack {
+-            Text(LocalizedStringKey(label))
+-                .font(.body)
+-                .foregroundColor(.acText)
+-            Spacer()
+-            Text(amMinMaxPrices)
+-                .font(.headline)
+-                .fontWeight(.bold)
+-                .foregroundColor(color(meridian: .am))
+-            Spacer()
+-            Text(pmMinMaxPrices)
+-                .font(.headline)
+-                .fontWeight(.bold)
+-                .foregroundColor(color(meridian: .pm))
+-        }
+-    }
+-}
+-
+-extension TurnipsMinMaxPriceRow: TurnipsPriceRow {
+-    var minMaxPrices: [[Int]] { prices }
+-
+-    private func color(meridian: Meridian) -> Color {
+-        let amAveragedPrices = prices.first?.average
+-        let pmAveragedPrices = prices.last?.average
+-        guard let averagedPrice = meridian == .am ? amAveragedPrices : pmAveragedPrices else {
+-            return .clear
+-        }
+-        return isEntered(meridian: meridian) ? .acText : color(price: Int(averagedPrice))
+-    }
+-
+-    private var amMinMaxPrices: String {
+-        guard let min = prices.first?.first,
+-            let max = prices.first?.last else {
+-                return ""
+-        }
+-        if isEntered(meridian: .am) {
+-            return "\(min)"
+-        } else {
+-            return "\(min) - \(max)"
+-        }
+-    }
+-
+-    private var pmMinMaxPrices: String {
+-        guard let min = prices.last?.first,
+-            let max = prices.last?.last else {
+-                return ""
+-        }
+-        if isEntered(meridian: .pm) {
+-            return "\(min)"
+-        } else {
+-            return "\(min) - \(max)"
+-        }
+-    }
+-}
+-
+-struct TurnipsMinMaxPriceRow_Previews: PreviewProvider {
+-    static var previews: some View {
+-        NavigationView {
+-            List {
+-                TurnipsMinMaxPriceRow(label: "Mon", prices: [[90, 90], [81, 141]], averagePrices: [90, 95])
+-                TurnipsMinMaxPriceRow(label: "Mon", prices: [[60, 90], [81, 81]], averagePrices: [70, 81])
+-                TurnipsMinMaxPriceRow(label: "Mon", prices: [[40, 81], [250, 600]], averagePrices: [40, 600])
+-            }
+-        }
+-    }
+-}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsPriceRow.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsPriceRow.swift
+deleted file mode 100644
+index 41a965f..0000000
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsPriceRow.swift
++++ /dev/null
+@@ -1,48 +0,0 @@
+-//
+-//  TurnipsPriceRow.swift
+-//  ACHNBrowserUI
+-//
+-//  Created by Renaud JENNY on 22/05/2020.
+-//  Copyright © 2020 Thomas Ricouard. All rights reserved.
+-//
+-
+-import SwiftUI
+-
+-protocol TurnipsPriceRow {
+-    var label: String { get }
+-    var averagePrices: [Int] { get }
+-    var minMaxPrices: [[Int]] { get }
+-}
+-
+-extension TurnipsPriceRow {
+-    typealias Meridian = TurnipsAveragePriceRow.Meridian
+-
+-    func color(price: Int) -> Color {
+-        if price <= 90 {
+-            return .red
+-        } else if price >= 150 {
+-            return .acTabBarBackground
+-        } else {
+-            return .acSecondaryText
+-        }
+-    }
+-
+-    func isEntered(meridian: Meridian) -> Bool {
+-        switch meridian {
+-        case .am:
+-            guard let price = averagePrices.first,
+-                let minMaxFirst = minMaxPrices.first?.first,
+-                let minMaxSecond = minMaxPrices.first?.last else {
+-                    return false
+-            }
+-            return price == minMaxFirst && price == minMaxSecond && minMaxFirst == minMaxSecond
+-        case .pm:
+-            guard let price = averagePrices.last,
+-                let minMaxFirst = minMaxPrices.last?.first,
+-                let minMaxSecond = minMaxPrices.last?.last else {
+-                    return false
+-            }
+-            return price == minMaxFirst && price == minMaxSecond && minMaxFirst == minMaxSecond
+-        }
+-    }
+-}

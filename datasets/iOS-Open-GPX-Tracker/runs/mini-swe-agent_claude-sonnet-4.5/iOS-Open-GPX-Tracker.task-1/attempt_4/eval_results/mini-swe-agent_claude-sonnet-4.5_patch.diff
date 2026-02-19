@@ -1,0 +1,2577 @@
+diff --git a/OpenGpxTracker/GPXScaleBar.swift b/OpenGpxTracker/GPXScaleBar.swift
+index 169518a..bb6b3a8 100644
+--- a/OpenGpxTracker/GPXScaleBar.swift
++++ b/OpenGpxTracker/GPXScaleBar.swift
+@@ -46,6 +46,20 @@ class GPXScaleBar: UIView {
+         }
+     }
+     
++    /// Override color mode for the scale bar
++    ///
++    /// When set, this overrides the automatic system color adaptation:
++    /// - `.forceLight`: Use white/light colors (for dark backgrounds)
++    /// - `.forceDark`: Use black/dark colors (for light backgrounds)
++    /// - `.adaptive`: Follow system appearance mode (default)
++    /// - `nil`: Follow system appearance mode (default)
++    ///
++    public var colorMode: TileServerOverlayColorMode? = nil {
++        didSet {
++            updateColors()
++        }
++    }
++    
+     /// The horizontal bar representing the scale distance.
+     private let scaleBar = UIView()
+     
+@@ -195,6 +209,49 @@ class GPXScaleBar: UIView {
+         translatesAutoresizingMaskIntoConstraints = false
+     }
+     
++    /// Updates the colors of all scale bar elements based on the current color mode
++    ///
++    /// This method applies the appropriate colors to the scale bar, ticks, and labels
++    /// based on the `colorMode` property. If `colorMode` is nil or `.adaptive`, 
++    /// system colors are used. Otherwise, forced light or dark colors are applied.
++    ///
++    private func updateColors() {
++        let color: UIColor
++        
++        if let mode = colorMode {
++            switch mode {
++            case .forceLight:
++                color = .white
++            case .forceDark:
++                color = .black
++            case .adaptive:
++                if #available(iOS 13.0, *) {
++                    color = .label
++                } else {
++                    color = .black
++                }
++            }
++        } else {
++            // Default: use system adaptive color
++            if #available(iOS 13.0, *) {
++                color = .label
++            } else {
++                color = .black
++            }
++        }
++        
++        // Apply color to all elements
++        scaleBar.backgroundColor = color
++        
++        for tick in ticks {
++            tick.backgroundColor = color
++        }
++        
++        for label in labels {
++            label.textColor = color
++        }
++    }
++    
+     /// Sets up notification observer for map region changes.
+     ///
+     /// Listens for `MKMapViewRegionDidChangeNotification` to automatically update the scale display.
+@@ -513,6 +570,25 @@ class GPXScaleBar: UIView {
+         updateScale()
+     }
+     
++    /// Updates the color mode of the scale bar
++    ///
++    /// This method allows you to override the automatic color adaptation based on the tile server.
++    /// Call this when the tile server changes to ensure overlay elements remain visible.
++    ///
++    /// ## Example
++    ///
++    /// ```swift
++    /// func didUpdateTileServer(_ tileServer: GPXTileServer) {
++    ///     map.tileServer = tileServer
++    ///     scaleBar.updateColorMode(tileServer.overlayColorMode)
++    /// }
++    /// ```
++    ///
++    /// - Parameter colorMode: The color mode to use (`.forceLight`, `.forceDark`, or `.adaptive`)
++    public func updateColorMode(_ colorMode: TileServerOverlayColorMode) {
++        self.colorMode = colorMode
++    }
++    
+     /// Manually triggers an update of the scale display.
+     ///
+     /// Call this method when the map view's region changes if you're not using automatic observation
+diff --git a/OpenGpxTracker/GPXScaleBar.swift.backup b/OpenGpxTracker/GPXScaleBar.swift.backup
+new file mode 100644
+index 0000000..169518a
+--- /dev/null
++++ b/OpenGpxTracker/GPXScaleBar.swift.backup
+@@ -0,0 +1,647 @@
++import UIKit
++import MapKit
++
++/// Min width of the ScaleBar
++let kMinScalebarWidth: CGFloat = 75.0
++
++/// Max width of the ScaleBar
++let kMaxScaleBarWidth: CGFloat = 300.0
++
++/// A custom scale view for MapKit that displays distance measurements with support for both imperial and metric units.
++///
++/// `GPXScaleBar` provides a visual representation of map scale, automatically updating as the map region changes.
++/// Unlike `MKScaleView`, this implementation allows you to explicitly control whether imperial or metric units are used.
++///
++/// ## Usage
++///
++/// ```swift
++/// let scaleBar = GPXScaleBar(mapView: mapView, useImperial: true)
++/// view.addSubview(scaleBar)
++///
++/// NSLayoutConstraint.activate([
++///     scaleBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
++///     scaleBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
++/// ])
++/// ```
++///
++/// - Important: Remember to set your `MKMapView` delegate and call `updateForMapViewChange()` in the
++///   `mapView(_:regionDidChangeAnimated:)` delegate method to keep the scale synchronized.
++///
++/// - Note: The scale view automatically adapts to light and dark mode using system colors.
++class GPXScaleBar: UIView {
++    
++    // MARK: - Properties
++    
++    /// The map view that this scale view is associated with.
++    public weak var mapView: MKMapView?
++    
++    /// Determines whether to use imperial (feet/miles) or metric (meters/kilometers) units.
++    ///
++    /// When this property changes, the scale bar automatically updates to reflect the new unit system.
++    public var useImperial: Bool {
++        didSet {
++            if oldValue != useImperial {
++                updateScale()
++            }
++        }
++    }
++    
++    /// The horizontal bar representing the scale distance.
++    private let scaleBar = UIView()
++    
++    /// Array of intermediate tick marks on the scale bar.
++    private var ticks: [UIView] = []
++    
++    /// Array of labels for the scale divisions.
++    private var labels: [UILabel] = []
++    
++    /// The height of the horizontal scale bar.
++    private let barHeight: CGFloat = 4
++    
++    /// The width of the tick marks.
++    private let tickWidth: CGFloat = 1
++    
++    /// The height of the tick marks.
++    private let tickHeight: CGFloat = 8
++    
++    /// The internal padding around the scale view content.
++    private let padding: CGFloat = 8
++    
++    /// Number of segments to display on the scale bar.
++    private let numberOfSegments: Int = 2
++    
++    /// The constant width of the container (slightly bigger than max scale width)
++    private let containerWidth: CGFloat = 320
++    
++    // MARK: - Initialization
++    
++    /// Creates a new custom scale bar for the specified map view.
++    ///
++    /// - Parameters:
++    ///   - mapView: The `MKMapView` instance to display the scale for.
++    ///   - useImperial: `true` to display imperial units (feet/miles), `false` for metric units (meters/kilometers).
++    ///
++    /// - Note: The scale bar will automatically observe map region changes and update accordingly.
++    public init(mapView: MKMapView, useImperial: Bool) {
++        self.mapView = mapView
++        self.useImperial = useImperial
++        super.init(frame: .zero)
++        setupViews()
++        setupObserver()
++        updateScale()
++    }
++    
++    /// Creates a new custom scale bar without an associated map view.
++    ///
++    /// Use this initializer when you need to create the scale bar as a property before `self` is available,
++    /// then call `configure(mapView:useImperial:)` to complete the setup.
++    ///
++    /// ## Example
++    ///
++    /// ```swift
++    /// class MapViewController: UIViewController {
++    ///     let mapView = MKMapView()
++    ///     let scaleBar = GPXScaleBar()
++    ///
++    ///     override func viewDidLoad() {
++    ///         super.viewDidLoad()
++    ///         scaleBar.configure(mapView: mapView, useImperial: preferences.useImperial)
++    ///     }
++    /// }
++    /// ```
++    ///
++    /// - Parameter useImperial: `true` to display imperial units (feet/miles), `false` for metric units (meters/kilometers). Defaults to `true`.
++    public convenience init(useImperial: Bool = true) {
++        self.init(mapView: nil, useImperial: useImperial)
++    }
++    
++    /// Internal initializer that allows for deferred configuration.
++    private init(mapView: MKMapView?, useImperial: Bool) {
++        self.mapView = mapView
++        self.useImperial = useImperial
++        super.init(frame: .zero)
++        setupViews()
++        if mapView != nil {
++            setupObserver()
++            updateScale()
++        }
++    }
++    
++    /// Initializer for use with Interface Builder (storyboards/XIBs).
++    ///
++    /// When using this initializer, you must call `configure(mapView:useImperial:)` after the view loads.
++    ///
++    /// - Parameter coder: An unarchiver object.
++    required public init?(coder: NSCoder) {
++        self.mapView = nil
++        self.useImperial = true
++        super.init(coder: coder)
++        setupViews()
++    }
++    
++    deinit {
++        NotificationCenter.default.removeObserver(self)
++    }
++    
++    // MARK: - Setup
++    
++    /// Configures the visual appearance and layout of all scale view subviews.
++    ///
++    /// This method sets up:
++    /// - Background styling with rounded corners and borders
++    /// - Scale bar and endpoint caps
++    /// - Distance labels with appropriate font and color
++    private func setupViews() {
++        // Configure background - transparent, no border
++        backgroundColor = .clear
++        
++        // Configure scale bar
++        if #available(iOS 13.0, *) {
++            scaleBar.backgroundColor = .label
++        } else {
++            scaleBar.backgroundColor = .black
++        }
++        scaleBar.layer.cornerRadius = barHeight / 2
++        addSubview(scaleBar)
++        
++        // Create ticks (numberOfSegments + 1 for start and end)
++        for _ in 0...numberOfSegments {
++            let tick = UIView()
++            if #available(iOS 13.0, *) {
++                tick.backgroundColor = .label
++            } else {
++                tick.backgroundColor = .black
++            }
++            tick.layer.cornerRadius = tickWidth / 2
++            addSubview(tick)
++            ticks.append(tick)
++        }
++        
++        // Create labels (we'll show labels at strategic points)
++        for _ in 0...numberOfSegments {
++            let label = UILabel()
++            label.font = .systemFont(ofSize: 11, weight: .medium)
++            if #available(iOS 13.0, *) {
++                label.textColor = .label
++            } else {
++                label.textColor = .black
++            }
++            label.textAlignment = .center
++            addSubview(label)
++            labels.append(label)
++        }
++        
++        // Set intrinsic size
++        translatesAutoresizingMaskIntoConstraints = false
++    }
++    
++    /// Sets up notification observer for map region changes.
++    ///
++    /// Listens for `MKMapViewRegionDidChangeNotification` to automatically update the scale display.
++    private func setupObserver() {
++        NotificationCenter.default.addObserver(
++            self,
++            selector: #selector(mapViewRegionDidChange),
++            name: NSNotification.Name("MKMapViewRegionDidChangeNotification"),
++            object: mapView
++        )
++    }
++    
++    /// Handles map region change notifications.
++    ///
++    /// This method is called automatically when the map's visible region changes.
++    @objc private func mapViewRegionDidChange() {
++        updateScale()
++    }
++    
++    // MARK: - Scale Calculation
++    
++    /// Updates the scale display based on the current map region and zoom level.
++    ///
++    /// This method:
++    /// 1. Calculates the real-world distance represented by screen points
++    /// 2. Determines an appropriate scale distance to display
++    /// 3. Updates the UI with the calculated values
++    ///
++    /// - Note: Called automatically when the map region changes, but can also be called manually via `updateForMapViewChange()`.
++    private func updateScale() {
++        guard let mapView = mapView else { return }
++        
++        // Calculate meters per point at center of map
++        let centerPoint = CGPoint(x: mapView.bounds.midX, y: mapView.bounds.midY)
++        let centerCoordinate = mapView.convert(centerPoint, toCoordinateFrom: mapView)
++        
++        // Calculate distance for 100 points horizontally
++        let leftPoint = CGPoint(x: mapView.bounds.midX - 50, y: mapView.bounds.midY)
++        let rightPoint = CGPoint(x: mapView.bounds.midX + 50, y: mapView.bounds.midY)
++        
++        let leftCoordinate = mapView.convert(leftPoint, toCoordinateFrom: mapView)
++        let rightCoordinate = mapView.convert(rightPoint, toCoordinateFrom: mapView)
++        
++        let leftLocation = CLLocation(latitude: leftCoordinate.latitude, longitude: leftCoordinate.longitude)
++        let rightLocation = CLLocation(latitude: rightCoordinate.latitude, longitude: rightCoordinate.longitude)
++        
++        let metersFor100Points = leftLocation.distance(from: rightLocation)
++        let metersPerPoint = metersFor100Points / 100.0
++        
++        // Determine appropriate scale
++        let (distance, width) = calculateScale(metersPerPoint: metersPerPoint)
++        
++        // Update UI
++        updateUI(distance: distance, width: width)
++    }
++    
++    /// Calculates an appropriate scale distance and bar width for the current map zoom level.
++    ///
++    /// - Parameter metersPerPoint: The number of meters represented by one screen point at the current zoom level.
++    /// - Returns: A tuple containing the distance to display and the width of the scale bar in points.
++    ///
++    /// This method selects a "nice" round number for the scale distance (e.g., 100, 500, 1000)
++    /// that fits within the maximum allowed width.
++    private func calculateScale(metersPerPoint: Double) -> (distance: Double, width: CGFloat) {
++        let maxWidth: CGFloat = kMaxScaleBarWidth
++        let maxMeters = Double(maxWidth) * metersPerPoint
++        
++        if useImperial {
++            return calculateImperialScale(maxMeters: maxMeters, metersPerPoint: metersPerPoint)
++        } else {
++            return calculateMetricScale(maxMeters: maxMeters, metersPerPoint: metersPerPoint)
++        }
++    }
++    
++    /// Calculates scale values using metric units (meters and kilometers).
++    ///
++    /// - Parameters:
++    ///   - maxMeters: The maximum distance in meters that can fit within the scale bar.
++    ///   - metersPerPoint: The number of meters represented by one screen point.
++    /// - Returns: A tuple containing the distance in meters and the bar width in points.
++    ///
++    /// Selects from common metric intervals: 1, 2, 5, 10, 20, 50, 100, 200, 500m, and 1, 2, 5, 10, 20, 50, 100, 200, 500km.
++    private func calculateMetricScale(maxMeters: Double, metersPerPoint: Double) -> (distance: Double, width: CGFloat) {
++        let distances: [Double] = [
++            1, 2, 5, 10, 20, 50, 100, 200, 500,
++            1000, 2000, 5000, 10000, 20000, 50000,
++            100000, 200000, 500000, 1000000
++        ]
++        
++        for distance in distances {
++            if distance <= maxMeters {
++                let width = CGFloat(distance / metersPerPoint)
++                if width >= kMinScalebarWidth {
++                    return (distance, width)
++                }
++            }
++        }
++        // default
++        return (distances[0], kMinScalebarWidth)
++    }
++    
++    /// Calculates scale values using imperial units (feet and miles).
++    ///
++    /// - Parameters:
++    ///   - maxMeters: The maximum distance in meters that can fit within the scale bar.
++    ///   - metersPerPoint: The number of meters represented by one screen point.
++    /// - Returns: A tuple containing the distance in feet and the bar width in points.
++    ///
++    /// Selects from common imperial intervals: 1, 2, 5, 10, 20, 50, 100, 200, 500ft, and 1, 2, 5, 10, 20, 50, 100mi.
++    /// One mile equals 5,280 feet.
++    private func calculateImperialScale(maxMeters: Double, metersPerPoint: Double) -> (distance: Double, width: CGFloat) {
++        let feetPerMeter = 3.28084
++        let maxFeet = maxMeters * feetPerMeter
++        
++        // Distances in feet
++        let distances: [Double] = [
++            1, 2, 5, 10, 20, 50, 100, 200, 500,
++            1000, 2000, 5280, // 1 mile
++            10560, 26400, 52800, 105600, 264000, 528000
++        ]
++        
++        for distance in distances {
++            if distance <= maxFeet {
++                let metersForDistance = distance / feetPerMeter
++                let width = CGFloat(metersForDistance / metersPerPoint)
++                if width >= kMinScalebarWidth {
++                    return (distance, width)
++                }
++            }
++        }
++        
++        return (distances[0], kMinScalebarWidth)
++    }
++    
++    /// Updates the visual layout of the scale view based on the calculated distance and width.
++    ///
++    /// - Parameters:
++    ///   - distance: The distance to display (in feet for imperial, meters for metric).
++    ///   - width: The width of the scale bar in points.
++    ///
++    /// This method:
++    /// - Formats and displays the distance labels
++    /// - Calculates the view's size to accommodate all elements
++    /// - Positions the scale bar, endpoint caps, and labels
++    private func updateUI(distance: Double, width: CGFloat) {
++        // Calculate segment width
++        let segmentWidth = width / CGFloat(numberOfSegments)
++        
++        // Update labels - show only 0 and final value
++        let segmentDistance = distance / Double(numberOfSegments)
++        
++        // First, format all labels to check their sizes
++        var labelTexts: [String] = []
++        for index in 0...numberOfSegments {
++            let value = segmentDistance * Double(index)
++            if index == 0 {
++                labelTexts.append("0")
++            } else {
++                labelTexts.append(formatDistance(value))
++            }
++        }
++        
++        // Size all labels
++        for (index, label) in labels.enumerated() {
++            label.text = labelTexts[index]
++            label.sizeToFit()
++        }
++        
++        // Show only first and last labels
++        for (index, label) in labels.enumerated() {
++            if index == 0 {
++                // Show first label (0)
++                label.isHidden = false
++            } else if index == numberOfSegments {
++                // Show last label
++                label.isHidden = false
++            } else {
++                // Hide all intermediate labels
++                label.isHidden = true
++            }
++        }
++        
++        // Calculate total dimensions with constant container size
++        let labelSpace: CGFloat = 4
++        let maxLabelHeight = labels.compactMap { $0.isHidden ? nil : $0.frame.height }.max() ?? 0
++        let totalHeight = tickHeight + labelSpace + maxLabelHeight + padding * 2
++        
++        // Update frame to constant size
++        frame.size = CGSize(width: containerWidth, height: totalHeight)
++        
++        // Calculate offset to center the scale bar within the container
++        let horizontalOffset = (containerWidth - width) / 2
++        
++        // Position scale bar (centered horizontally, at top)
++        let barY = padding
++        scaleBar.frame = CGRect(
++            x: horizontalOffset,
++            y: barY + (tickHeight - barHeight) / 2,
++            width: width,
++            height: barHeight
++        )
++        
++        // Position ticks and labels
++        let labelY = barY + tickHeight + labelSpace
++        
++        for (index, tick) in ticks.enumerated() {
++            let x = horizontalOffset + segmentWidth * CGFloat(index)
++            
++            tick.frame = CGRect(
++                x: x - tickWidth / 2,
++                y: barY,
++                width: tickWidth,
++                height: tickHeight
++            )
++            
++            // Position corresponding label (centered under tick)
++            if index < labels.count && !labels[index].isHidden {
++                let label = labels[index]
++                
++                // Special positioning for first and last labels to prevent overflow
++                var labelX = x - label.frame.width / 2
++                
++                if index == 0 {
++                    // Align left edge with left tick
++                    labelX = horizontalOffset
++                } else if index == numberOfSegments {
++                    // Align right edge with right tick
++                    labelX = horizontalOffset + width - label.frame.width
++                }
++                
++                label.frame = CGRect(
++                    x: labelX,
++                    y: labelY,
++                    width: label.frame.width,
++                    height: label.frame.height
++                )
++            }
++        }
++    }
++    
++    /// Formats a distance value into a human-readable string with appropriate units.
++    ///
++    /// - Parameter distance: The distance to format (in feet for imperial, meters for metric).
++    /// - Returns: A formatted string such as "500 ft", "1.5 mi", "200 m", or "5.2 km".
++    ///
++    /// ## Formatting Rules
++    ///
++    /// **Imperial:**
++    /// - Values under 5,280 feet display as feet (e.g., "500 ft")
++    /// - Values 5,280 feet and above display as miles
++    /// - Miles >= 10 show no decimal places (e.g., "15 mi")
++    /// - Miles < 10 show one decimal place (e.g., "2.5 mi")
++    ///
++    /// **Metric:**
++    /// - Values under 1,000 meters display as meters (e.g., "500 m")
++    /// - Values 1,000 meters and above display as kilometers
++    /// - Kilometers >= 10 show no decimal places (e.g., "15 km")
++    /// - Kilometers < 10 show one decimal place (e.g., "2.5 km")
++    private func formatDistance(_ distance: Double) -> String {
++        if useImperial {
++            if distance >= 5280 {
++                let miles = distance / 5280
++                if miles >= 10 {
++                    return "\(Int(miles))mi"
++                } else {
++                    return String(format: "%.1fmi", miles)
++                }
++            } else {
++                return "\(Int(distance))ft"
++            }
++        } else {
++            if distance >= 1000 {
++                let km = distance / 1000
++                if km >= 10 {
++                    return "\(Int(km))km"
++                } else {
++                    return String(format: "%.1fkm", km)
++                }
++            } else {
++                return "\(Int(distance))m"
++            }
++        }
++    }
++    
++    // MARK: - Public Methods
++    
++    /// Configures the scale bar with a map view after initialization.
++    ///
++    /// Use this method when you've created the scale bar using `init(useImperial:)` and need to
++    /// associate it with a map view later.
++    ///
++    /// ## Example
++    ///
++    /// ```swift
++    /// class MapViewController: UIViewController {
++    ///     let mapView = MKMapView()
++    ///     let scaleBar = GPXScaleBar() // Created without map view
++    ///
++    ///     override func viewDidLoad() {
++    ///         super.viewDidLoad()
++    ///         scaleBar.configure(mapView: mapView, useImperial: preferences.useImperial)
++    ///         view.addSubview(scaleBar)
++    ///     }
++    /// }
++    /// ```
++    ///
++    /// - Parameters:
++    ///   - mapView: The `MKMapView` instance to display the scale for.
++    ///   - useImperial: `true` to display imperial units (feet/miles), `false` for metric units (meters/kilometers).
++    ///
++    /// - Important: Call this method before adding the scale bar to your view hierarchy to ensure proper display.
++    public func configure(mapView: MKMapView, useImperial: Bool) {
++        self.mapView = mapView
++        self.useImperial = useImperial
++        setupObserver()
++        updateScale()
++    }
++    
++    /// Manually triggers an update of the scale display.
++    ///
++    /// Call this method when the map view's region changes if you're not using automatic observation
++    /// through the map view delegate.
++    ///
++    /// ## Example
++    ///
++    /// ```swift
++    /// func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
++    ///     scaleBar.updateForMapViewChange()
++    /// }
++    /// ```
++    ///
++    /// - Note: If you've set up the scale bar with automatic observation, this method is called automatically
++    ///   and you don't need to call it manually.
++    public func updateForMapViewChange() {
++        updateScale()
++    }
++    
++    /// Updates the unit system preference and refreshes the scale display.
++    ///
++    /// This is a convenience method for updating the `useImperial` property. You can either set
++    /// `useImperial` directly or call this method - both will trigger an automatic update.
++    ///
++    /// ## Example
++    ///
++    /// ```swift
++    /// // Option 1: Set property directly
++    /// scaleBar.useImperial = preferences.useImperial
++    ///
++    /// // Option 2: Use this method
++    /// scaleBar.updateUnits(useImperial: preferences.useImperial)
++    /// ```
++    ///
++    /// - Parameter useImperial: `true` for imperial units (feet/miles), `false` for metric units (meters/kilometers).
++    public func updateUnits(useImperial: Bool) {
++        self.useImperial = useImperial
++    }
++}
++
++// MARK: - Usage Example
++
++/*
++// OPTION 1: Initialize with map view directly (when map is available during init)
++
++class MapViewController: UIViewController {
++    
++    let mapView = MKMapView()
++    var scaleBar: GPXScaleBar!
++    var preferences = Preferences()
++    
++    override func viewDidLoad() {
++        super.viewDidLoad()
++        
++        mapView.frame = view.bounds
++        view.addSubview(mapView)
++        mapView.delegate = self
++        
++        // Create with map view
++        scaleBar = GPXScaleBar(mapView: mapView, useImperial: preferences.useImperial)
++        view.addSubview(scaleBar)
++        
++        NSLayoutConstraint.activate([
++            scaleBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
++            scaleBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
++        ])
++    }
++}
++
++// OPTION 2: Declare as property and configure later (avoids "cannot use instance member" error)
++
++class MapViewController: UIViewController {
++    
++    let mapView = MKMapView()
++    let scaleBar = GPXScaleBar() // No map view needed at declaration
++    var preferences = Preferences()
++    
++    override func viewDidLoad() {
++        super.viewDidLoad()
++        
++        mapView.frame = view.bounds
++        view.addSubview(mapView)
++        mapView.delegate = self
++        
++        // Configure the scale bar with map view
++        scaleBar.configure(mapView: mapView, useImperial: preferences.useImperial)
++        view.addSubview(scaleBar)
++        
++        NSLayoutConstraint.activate([
++            scaleBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
++            scaleBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
++        ])
++    }
++    
++    // Called when returning from settings or when preferences change
++    func preferencesDidChange() {
++        scaleBar.useImperial = preferences.useImperial
++    }
++}
++
++extension MapViewController: MKMapViewDelegate {
++    func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
++        scaleBar.updateForMapViewChange()
++    }
++}
++
++struct Preferences {
++    var useImperial: Bool = true
++}
++
++// MARK: - Settings Integration Example
++
++class SettingsViewController: UIViewController {
++    
++    weak var mapViewController: MapViewController?
++    var preferences = Preferences()
++    
++    @IBAction func unitsToggleChanged(_ sender: UISwitch) {
++        preferences.useImperial = sender.isOn
++        
++        // Update the scale bar immediately
++        mapViewController?.scaleBar.useImperial = preferences.useImperial
++    }
++    
++    override func viewWillDisappear(_ animated: Bool) {
++        super.viewWillDisappear(animated)
++        
++        // Or update when leaving settings
++        mapViewController?.preferencesDidChange()
++    }
++}
++*/
+diff --git a/OpenGpxTracker/GPXTileServer.swift b/OpenGpxTracker/GPXTileServer.swift
+index 247bf14..12833f2 100644
+--- a/OpenGpxTracker/GPXTileServer.swift
++++ b/OpenGpxTracker/GPXTileServer.swift
+@@ -8,6 +8,22 @@
+ 
+ import Foundation
+ 
++///
++/// Overlay color mode for tile servers
++///
++/// Determines how overlay elements (scalebar, labels) should be colored based on the tile server's imagery.
++///
++enum TileServerOverlayColorMode {
++    /// Use white/light colored overlays (for dark tile servers like satellite imagery)
++    case forceLight
++    
++    /// Use black/dark colored overlays (for light tile servers like standard maps)
++    case forceDark
++    
++    /// Adapt to system appearance mode (for Apple default maps)
++    case adaptive
++}
++
+ ///
+ /// Configuration for supported tile servers.
+ ///
+@@ -159,8 +175,34 @@ enum GPXTileServer: Int {
+         }
+     }
+     
++    /// Determines the overlay color mode for this tile server
++    ///
++    /// This property indicates how overlay elements (scalebar, labels) should be colored:
++    /// - `.forceLight`: Use white/light colors for dark tile servers (e.g., satellite imagery)
++    /// - `.forceDark`: Use black/dark colors for light tile servers (e.g., standard maps)
++    /// - `.adaptive`: Follow system appearance mode (e.g., Apple default maps)
++    ///
++    var overlayColorMode: TileServerOverlayColorMode {
++        switch self {
++        case .apple:
++            // Apple default maps adapt to system appearance
++            return .adaptive
++        case .appleSatellite:
++            // Satellite imagery is dark, needs light overlays
++            return .forceLight
++        case .openStreetMap, .cartoDB, .cartoDBRetina, .openTopoMap, .openSeaMap:
++            // Standard map tiles are light, need dark overlays
++            return .forceDark
++        }
++    }
++    
++    /// Legacy property for backwards compatibility
++    ///
++    /// Returns true if overlay elements should use light colors (white text/elements).
++    /// This is maintained for compatibility but `overlayColorMode` is preferred.
++    ///
+     var needForceDarkMode: Bool {
+-        return self == .appleSatellite
++        return overlayColorMode == .forceLight
+     }
+ 
+     /// Returns the number of tile servers currently defined
+diff --git a/OpenGpxTracker/GPXTileServer.swift.backup b/OpenGpxTracker/GPXTileServer.swift.backup
+new file mode 100644
+index 0000000..247bf14
+--- /dev/null
++++ b/OpenGpxTracker/GPXTileServer.swift.backup
+@@ -0,0 +1,168 @@
++//
++//  GPXTileServer.swift
++//  OpenGpxTracker
++//
++//  Created by merlos on 25/01/15.
++//
++// Shared file: this file is also included in the OpenGpxTracker-Watch Extension target.
++
++import Foundation
++
++///
++/// Configuration for supported tile servers.
++///
++/// Maps displayed in the application are sets of small square images caled tiles. There are different servers that
++/// provide these tiles.
++///
++/// A tile server is defined by an internal id (for instance .openStreetMap), a name string for displaying
++/// on the interface and a URL template.
++///
++enum GPXTileServer: Int {
++    
++    /// Apple tile server
++    case apple
++    
++    /// Apple satellite tile server
++    case appleSatellite
++    
++    /// OpenStreetMap tile server
++    case openStreetMap
++    // case AnotherMap
++    
++    /// CartoDB tile server
++    case cartoDB
++    
++    /// CartoDB tile server (2x tiles)
++    case cartoDBRetina
++    
++    /// OpenTopoMap tile server
++    case openTopoMap
++    
++    /// OpenSeaMap tile server
++    case openSeaMap
++    
++    /// String that describes the selected tile server.
++    var name: String {
++        switch self {
++        case .apple: return "Apple Mapkit (no offline cache)"
++        case .appleSatellite: return "Apple Satellite (no offline cache)"
++        case .openStreetMap: return "OpenStreetMap"
++        case .cartoDB: return "Carto DB"
++        case .cartoDBRetina: return "Carto DB (Retina resolution)"
++        case .openTopoMap: return "OpenTopoMap"
++        case .openSeaMap: return "OpenSeaMap"
++        }
++    }
++    
++    /// URL template of current tile server (it is of the form http://{s}.map.tile.server/{z}/{x}/{y}.png
++    var templateUrl: String {
++        switch self {
++        case .apple: return ""
++        case .appleSatellite: return ""
++        case .openStreetMap: return "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
++        case .cartoDB: return "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"
++        case .cartoDBRetina: return "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png"
++        case .openTopoMap: return "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
++        case .openSeaMap: return "https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png"
++        }
++    }
++    
++    /// In the `templateUrl` the {s} means subdomain, typically the subdomains available are a,b and c
++    /// Check the subdomains available for your server.
++    ///
++    /// Set an empty array (`[]`) in case you don't use `{s}` in your `templateUrl`.
++    ///
++    /// Subdomains is useful to distribute the tile request download among the diferent servers
++    /// and displaying them faster as result.
++    var subdomains: [String] {
++        switch self {
++        case .apple: return []
++        case .appleSatellite: return []
++        case .openStreetMap: return ["a", "b", "c"]
++        case .cartoDB, .cartoDBRetina: return ["a", "b", "c"]
++        case .openTopoMap: return ["a", "b", "c"]
++        case .openSeaMap: return []
++        // case .AnotherMap: return ["a","b"]
++        }
++    }
++    
++    /// Maximum zoom level the tile server supports
++    /// Tile servers provide files till a certain level of zoom that ranges from 0 to maximumZ.
++    /// If map zooms more than the limit level, tiles won't be requested.
++    ///
++    ///  Typically the value is around 19,20 or 21.
++    ///
++    ///  Use negative to avoid setting a limit.
++    ///
++    /// - see https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames#Tile_servers
++    ///
++    var maximumZ: Int {
++        switch self {
++        case .apple:
++            return -1
++        case .appleSatellite: 
++            return -1
++        case .openStreetMap:
++            return 19
++        case .cartoDB, .cartoDBRetina:
++            return 21
++        case .openTopoMap:
++            return 17
++        // case .AnotherMap: return 10
++        case .openSeaMap:
++            return 16
++        }
++    }
++    ///
++    /// Minimum zoom supported by the tile server
++    ///
++    /// This limits the tiles requested based on current zoom level.
++    /// No tiles will be requested for zooms levels lower that this.
++    ///
++    /// Needs to be 0 or larger.
++    ///
++    var minimumZ: Int {
++        switch self {
++        case .apple:
++            return 0
++        case .appleSatellite:
++            return 0
++        case .openStreetMap:
++            return 0
++        case .cartoDB, .cartoDBRetina:
++            return 0
++        case .openTopoMap:
++            return 0
++        case .openSeaMap:
++            return 0
++        // case .AnotherMap: return 0
++        }
++    }
++    
++    /// Does the tile overlay replace the map?
++    ///  Generally all the tiles provided replace the AppleMaps. However there are some
++    var canReplaceMapContent: Bool {
++        switch self {
++        case .openSeaMap: return false
++        default: return true
++        }
++    }
++    
++    /// tile size of the third-party tile.
++    /// 
++    /// 1x tiles are 256x256
++    /// 2x/retina tiles are 512x512
++    var tileSize: Int {
++        switch self {
++        case .cartoDBRetina: return 512
++        default: return 256
++        }
++    }
++    
++    var needForceDarkMode: Bool {
++        return self == .appleSatellite
++    }
++
++    /// Returns the number of tile servers currently defined
++    static var count: Int { return GPXTileServer.openSeaMap.rawValue + 1}
++}
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index fe592ce..49e32d3 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -1303,12 +1303,35 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+     
+     /// force dark mode (i.e. white text, if map content is known to be dark)
+     func textColorAdaptations() {
+-        let needForceDarkMode = self.map.tileServer.needForceDarkMode
+-        self.signalAccuracyLabel.textColor = needForceDarkMode ? .white : nil
+-        self.timeLabel.textColor = needForceDarkMode ? .white : nil
+-        self.speedLabel.textColor = needForceDarkMode ? .white : nil
+-        self.totalTrackedDistanceLabel.textColor = needForceDarkMode ? .white : nil
+-        self.currentSegmentDistanceLabel.textColor = needForceDarkMode ? .white : nil
++        let colorMode = self.map.tileServer.overlayColorMode
++        
++        // Update labels based on color mode
++        switch colorMode {
++        case .forceLight:
++            // Dark tile server - use white text
++            self.signalAccuracyLabel.textColor = .white
++            self.timeLabel.textColor = .white
++            self.speedLabel.textColor = .white
++            self.totalTrackedDistanceLabel.textColor = .white
++            self.currentSegmentDistanceLabel.textColor = .white
++        case .forceDark:
++            // Light tile server - use black text
++            self.signalAccuracyLabel.textColor = .black
++            self.timeLabel.textColor = .black
++            self.speedLabel.textColor = .black
++            self.totalTrackedDistanceLabel.textColor = .black
++            self.currentSegmentDistanceLabel.textColor = .black
++        case .adaptive:
++            // Adaptive - use system colors (nil to reset to default)
++            self.signalAccuracyLabel.textColor = nil
++            self.timeLabel.textColor = nil
++            self.speedLabel.textColor = nil
++            self.totalTrackedDistanceLabel.textColor = nil
++            self.currentSegmentDistanceLabel.textColor = nil
++        }
++        
++        // Update scale bar color mode
++        self.scaleBar.updateColorMode(colorMode)
+     }
+ 
+ }
+diff --git a/OpenGpxTracker/ViewController.swift.backup b/OpenGpxTracker/ViewController.swift.backup
+new file mode 100644
+index 0000000..fe592ce
+--- /dev/null
++++ b/OpenGpxTracker/ViewController.swift.backup
+@@ -0,0 +1,1534 @@
++//
++//  ViewController.swift
++//  OpenGpxTracker
++//
++//  Created by merlos on 13/09/14.
++//
++//  Localized by nitricware on 19/08/19.
++//
++
++import UIKit
++import CoreLocation
++import MapKit
++import CoreGPX
++
++// swiftlint:disable line_length
++
++/// App title
++
++let kAppTitle: String = "  Open GPX Tracker"
++/// Purple color for button background
++let kPurpleButtonBackgroundColor: UIColor =  UIColor(red: 146.0/255.0, green: 166.0/255.0, blue: 218.0/255.0, alpha: 0.90)
++
++/// Green color for button background
++let kGreenButtonBackgroundColor: UIColor = UIColor(red: 142.0/255.0, green: 224.0/255.0, blue: 102.0/255.0, alpha: 0.90)
++
++/// Red color for button background
++let kRedButtonBackgroundColor: UIColor =  UIColor(red: 244.0/255.0, green: 94.0/255.0, blue: 94.0/255.0, alpha: 0.90)
++
++/// Blue color for button background
++let kBlueButtonBackgroundColor: UIColor = UIColor(red: 74.0/255.0, green: 144.0/255.0, blue: 226.0/255.0, alpha: 0.90)
++
++/// Blue color for disabled button background
++let kDisabledBlueButtonBackgroundColor: UIColor = UIColor(red: 74.0/255.0, green: 144.0/255.0, blue: 226.0/255.0, alpha: 0.10)
++
++/// Red color for disabled button background
++let kDisabledRedButtonBackgroundColor: UIColor =  UIColor(red: 244.0/255.0, green: 94.0/255.0, blue: 94.0/255.0, alpha: 0.10)
++
++/// White color for button background
++let kWhiteBackgroundColor: UIColor = UIColor(red: 254.0/255.0, green: 254.0/255.0, blue: 254.0/255.0, alpha: 0.90)
++
++/// Delete Waypoint Button tag. Used in a waypoint bubble
++let kDeleteWaypointAccesoryButtonTag = 666
++
++/// Edit Waypoint Button tag. Used in a waypoint bubble.
++let kEditWaypointAccesoryButtonTag = 333
++
++/// Text to display when the system is not providing coordinates.
++let kNotGettingLocationText = NSLocalizedString("NO_LOCATION", comment: "no comment")
++
++/// Text to display unknown accuracy
++let kUnknownAccuracyText = "±···"
++
++/// Text to display unknown speed.
++let kUnknownSpeedText = "·.··"
++
++/// Size for small buttons
++let kButtonSmallSize: CGFloat = 48.0
++
++/// Size for large buttons
++let kButtonLargeSize: CGFloat = 96.0
++
++/// Separation between buttons
++let kButtonSeparation: CGFloat = 6.0
++
++/// Upper limits threshold (in meters) on signal accuracy.
++let kSignalAccuracy6 = 6.0
++/// Upper limits threshold (in meters) on signal accuracy.
++let kSignalAccuracy5 = 11.0
++/// Upper limits threshold (in meters) on signal accuracy.
++let kSignalAccuracy4 = 31.0
++/// Upper limits threshold (in meters) on signal accuracy.
++let kSignalAccuracy3 = 51.0
++/// Upper limits threshold (in meters) on signal accuracy.
++let kSignalAccuracy2 = 101.0
++/// Upper limits threshold (in meters) on signal accuracy.
++let kSignalAccuracy1 = 201.0
++
++///
++/// Main View Controller of the Application. It is loaded when the application is launched
++///
++/// Displays a map and a set the buttons to control the tracking
++///
++///
++class ViewController: UIViewController, UIGestureRecognizerDelegate {
++    
++    /// Shall the map be centered on current user position?
++    /// If yes, whenever the user moves, the center of the map too.
++    var followUser: Bool = true {
++        didSet {
++            if followUser {
++                print("followUser=true")
++                followUserButton.setImage(UIImage(named: "follow_user_high"), for: UIControl.State())
++                map.setCenter((map.userLocation.coordinate), animated: true)
++                
++            } else {
++                print("followUser=false")
++               followUserButton.setImage(UIImage(named: "follow_user"), for: UIControl.State())
++            }
++            
++        }
++    }
++    
++    /// TBD (not currently used)
++    var followUserBeforePinchGesture = true
++
++    /// location manager instance configuration
++    let locationManager: CLLocationManager = {
++        let manager = CLLocationManager()
++        manager.requestAlwaysAuthorization()
++        manager.activityType = CLActivityType(rawValue: Preferences.shared.locationActivityTypeInt)!
++        print("Chosen CLActivityType: \(manager.activityType.name)")
++        manager.desiredAccuracy = kCLLocationAccuracyBest
++        manager.distanceFilter = 2 // meters
++        manager.headingFilter = 3 // degrees (1 is default)
++        manager.pausesLocationUpdatesAutomatically = false
++        if #available(iOS 9.0, *) {
++            manager.allowsBackgroundLocationUpdates = true
++        }
++        return manager
++    }()
++    
++    /// Map View
++    var map: GPXMapView
++    
++    /// Map View delegate 
++    let mapViewDelegate = MapViewDelegate()
++    
++    /// Stop watch instance to control elapsed time
++    var stopWatch = StopWatch()
++    
++    /// Name of the last file that was saved (without extension)
++    var lastGpxFilename: String = "" {
++        didSet {
++            if lastGpxFilename == "" {
++                appTitleLabel.text = kAppTitle
++            } else {
++                // if name is too long arbitrary cut
++                var displayedName = lastGpxFilename
++                if lastGpxFilename.count > 20 {
++                    displayedName = lastGpxFilename.prefix(10) + "..." + lastGpxFilename.suffix(3)
++                }
++                appTitleLabel.text = "  " + displayedName + ".gpx"
++            }
++        }
++    }
++    
++    /// Status variable that indicates if the app was sent to background.
++    var wasSentToBackground: Bool = false
++    
++    /// Status variable that indicates if the location service auth was denied.
++    var isDisplayingLocationServicesDenied: Bool = false
++    
++    /// Has the map any waypoint?
++    var hasWaypoints: Bool = false {
++        /// Whenever it is updated, if it has waypoints it sets the save and reset button
++        didSet {
++            if hasWaypoints {
++                saveButton.backgroundColor = kBlueButtonBackgroundColor
++                resetButton.backgroundColor = kRedButtonBackgroundColor
++            }
++        }
++    }
++
++    /// Defines the different statuses regarding tracking current user location.
++    enum GpxTrackingStatus {
++        
++        /// Tracking has not started or map was reset
++        case notStarted
++        
++        /// Tracking is ongoing
++        case tracking
++        
++        /// Tracking is paused (the map has some contents)
++        case paused
++    }
++    
++    /// Tells what is the current status of the Map Instance.
++    var gpxTrackingStatus: GpxTrackingStatus = GpxTrackingStatus.notStarted {
++        didSet {
++            print("gpxTrackingStatus changed to \(gpxTrackingStatus)")
++            switch gpxTrackingStatus {
++            case .notStarted:
++                print("switched to non started")
++                // Set tracker button to allow Start
++                trackerButton.setTitle(NSLocalizedString("START_TRACKING", comment: "no comment"), for: UIControl.State())
++                trackerButton.backgroundColor = kGreenButtonBackgroundColor
++                // Save & reset button to transparent.
++                saveButton.backgroundColor = kDisabledBlueButtonBackgroundColor
++                resetButton.backgroundColor = kDisabledRedButtonBackgroundColor
++                // Reset clock
++                stopWatch.reset()
++                timeLabel.text = stopWatch.elapsedTimeString
++                
++                map.clearMap()        // Clear map
++                lastGpxFilename = "" // Clear last filename, so when saving it appears an empty field
++
++                map.coreDataHelper.clearAll()
++                map.coreDataHelper.coreDataDeleteAll(of: CDRoot.self) // deleteCDRootFromCoreData()
++                
++                totalTrackedDistanceLabel.distance = (map.session.totalTrackedDistance)
++                currentSegmentDistanceLabel.distance = (map.session.currentSegmentDistance)
++                
++                /*
++                // XXX Left here for reference
++                UIView.animateWithDuration(0.2, delay: 0.0, options: UIViewAnimationOptions.CurveLinear, animations: { () -> Void in
++                    self.trackerButton.hidden = true
++                    self.pauseButton.hidden = false
++                    }, completion: {(f: Bool) -> Void in
++                        println("finished animation start tracking")
++                })
++                */
++                
++            case .tracking:
++                print("switched to tracking mode")
++                // set tracerkButton to allow Pause
++                trackerButton.setTitle(NSLocalizedString("PAUSE", comment: "no comment"), for: UIControl.State())
++                trackerButton.backgroundColor = kPurpleButtonBackgroundColor
++                // Activate save & reset buttons
++                saveButton.backgroundColor = kBlueButtonBackgroundColor
++                resetButton.backgroundColor = kRedButtonBackgroundColor
++                // start clock
++                self.stopWatch.start()
++                
++            case .paused:
++                print("switched to paused mode")
++                // set trackerButton to allow Resume
++                self.trackerButton.setTitle(NSLocalizedString("RESUME", comment: "no comment"), for: UIControl.State())
++                self.trackerButton.backgroundColor = kGreenButtonBackgroundColor
++                // activate save & reset (just in case switched from .NotStarted)
++                saveButton.backgroundColor = kBlueButtonBackgroundColor
++                resetButton.backgroundColor = kRedButtonBackgroundColor
++                // Pause clock
++                self.stopWatch.stop()
++                // start new track segment
++                self.map.startNewTrackSegment()
++            }
++        }
++    }
++
++    /// Editing Waypoint Temporal Reference
++    var lastLocation: CLLocation? // Last point of current segment.
++
++    // UI
++    /// Label with the title of the app
++    var appTitleLabel: UILabel
++
++    /// Image with the GPS signal
++    var signalImageView: UIImageView
++    
++    /// Current GPS signal accuracy text (based on kSignalAccuracyX constants)
++    var signalAccuracyLabel: UILabel
++    
++    /// Label that displays current latitude and longitude (lat,long)
++    var coordsLabel: UILabel
++    
++    /// Displays current elapsed time (00:00)
++    var timeLabel: UILabel
++    
++    /// Label that displays last known speed (in km/h)
++    var speedLabel: UILabel
++    
++    /// Distance of the total segments tracked
++    var totalTrackedDistanceLabel: DistanceLabel
++    
++    /// Distance of the current segment being tracked (since last time the Tracker button was pressed)
++    var currentSegmentDistanceLabel: DistanceLabel
++ 
++    /// Used to display in imperial (foot, miles, mph) or metric system (m, km, km/h)
++    var useImperial = false
++    
++    /// Follow user button (bottom bar)
++    var followUserButton: UIButton
++    
++    /// New pin button (bottom bar)
++    var newPinButton: UIButton
++    
++    /// View GPX Files button
++    var folderButton: UIButton
++    
++    /// View app about button
++    var aboutButton: UIButton
++    
++    /// View preferences button
++    var preferencesButton: UIButton
++    
++    /// Share current gpx file button
++    var shareButton: UIButton
++    
++    /// Spinning Activity Indicator for shareButton
++    let shareActivityIndicator: UIActivityIndicatorView
++    
++    /// Spinning Activity Indicator's color
++    var shareActivityColor = UIColor(red: 0, green: 0.61, blue: 0.86, alpha: 1)
++    
++    /// Reset map button (bottom bar)
++    var resetButton: UIButton
++    
++    /// Start/Pause tracker button (bottom bar)
++    var trackerButton: UIButton
++    
++    /// Save current track into a GPX file
++    var saveButton: UIButton
++	
++	/// Scale Bar View
++    var scaleBar: GPXScaleBar
++    
++    /// Check if device is notched type phone
++    var isIPhoneX = false
++    
++    // Signal accuracy images
++    /// GPS signal image. Level 0 (no signal)
++    let signalImage0 = UIImage(named: "signal0")
++    /// GPS signal image. Level 1
++    let signalImage1 = UIImage(named: "signal1")
++    /// GPS signal image. Level 2
++    let signalImage2 = UIImage(named: "signal2")
++    /// GPS signal image. Level 3
++    let signalImage3 = UIImage(named: "signal3")
++    /// GPS signal image. Level 4
++    let signalImage4 = UIImage(named: "signal4")
++    /// GPS signal image. Level 5
++    let signalImage5 = UIImage(named: "signal5")
++    /// GPS signal image. Level 6
++    let signalImage6 = UIImage(named: "signal6")
++ 
++    /// Initializer. Just initializes the class vars/const
++    required init(coder aDecoder: NSCoder) {
++        self.map = GPXMapView(coder: aDecoder)!
++        
++        self.appTitleLabel = UILabel(coder: aDecoder)!
++        self.signalImageView = UIImageView(coder: aDecoder)!
++        self.signalAccuracyLabel = UILabel(coder: aDecoder)!
++        self.coordsLabel = UILabel(coder: aDecoder)!
++        
++        self.timeLabel = UILabel(coder: aDecoder)!
++        self.speedLabel = UILabel(coder: aDecoder)!
++        self.totalTrackedDistanceLabel = DistanceLabel(coder: aDecoder)!
++        self.currentSegmentDistanceLabel = DistanceLabel(coder: aDecoder)!
++        
++        self.followUserButton = UIButton(coder: aDecoder)!
++        self.newPinButton = UIButton(coder: aDecoder)!
++        self.folderButton = UIButton(coder: aDecoder)!
++        self.resetButton = UIButton(coder: aDecoder)!
++        self.aboutButton = UIButton(coder: aDecoder)!
++        self.preferencesButton = UIButton(coder: aDecoder)!
++        self.shareButton = UIButton(coder: aDecoder)!
++        
++        self.trackerButton = UIButton(coder: aDecoder)!
++        self.saveButton = UIButton(coder: aDecoder)!
++        
++        self.shareActivityIndicator = UIActivityIndicatorView(coder: aDecoder)
++        self.scaleBar = GPXScaleBar(coder: aDecoder)!
++        super.init(coder: aDecoder)!
++    }
++    
++    ///
++    /// De initalize the ViewController.
++    ///
++    /// Current implementation removes notification observers
++    ///
++    deinit {
++        print("*** deinit")
++        NotificationCenter.default.removeObserver(self)
++    }
++   
++    /// Handles status bar color as a result from iOS 13 appearance changes
++    override var preferredStatusBarStyle: UIStatusBarStyle {
++        if #available(iOS 13, *) {
++            if !isIPhoneX {
++                if self.traitCollection.userInterfaceStyle == .dark && map.tileServer == .apple {
++                    self.view.backgroundColor = .black
++                    return .lightContent
++                } else {
++                    self.view.backgroundColor = .white
++                    return .darkContent
++                }
++            } else { // > iPhone X has no opaque status bar
++                // if is > iP X status bar can be white when map is dark
++                return map.tileServer == .apple ? .default : .darkContent
++            }
++        } else { // < iOS 13
++            return .default
++        }
++    }
++    
++    ///
++    /// Initializes the view. It adds the UI elements to the view.
++    ///
++    /// All the UI is built programatically on this method. Interface builder is not used.
++    ///
++    override func viewDidLoad() {
++        super.viewDidLoad()
++        stopWatch.delegate = self
++        
++        map.coreDataHelper.retrieveFromCoreData()
++        
++        // Because of the edges, iPhone X* is slightly different on the layout.
++        // So, Is the current device an iPhone X?
++        if UIDevice.current.userInterfaceIdiom == .phone, #available(iOS 11, *) {
++            self.isIPhoneX = UIApplication.shared.delegate?.window??.safeAreaInsets.top ?? 0 > 40
++        }
++        
++        // Map autorotate configuration
++        map.autoresizesSubviews = true
++        map.autoresizingMask = [.flexibleHeight, .flexibleWidth]
++        self.view.autoresizesSubviews = true
++        self.view.autoresizingMask = [.flexibleHeight, .flexibleWidth]
++
++        // Map configuration Stuff
++        map.delegate = mapViewDelegate
++        map.showsUserLocation = true
++        let mapH: CGFloat = self.view.bounds.size.height - (isIPhoneX ? 0.0 : 20.0)
++        map.frame = CGRect(x: 0.0, y: (isIPhoneX ? 0.0 : 20.0), width: self.view.bounds.size.width, height: mapH)
++        map.isZoomEnabled = true
++        map.isRotateEnabled = true
++        // Set the position of the compass.
++        map.compassRect = CGRect(x: map.frame.width/2 - 18, y: isIPhoneX ? 105.0 : 70.0, width: 36, height: 36)
++        
++        // If user long presses the map, it will add a Pin (waypoint) at that point
++        map.addGestureRecognizer(
++            UILongPressGestureRecognizer(target: self, action: #selector(ViewController.addPinAtTappedLocation(_:)))
++        )
++        
++        // Each time user pans, if the map is following the user, it stops doing that.
++        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(ViewController.stopFollowingUser(_:)))
++        panGesture.delegate = self
++        map.addGestureRecognizer(panGesture)
++        
++        locationManager.delegate = self
++        locationManager.startUpdatingLocation()
++        locationManager.startUpdatingHeading()
++        
++        // Preferences
++        map.tileServer = Preferences.shared.tileServer
++        map.useCache = Preferences.shared.useCache
++        useImperial = Preferences.shared.useImperial
++        // LocationManager.activityType = Preferences.shared.locationActivityType
++        
++        // Shall it keep the screen always on?
++        UIApplication.shared.isIdleTimerDisabled = Preferences.shared.keepScreenAlwaysOn
++        
++        //
++        // Config user interface
++        //
++        
++        // Set default zoom
++        let center = locationManager.location?.coordinate ?? CLLocationCoordinate2D(latitude: 8.90, longitude: -79.50)
++        let span = MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005)
++        let region = MKCoordinateRegion(center: center, span: span)
++        map.setRegion(region, animated: true)
++        self.view.addSubview(map)
++        
++        addNotificationObservers()
++        
++        //
++        // ---------------------- Build Interface Area -----------------------------
++        //
++        // HEADER
++        let font36 = UIFont(name: "DinCondensed-Bold", size: 36.0)
++        let font18 = UIFont(name: "DinAlternate-Bold", size: 18.0)
++        let font12 = UIFont(name: "DinAlternate-Bold", size: 12.0)
++        
++        // Add the app title Label (Branding, branding, branding! )
++        appTitleLabel.text = kAppTitle
++        appTitleLabel.textAlignment = .left
++        appTitleLabel.font = UIFont.boldSystemFont(ofSize: 10)
++        appTitleLabel.textColor = UIColor.yellow
++        appTitleLabel.backgroundColor = UIColor(red: 58.0/255.0, green: 57.0/255.0, blue: 54.0/255.0, alpha: 0.80)
++        self.view.addSubview(appTitleLabel)
++        
++        // CoordLabel
++        coordsLabel.textAlignment = .right
++        coordsLabel.font = font12
++        coordsLabel.textColor = UIColor.white
++        coordsLabel.text = kNotGettingLocationText
++        self.view.addSubview(coordsLabel)
++        
++        // Tracked info
++        let iPhoneXdiff: CGFloat  = isIPhoneX ? 40 : 0
++        
++        // TimeLabel
++        timeLabel.textAlignment = .right
++        timeLabel.font = font36
++        timeLabel.text = "00:00"
++        map.addSubview(timeLabel)
++        
++        // Speed Label
++        speedLabel.textAlignment = .right
++        speedLabel.font = font18
++        speedLabel.text = 0.00.toSpeed(useImperial: useImperial)
++        map.addSubview(speedLabel)
++        
++        // Tracked distance
++        totalTrackedDistanceLabel.textAlignment = .right
++        totalTrackedDistanceLabel.font = font36
++        totalTrackedDistanceLabel.useImperial = useImperial
++        totalTrackedDistanceLabel.distance = 0.00
++        totalTrackedDistanceLabel.autoresizingMask = [.flexibleWidth, .flexibleLeftMargin, .flexibleRightMargin]
++        map.addSubview(totalTrackedDistanceLabel)
++        
++        currentSegmentDistanceLabel.textAlignment = .right
++        currentSegmentDistanceLabel.font = font18
++        currentSegmentDistanceLabel.useImperial = useImperial
++        currentSegmentDistanceLabel.distance = 0.00
++        currentSegmentDistanceLabel.autoresizingMask = [.flexibleWidth, .flexibleLeftMargin, .flexibleRightMargin]
++        map.addSubview(currentSegmentDistanceLabel)
++        
++        // About button
++        aboutButton.frame = CGRect(x: 5 + 8, y: 14 + 5 + 48 + 5 + iPhoneXdiff, width: 32, height: 32)
++        aboutButton.setImage(UIImage(named: "info"), for: UIControl.State())
++        aboutButton.setImage(UIImage(named: "info_high"), for: .highlighted)
++        aboutButton.addTarget(self, action: #selector(ViewController.openAboutViewController), for: .touchUpInside)
++        aboutButton.autoresizingMask = [.flexibleRightMargin]
++        map.addSubview(aboutButton)
++        
++        // Preferences button
++        preferencesButton.frame = CGRect(x: 5 + 10 + 48, y: 14 + 5 + 8  + iPhoneXdiff, width: 32, height: 32)
++        preferencesButton.setImage(UIImage(named: "prefs"), for: UIControl.State())
++        preferencesButton.setImage(UIImage(named: "prefs_high"), for: .highlighted)
++        preferencesButton.addTarget(self, action: #selector(ViewController.openPreferencesTableViewController), for: .touchUpInside)
++        preferencesButton.autoresizingMask = [.flexibleRightMargin]
++        map.addSubview(preferencesButton)
++        
++        // Share button
++        shareButton.frame = CGRect(x: 5 + 10 + 48 * 2, y: 14 + 5 + 8  + iPhoneXdiff, width: 32, height: 32)
++        shareButton.setImage(UIImage(named: "share"), for: UIControl.State())
++        shareButton.setImage(UIImage(named: "share_high"), for: .highlighted)
++        shareButton.addTarget(self, action: #selector(ViewController.openShare), for: .touchUpInside)
++        shareButton.autoresizingMask = [.flexibleRightMargin]
++        map.addSubview(shareButton)
++        
++        // Folder button
++        let folderW: CGFloat = kButtonSmallSize
++        let folderH: CGFloat = kButtonSmallSize
++        let folderX: CGFloat = folderW/2 + 5
++        let folderY: CGFloat = folderH/2 + 5 + 14  + iPhoneXdiff
++        folderButton.frame = CGRect(x: 0, y: 0, width: folderW, height: folderH)
++        folderButton.center = CGPoint(x: folderX, y: folderY)
++        folderButton.setImage(UIImage(named: "folder"), for: UIControl.State())
++        folderButton.setImage(UIImage(named: "folderHigh"), for: .highlighted)
++        folderButton.addTarget(self, action: #selector(ViewController.openFolderViewController), for: .touchUpInside)
++        folderButton.backgroundColor = kWhiteBackgroundColor
++        folderButton.layer.cornerRadius = 24
++        folderButton.autoresizingMask = [.flexibleRightMargin]
++        map.addSubview(folderButton)
++        
++        // Add signal accuracy images and labels
++        signalImageView.image = signalImage0
++        signalImageView.frame = CGRect(x: self.view.frame.width/2 - 25.0, y: 14 + 5 + iPhoneXdiff, width: 50, height: 30)
++        map.addSubview(signalImageView)
++        signalAccuracyLabel.frame = CGRect(x: self.view.frame.width/2 - 25.0, y: 14 + 5 + 30 + iPhoneXdiff, width: 50, height: 12)
++        signalAccuracyLabel.font = font12
++        signalAccuracyLabel.text = kUnknownAccuracyText
++        signalAccuracyLabel.textAlignment = .center
++        map.addSubview(signalAccuracyLabel)
++
++        //
++        // Button Bar
++        //
++        // [ Small ] [ Small ] [ Large     ] [Small] [ Small]
++        //                     [ (tracker) ]
++        //
++        //                     [ track     ]
++        // [ follow] [ +Pin  ] [ Pause     ] [ Save ] [ Reset]
++        //                     [ Resume    ]
++        //
++        //                       trackerX
++        //                         |
++        //                         |
++        // [-----------------------|--------------------------]
++        //                  map.frame/2 (center)
++
++        // Start/Pause button
++        trackerButton.layer.cornerRadius = kButtonLargeSize/2
++        trackerButton.setTitle(NSLocalizedString("START_TRACKING", comment: "no comment"), for: UIControl.State())
++        trackerButton.backgroundColor = kGreenButtonBackgroundColor
++        trackerButton.addTarget(self, action: #selector(ViewController.trackerButtonTapped), for: .touchUpInside)
++        trackerButton.isHidden = false
++        trackerButton.titleLabel?.font = UIFont.boldSystemFont(ofSize: 16)
++        trackerButton.titleLabel?.numberOfLines = 2
++        trackerButton.titleLabel?.textAlignment = .center
++        map.addSubview(trackerButton)
++        
++        // Pin Button (on the left of start)
++        newPinButton.layer.cornerRadius = kButtonSmallSize/2
++        newPinButton.backgroundColor = kWhiteBackgroundColor
++        newPinButton.setImage(UIImage(named: "addPin"), for: UIControl.State())
++        newPinButton.setImage(UIImage(named: "addPinHigh"), for: .highlighted)
++        newPinButton.addTarget(self, action: #selector(ViewController.addPinAtMyLocation), for: .touchUpInside)
++        map.addSubview(newPinButton)
++        
++        // Follow user button
++        followUserButton.layer.cornerRadius = kButtonSmallSize/2
++        followUserButton.backgroundColor = kWhiteBackgroundColor
++        followUserButton.setImage(UIImage(named: "follow_user_high"), for: UIControl.State())
++        followUserButton.setImage(UIImage(named: "follow_user_high"), for: .highlighted)
++        followUserButton.addTarget(self, action: #selector(ViewController.followButtonTroggler), for: .touchUpInside)
++        map.addSubview(followUserButton)
++        
++        // Save button
++        saveButton.layer.cornerRadius = kButtonSmallSize/2
++        saveButton.setTitle(NSLocalizedString("SAVE", comment: "no comment"), for: UIControl.State())
++        saveButton.backgroundColor = kDisabledBlueButtonBackgroundColor
++        saveButton.addTarget(self, action: #selector(ViewController.saveButtonTapped), for: .touchUpInside)
++        saveButton.isHidden = false
++        saveButton.titleLabel?.textAlignment = .center
++        saveButton.titleLabel?.adjustsFontSizeToFitWidth = true
++        map.addSubview(saveButton)
++        
++        // Reset button
++        resetButton.layer.cornerRadius = kButtonSmallSize/2
++        resetButton.setTitle(NSLocalizedString("RESET", comment: "no comment"), for: UIControl.State())
++        resetButton.backgroundColor = kDisabledRedButtonBackgroundColor
++        resetButton.addTarget(self, action: #selector(ViewController.resetButtonTapped), for: .touchUpInside)
++        resetButton.isHidden = false
++        resetButton.titleLabel?.textAlignment = .center
++        resetButton.titleLabel?.adjustsFontSizeToFitWidth = true
++        map.addSubview(resetButton)
++        
++        addConstraints(isIPhoneX)
++        
++        map.rotationGesture.delegate = self
++        updateAppearance()
++        
++        if #available(iOS 13, *) {
++            shareActivityColor = .mainUIColor
++		}
++		
++		let compassButton = MKCompassButton(mapView: map)
++		self.view.addSubview(compassButton)
++		compassButton.translatesAutoresizingMaskIntoConstraints = false
++		addConstraintsToCompassView(compassButton)
++		
++		self.textColorAdaptations()
++		
++		addScaleBarOnTopOfTrackButton()
++    }
++	
++    // MARK: - Add Constraints for views
++    /// Adds Constraints to subviews
++    ///
++    /// The constraints will ensure that subviews will be positioned correctly, when there are orientation changes, or iPad split view width changes.
++    ///
++    /// - Parameters:
++    ///     - isIPhoneX: if device is >= iPhone X, bottom gap will be zero
++    func addConstraints(_ isIPhoneX: Bool) {
++        addConstraintsToAppTitleBar()
++        addConstraintsToTopInteractableElements()
++        addConstraintsToButtonBar(isIPhoneX)
++    }
++    
++    /// Adds constraints to subviews forming the app title bar (top bar)
++    func addConstraintsToAppTitleBar() {
++        // MARK: App Title Bar
++        
++        // Switch off all autoresizing masks translate
++        appTitleLabel.translatesAutoresizingMaskIntoConstraints = false
++        coordsLabel.translatesAutoresizingMaskIntoConstraints = false
++        
++        let safeAreaGuide = self.view.safeAreaLayoutGuide
++        let safeAreaInsets = self.view.safeAreaInsets
++        
++        NSLayoutConstraint(item: coordsLabel, attribute: .trailing, relatedBy: .equal, toItem: self.view, attribute: .trailing, multiplier: 1, constant: -5).isActive = true
++        // not using self.topLayoutGuide as it will leave a gap between status bar and this, if used on non-notch devices
++        NSLayoutConstraint(item: appTitleLabel, attribute: .top, relatedBy: .equal, toItem: safeAreaGuide, attribute: .top, multiplier: 1, constant: safeAreaInsets.top).isActive = true
++        NSLayoutConstraint(item: appTitleLabel, attribute: .lastBaseline, relatedBy: .equal, toItem: coordsLabel, attribute: .lastBaseline, multiplier: 1, constant: 0).isActive = true
++        NSLayoutConstraint(item: appTitleLabel, attribute: .trailing, relatedBy: .equal, toItem: coordsLabel, attribute: .trailing, multiplier: 1, constant: 5).isActive = true
++        NSLayoutConstraint(item: appTitleLabel, attribute: .leading, relatedBy: .equal, toItem: coordsLabel, attribute: .leading, multiplier: 1, constant: 0).isActive = true
++        NSLayoutConstraint(item: appTitleLabel, attribute: .leading, relatedBy: .equal, toItem: self.view, attribute: .leading, multiplier: 1, constant: 0).isActive = true
++    }
++    
++    /// Adds constraints to subviews forming the informational labels (top right side; i.e. speed, elapse time labels)
++    func addConstraintsToTopInteractableElements() {
++        // MARK: Information Labels (on right)
++        
++        /// offset from center, without obstructing signal view
++        let kSignalViewOffset: CGFloat = 25
++        
++        // Switch off all autoresizing masks translate
++        timeLabel.translatesAutoresizingMaskIntoConstraints = false
++        speedLabel.translatesAutoresizingMaskIntoConstraints = false
++        totalTrackedDistanceLabel.translatesAutoresizingMaskIntoConstraints = false
++        currentSegmentDistanceLabel.translatesAutoresizingMaskIntoConstraints = false
++        
++        let safeAreaGuide = self.view.safeAreaLayoutGuide
++        
++        NSLayoutConstraint(item: timeLabel, attribute: .trailing, relatedBy: .equal, toItem: self.view, attribute: .trailing, multiplier: 1, constant: -7).isActive = true
++        NSLayoutConstraint(item: timeLabel, attribute: .leading, relatedBy: .equal, toItem: self.view, attribute: .centerX, multiplier: 1, constant: kSignalViewOffset).isActive = true
++        // self.topLayoutGuide takes care of the iPhone X safe area, iPhoneXdiff not needed
++        NSLayoutConstraint(item: timeLabel, attribute: .top, relatedBy: .equal, toItem: self.appTitleLabel, attribute: .top, multiplier: 1, constant: 20).isActive = true
++        
++        NSLayoutConstraint(item: speedLabel, attribute: .trailing, relatedBy: .equal, toItem: self.view, attribute: .trailing, multiplier: 1, constant: -7).isActive = true
++        NSLayoutConstraint(item: speedLabel, attribute: .leading, relatedBy: .equal, toItem: self.view, attribute: .centerX, multiplier: 1, constant: kSignalViewOffset).isActive = true
++        NSLayoutConstraint(item: speedLabel, attribute: .top, relatedBy: .equal, toItem: timeLabel, attribute: .bottom, multiplier: 1, constant: -5).isActive = true
++        
++        NSLayoutConstraint(item: totalTrackedDistanceLabel, attribute: .trailing, relatedBy: .equal, toItem: self.view, attribute: .trailing, multiplier: 1, constant: -7).isActive = true
++        NSLayoutConstraint(item: totalTrackedDistanceLabel, attribute: .leading, relatedBy: .equal, toItem: self.view, attribute: .centerX, multiplier: 1, constant: kSignalViewOffset).isActive = true
++        NSLayoutConstraint(item: totalTrackedDistanceLabel, attribute: .top, relatedBy: .equal, toItem: speedLabel, attribute: .bottom, multiplier: 1, constant: 5).isActive = true
++        
++        NSLayoutConstraint(item: currentSegmentDistanceLabel, attribute: .trailing, relatedBy: .equal, toItem: self.view, attribute: .trailing, multiplier: 1, constant: -7).isActive = true
++        NSLayoutConstraint(item: currentSegmentDistanceLabel, attribute: .leading, relatedBy: .equal, toItem: self.view, attribute: .centerX, multiplier: 1, constant: kSignalViewOffset).isActive = true
++        NSLayoutConstraint(item: currentSegmentDistanceLabel, attribute: .top, relatedBy: .equal, toItem: totalTrackedDistanceLabel, attribute: .bottom, multiplier: 1, constant: 0).isActive = true
++        
++        // MARK: Signal Chart & Label (on center)
++        
++        signalImageView.translatesAutoresizingMaskIntoConstraints = false
++        signalAccuracyLabel.translatesAutoresizingMaskIntoConstraints = false
++        
++        NSLayoutConstraint(item: signalImageView, attribute: .centerX, relatedBy: .equal, toItem: safeAreaGuide, attribute: .centerX, multiplier: 1, constant: 0).isActive = true
++        NSLayoutConstraint(item: signalImageView, attribute: .top, relatedBy: .equal, toItem: self.appTitleLabel, attribute: .bottom, multiplier: 1, constant: 5).isActive = true
++        NSLayoutConstraint(item: signalImageView, attribute: .width, relatedBy: .equal, toItem: nil, attribute: .width, multiplier: 1, constant: 50).isActive = true
++        NSLayoutConstraint(item: signalImageView, attribute: .height, relatedBy: .equal, toItem: nil, attribute: .height, multiplier: 1, constant: 30).isActive = true
++        NSLayoutConstraint(item: signalAccuracyLabel, attribute: .centerX, relatedBy: .equal, toItem: safeAreaGuide, attribute: .centerX, multiplier: 1, constant: 0).isActive = true
++        NSLayoutConstraint(item: signalAccuracyLabel, attribute: .top, relatedBy: .equal, toItem: signalImageView, attribute: .bottom, multiplier: 1, constant: 2).isActive = true
++        
++        // MARK: Buttons (on left)
++        
++        folderButton.translatesAutoresizingMaskIntoConstraints = false
++        preferencesButton.translatesAutoresizingMaskIntoConstraints = false
++        shareButton.translatesAutoresizingMaskIntoConstraints = false
++        aboutButton.translatesAutoresizingMaskIntoConstraints = false
++        
++        NSLayoutConstraint(item: folderButton, attribute: .leading, relatedBy: .equal, toItem: self.view, attribute: .leading, multiplier: 1, constant: 5).isActive = true
++        NSLayoutConstraint(item: folderButton, attribute: .top, relatedBy: .equal, toItem: appTitleLabel, attribute: .bottom, multiplier: 1, constant: 5).isActive = true
++        NSLayoutConstraint(item: folderButton, attribute: .width, relatedBy: .equal, toItem: nil, attribute: .width, multiplier: 1, constant: kButtonSmallSize).isActive = true
++        NSLayoutConstraint(item: folderButton, attribute: .height, relatedBy: .equal, toItem: nil, attribute: .height, multiplier: 1, constant: kButtonSmallSize).isActive = true
++        
++        NSLayoutConstraint(item: preferencesButton, attribute: .centerY, relatedBy: .equal, toItem: folderButton, attribute: .centerY, multiplier: 1, constant: 0).isActive = true
++        NSLayoutConstraint(item: preferencesButton, attribute: .leading, relatedBy: .equal, toItem: folderButton, attribute: .trailing, multiplier: 1, constant: 10).isActive = true
++        NSLayoutConstraint(item: preferencesButton, attribute: .width, relatedBy: .equal, toItem: nil, attribute: .width, multiplier: 1, constant: 32).isActive = true
++        NSLayoutConstraint(item: preferencesButton, attribute: .height, relatedBy: .equal, toItem: nil, attribute: .height, multiplier: 1, constant: 32).isActive = true
++        
++        NSLayoutConstraint(item: shareButton, attribute: .centerY, relatedBy: .equal, toItem: folderButton, attribute: .centerY, multiplier: 1, constant: 0).isActive = true
++        NSLayoutConstraint(item: shareButton, attribute: .leading, relatedBy: .equal, toItem: preferencesButton, attribute: .trailing, multiplier: 1, constant: 10).isActive = true
++        NSLayoutConstraint(item: shareButton, attribute: .width, relatedBy: .equal, toItem: nil, attribute: .width, multiplier: 1, constant: 32).isActive = true
++        NSLayoutConstraint(item: shareButton, attribute: .height, relatedBy: .equal, toItem: nil, attribute: .height, multiplier: 1, constant: 32).isActive = true
++        
++        NSLayoutConstraint(item: aboutButton, attribute: .top, relatedBy: .equal, toItem: folderButton, attribute: .bottom, multiplier: 1, constant: 5).isActive = true
++        NSLayoutConstraint(item: aboutButton, attribute: .centerX, relatedBy: .equal, toItem: folderButton, attribute: .centerX, multiplier: 1, constant: 0).isActive = true
++        NSLayoutConstraint(item: aboutButton, attribute: .width, relatedBy: .equal, toItem: nil, attribute: .width, multiplier: 1, constant: 32).isActive = true
++        NSLayoutConstraint(item: aboutButton, attribute: .height, relatedBy: .equal, toItem: nil, attribute: .height, multiplier: 1, constant: 32).isActive = true
++
++    }
++    
++    /// Adds constraints to subviews forming the button bar (bottom session controls bar)
++    func addConstraintsToButtonBar(_ isIPhoneX: Bool) {
++        // MARK: Button Bar
++        
++        // constants
++        let kBottomGap: CGFloat = isIPhoneX ? 0 : 15
++        let kBottomDistance: CGFloat = kBottomGap + 24
++        
++        // Switch off all autoresizing masks translate
++        trackerButton.translatesAutoresizingMaskIntoConstraints = false
++        newPinButton.translatesAutoresizingMaskIntoConstraints = false
++        followUserButton.translatesAutoresizingMaskIntoConstraints = false
++        saveButton.translatesAutoresizingMaskIntoConstraints = false
++        resetButton.translatesAutoresizingMaskIntoConstraints = false
++        
++        let safeAreaGuide = self.view.safeAreaLayoutGuide
++        
++        // set trackerButton to horizontal center of view
++        NSLayoutConstraint(item: trackerButton, attribute: .centerX, relatedBy: .equal, toItem: map, attribute: .centerX, multiplier: 1, constant: 0).isActive = true
++        
++        // seperation distance between each button
++        NSLayoutConstraint(item: trackerButton, attribute: .leading, relatedBy: .equal, toItem: newPinButton, attribute: .trailing, multiplier: 1, constant: kButtonSeparation).isActive = true
++        NSLayoutConstraint(item: newPinButton, attribute: .leading, relatedBy: .equal, toItem: followUserButton, attribute: .trailing, multiplier: 1, constant: kButtonSeparation).isActive = true
++        NSLayoutConstraint(item: saveButton, attribute: .leading, relatedBy: .equal, toItem: trackerButton, attribute: .trailing, multiplier: 1, constant: kButtonSeparation).isActive = true
++        NSLayoutConstraint(item: resetButton, attribute: .leading, relatedBy: .equal, toItem: saveButton, attribute: .trailing, multiplier: 1, constant: kButtonSeparation).isActive = true
++
++        // seperation distance between button and bottom of view
++        NSLayoutConstraint(item: safeAreaGuide, attribute: .bottom, relatedBy: .equal, toItem: followUserButton, attribute: .bottom, multiplier: 1, constant: kBottomDistance).isActive = true
++        NSLayoutConstraint(item: safeAreaGuide, attribute: .bottom, relatedBy: .equal, toItem: newPinButton, attribute: .bottom, multiplier: 1, constant: kBottomDistance).isActive = true
++        NSLayoutConstraint(item: safeAreaGuide, attribute: .bottom, relatedBy: .equal, toItem: trackerButton, attribute: .bottom, multiplier: 1, constant: kBottomGap).isActive = true
++        NSLayoutConstraint(item: safeAreaGuide, attribute: .bottom, relatedBy: .equal, toItem: saveButton, attribute: .bottom, multiplier: 1, constant: kBottomDistance).isActive = true
++        NSLayoutConstraint(item: safeAreaGuide, attribute: .bottom, relatedBy: .equal, toItem: resetButton, attribute: .bottom, multiplier: 1, constant: kBottomDistance).isActive = true
++        
++        // fixed dimensions for all buttons
++        NSLayoutConstraint(item: followUserButton, attribute: .height, relatedBy: .equal, toItem: nil, attribute: .notAnAttribute, multiplier: 1, constant: kButtonSmallSize).isActive = true
++        NSLayoutConstraint(item: followUserButton, attribute: .width, relatedBy: .equal, toItem: nil, attribute: .notAnAttribute, multiplier: 1, constant: kButtonSmallSize).isActive = true
++        NSLayoutConstraint(item: newPinButton, attribute: .height, relatedBy: .equal, toItem: nil, attribute: .notAnAttribute, multiplier: 1, constant: kButtonSmallSize).isActive = true
++        NSLayoutConstraint(item: newPinButton, attribute: .width, relatedBy: .equal, toItem: nil, attribute: .notAnAttribute, multiplier: 1, constant: kButtonSmallSize).isActive = true
++        NSLayoutConstraint(item: trackerButton, attribute: .height, relatedBy: .equal, toItem: nil, attribute: .notAnAttribute, multiplier: 1, constant: kButtonLargeSize).isActive = true
++        NSLayoutConstraint(item: trackerButton, attribute: .width, relatedBy: .equal, toItem: nil, attribute: .notAnAttribute, multiplier: 1, constant: kButtonLargeSize).isActive = true
++        NSLayoutConstraint(item: saveButton, attribute: .height, relatedBy: .equal, toItem: nil, attribute: .notAnAttribute, multiplier: 1, constant: kButtonSmallSize).isActive = true
++        NSLayoutConstraint(item: saveButton, attribute: .width, relatedBy: .equal, toItem: nil, attribute: .notAnAttribute, multiplier: 1, constant: kButtonSmallSize).isActive = true
++        NSLayoutConstraint(item: resetButton, attribute: .height, relatedBy: .equal, toItem: nil, attribute: .notAnAttribute, multiplier: 1, constant: kButtonSmallSize).isActive = true
++        NSLayoutConstraint(item: resetButton, attribute: .width, relatedBy: .equal, toItem: nil, attribute: .notAnAttribute, multiplier: 1, constant: kButtonSmallSize).isActive = true
++    }
++	
++	private func addScaleBarOnTopOfTrackButton() {
++        scaleBar = GPXScaleBar(mapView: map, useImperial: Preferences.shared.useImperial)
++        view.addSubview(scaleBar)
++        
++        map.scaleBar = scaleBar
++		scaleBar.translatesAutoresizingMaskIntoConstraints = false
++        
++		NSLayoutConstraint.activate([
++			scaleBar.centerXAnchor.constraint(
++				equalTo: trackerButton.centerXAnchor,
++                constant: -scaleBar.frame.width / 2
++			),
++			scaleBar.bottomAnchor.constraint(
++				equalTo: trackerButton.topAnchor,
++				constant: -36
++			)
++		])
++	}
++    
++    @available(iOS 11, *)
++    func addConstraintsToCompassView(_ view: MKCompassButton) {
++        NSLayoutConstraint(item: view, attribute: .top, relatedBy: .equal, toItem: self.signalAccuracyLabel, attribute: .bottom, multiplier: 1, constant: 8).isActive = true
++        
++        NSLayoutConstraint(item: view, attribute: .centerX, relatedBy: .equal, toItem: self.view, attribute: .centerX, multiplier: 1, constant: 0).isActive = true
++    }
++    
++    /// For handling compass location changes when orientation is switched.
++    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
++        super.viewWillTransition(to: size, with: coordinator)
++        
++        DispatchQueue.main.async {
++            // set the new position of the compass.
++            self.map.compassRect = CGRect(x: size.width/2 - 18, y: 70.0, width: 36, height: 36)
++            // update compass frame location
++            self.map.layoutSubviews()
++        }
++        
++    }
++    
++    /// Will update polyline color when invoked
++    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
++        updatePolylineColor()
++    }
++    
++    /// Updates polyline color
++    func updatePolylineColor() {
++        
++        for overlay in map.overlays where overlay is MKPolyline {
++            map.removeOverlay(overlay)
++            map.addOverlayOnTop(overlay)
++        }
++    }
++    
++    ///
++    /// Asks the system to notify the app on some events
++    ///
++    /// Current implementation requests the system to notify the app:
++    ///
++    ///  1. whenever it enters background
++    ///  2. whenever it becomes active
++    ///  3. whenever it will terminate
++    ///  4. whenever it receives a file from Apple Watch
++    ///  5. whenever it should load file from Core Data recovery mechanism
++    ///
++    func addNotificationObservers() {
++        let notificationCenter = NotificationCenter.default
++        
++        notificationCenter.addObserver(self, selector: #selector(ViewController.didEnterBackground),
++            name: UIApplication.didEnterBackgroundNotification, object: nil)
++       
++        notificationCenter.addObserver(self, selector: #selector(applicationDidBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
++
++        notificationCenter.addObserver(self, selector: #selector(applicationWillTerminate), name: UIApplication.willTerminateNotification, object: nil)
++
++        notificationCenter.addObserver(self, selector: #selector(presentReceivedFile(_:)), name: .didReceiveFileFromAppleWatch, object: nil)
++
++        notificationCenter.addObserver(self, selector: #selector(loadRecoveredFile(_:)), name: .loadRecoveredFile, object: nil)
++        
++        notificationCenter.addObserver(self, selector: #selector(updateAppearance), name: .updateAppearance, object: nil)
++    }
++    
++    /// To update appearance when mapView requests to do so
++    @objc func updateAppearance() {
++        if #available(iOS 13, *) {
++            setNeedsStatusBarAppearanceUpdate()
++            updatePolylineColor()
++        }
++    }
++    
++    ///
++    /// Presents alert when file received from Apple Watch
++    ///
++    @objc func presentReceivedFile(_ notification: Notification) {
++        DispatchQueue.main.async {
++            guard let fileName = notification.userInfo?["fileName"] as? String? else { return }
++            // alert to display to notify user that file has been received.
++            let alertTitle = NSLocalizedString("WATCH_FILE_RECEIVED_TITLE", comment: "no comment")
++            let alertMessage = NSLocalizedString("WATCH_FILE_RECEIVED_MESSAGE", comment: "no comment")
++            let controller = UIAlertController(title: alertTitle, message: String(format: alertMessage, fileName ?? ""), preferredStyle: .alert)
++            let action = UIAlertAction(title: NSLocalizedString("DONE", comment: "no comment"), style: .default) { _ in
++                print("ViewController:: Presented file received message from WatchConnectivity Session")
++            }
++            
++            controller.addAction(action)
++            self.present(controller, animated: true, completion: nil)
++        }
++    }
++    
++    /// Returns a string with the format of current date dd-MMM-yyyy-HHmm' (20-Jun-2018-1133)
++    ///
++    func defaultFilename() -> String {
++        let defaultDate = DefaultDateFormat()
++        let dateStr = defaultDate.getDateFromPrefs()
++        print("fileName:" + dateStr)
++        return dateStr
++    }
++    
++    @objc func loadRecoveredFile(_ notification: Notification) {
++        guard let root = notification.userInfo?["recoveredRoot"] as? GPXRoot else {
++            return
++        }
++        guard let fileName = notification.userInfo?["fileName"] as? String else {
++            return
++        }
++
++        lastGpxFilename = fileName
++        // Adds last file name to core data as well
++        self.map.coreDataHelper.add(toCoreData: fileName, willContinueAfterSave: false)
++        // Force reset timer just in case reset does not do it
++        self.stopWatch.reset()
++        // Load data
++        self.map.continueFromGPXRoot(root)
++        // Stop following user
++        self.followUser = false
++        // Center map in GPX data
++        self.map.regionToGPXExtent()
++        self.gpxTrackingStatus = .paused
++        
++        self.totalTrackedDistanceLabel.distance = self.map.session.totalTrackedDistance
++    }
++    
++    ///
++    /// Called when the application Becomes active (background -> foreground) this function verifies if
++    /// it has permissions to get the location.
++    ///
++    @objc func applicationDidBecomeActive() {
++        DispatchQueue.global().async {
++            print("viewController:: applicationDidBecomeActive wasSentToBackground: \(self.wasSentToBackground) locationServices: \(CLLocationManager.locationServicesEnabled())")
++        }
++
++        // If the app was never sent to background do nothing
++        if !wasSentToBackground {
++            return
++        }
++        locationManager.startUpdatingLocation()
++        locationManager.startUpdatingHeading()
++    }
++    
++    ///
++    /// Actions to do in case the app entered in background
++    ///
++    /// In current implementation if the app is not tracking it requests the OS to stop
++    /// sharing the location to save battery.
++    ///
++    ///
++    @objc func didEnterBackground() {
++        wasSentToBackground = true // flag the application was sent to background
++        print("viewController:: didEnterBackground")
++        if gpxTrackingStatus != .tracking {
++            locationManager.stopUpdatingLocation()
++        }
++    }
++    
++    ///
++    /// Actions to do when the app will terminate
++    ///
++    /// In current implementation it removes all the temporary files that may have been created
++    @objc func applicationWillTerminate() {
++        print("viewController:: applicationWillTerminate")
++        GPXFileManager.removeTemporaryFiles()
++        if gpxTrackingStatus == .notStarted {
++            map.coreDataHelper.coreDataDeleteAll(of: CDTrackpoint.self)
++            map.coreDataHelper.coreDataDeleteAll(of: CDWaypoint.self)
++        }
++    }
++    
++    ///
++    /// Displays the view controller with the list of GPX Files.
++    ///
++    @objc func openFolderViewController() {
++        print("openFolderViewController")
++        let vc = GPXFilesTableViewController(nibName: nil, bundle: nil)
++        vc.delegate = self
++        let navController = UINavigationController(rootViewController: vc)
++        self.present(navController, animated: true) { () -> Void in }
++    }
++    
++    ///
++    /// Displays the view controller with the About information.
++    ///
++    @objc func openAboutViewController() {
++        let vc = AboutViewController(nibName: nil, bundle: nil)
++        let navController = UINavigationController(rootViewController: vc)
++        self.present(navController, animated: true) { () -> Void in }
++    }
++    
++    ///
++    /// Opens Preferences table view controller
++    ///
++    @objc func openPreferencesTableViewController() {
++        print("openPreferencesTableViewController")
++        let vc = PreferencesTableViewController(style: .grouped)
++        vc.delegate = self
++        let navController = UINavigationController(rootViewController: vc)
++        self.present(navController, animated: true)
++    }
++
++    ///
++    /// Opens an Activity View Controller to share the file
++    /// 
++    @objc func openShare() {
++        print("ViewController: Share Button tapped")
++        
++        // async such that process is done in background
++        DispatchQueue.global(qos: .utility).async {
++            // UI code
++            DispatchQueue.main.sync {
++                self.shouldShowShareActivityIndicator(true)
++            }
++            
++            // Create a temporary file
++            let filename =  self.lastGpxFilename.isEmpty ? self.defaultFilename() : self.lastGpxFilename
++            let gpxString: String = self.map.exportToGPXString()
++            let tmpFile = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("\(filename).gpx")
++            GPXFileManager.saveToURL(tmpFile, gpxContents: gpxString)
++            // Add it to the list of tmpFiles.
++            // Note: it may add more than once the same file to the list.
++            
++            // UI code
++            DispatchQueue.main.sync {
++                // Call Share activity View controller
++                let activityViewController = UIActivityViewController(activityItems: [tmpFile], applicationActivities: nil)
++                activityViewController.popoverPresentationController?.sourceView = self.shareButton
++                activityViewController.popoverPresentationController?.sourceRect = self.shareButton.bounds
++                self.present(activityViewController, animated: true, completion: nil)
++                self.shouldShowShareActivityIndicator(false)
++            }
++            
++        }
++    }
++    
++    /// Displays spinning activity indicator for share button when true
++    func shouldShowShareActivityIndicator(_ isTrue: Bool) {
++        // setup
++        shareActivityIndicator.color = shareActivityColor
++        shareActivityIndicator.frame = CGRect(x: 0, y: 0, width: 32, height: 32)
++        shareActivityIndicator.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
++        
++        if isTrue {
++            // cross dissolve from button to indicator
++            UIView.transition(with: self.shareButton, duration: 0.35, options: [.transitionCrossDissolve], animations: {
++                self.shareButton.addSubview(self.shareActivityIndicator)
++            }, completion: nil)
++            
++            shareActivityIndicator.startAnimating()
++            shareButton.setImage(nil, for: UIControl.State())
++            shareButton.isUserInteractionEnabled = false
++        } else {
++            // cross dissolve from indicator to button
++            UIView.transition(with: self.shareButton, duration: 0.35, options: [.transitionCrossDissolve], animations: {
++                self.shareActivityIndicator.removeFromSuperview()
++            }, completion: nil)
++            
++            shareActivityIndicator.stopAnimating()
++            shareButton.setImage(UIImage(named: "share"), for: UIControl.State())
++            shareButton.isUserInteractionEnabled = true
++        }
++    }
++    
++    ///
++    /// After invoking this fuction, the map will not be centered on current user position.
++    ///
++    @objc func stopFollowingUser(_ gesture: UIPanGestureRecognizer) {
++        if self.followUser {
++            self.followUser = false
++        }
++    }
++    
++    ///
++    /// UIGestureRecognizerDelegate required for stopFollowingUser
++    ///
++    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
++                           shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
++        return true
++    }
++   
++    ///
++    /// If user long presses the map for a while a Pin (Waypoint/Annotation) will be dropped at that point.
++    ///
++    @objc func addPinAtTappedLocation(_ gesture: UILongPressGestureRecognizer) {
++        if  gesture.state == UIGestureRecognizer.State.began {
++            print("Adding Pin map Long Press Gesture")
++            let point: CGPoint = gesture.location(in: self.map)
++            map.addWaypointAtViewPoint(point)
++            // Allows save and reset
++            self.hasWaypoints = true
++        }
++    }
++    
++    /// Does nothing in current implementation.
++    func pinchGesture(_ gesture: UIPinchGestureRecognizer) {
++        print("pinchGesture")
++    }
++    
++    ///
++    /// It adds a Pin (Waypoint/Annotation) to current user location.
++    ///
++    @objc func addPinAtMyLocation() {
++        print("Adding Pin at my location")
++        let altitude = locationManager.location?.altitude
++        let waypoint = GPXWaypoint(coordinate: locationManager.location?.coordinate ?? map.userLocation.coordinate, altitude: altitude)
++        map.addWaypoint(waypoint)
++        map.coreDataHelper.add(toCoreData: waypoint)
++        self.hasWaypoints = true
++    }
++    
++    ///
++    /// Triggered when follow Button is taped.
++    ///
++    /// Trogles between following or not following the user, that is, automatically centering the map
++    ///  in current user´s position.
++    ///
++    @objc func followButtonTroggler() {
++        self.followUser = !self.followUser
++    }
++    
++    ///
++    /// Triggered when reset button was tapped.
++    ///
++    /// It sets map to status .notStarted which clears the map.
++    ///
++    @objc func resetButtonTapped() {
++        
++        let sheet = UIAlertController(title: nil, message: NSLocalizedString("SELECT_OPTION", comment: "no comment"), preferredStyle: .actionSheet)
++          
++        let cancelOption = UIAlertAction(title: NSLocalizedString("CANCEL", comment: "no comment"), style: .cancel) { _ in
++        }
++        
++        let saveAndStartOption = UIAlertAction(title: NSLocalizedString("SAVE_START_NEW", comment: "no comment"), style: .default) { _ in
++            // Save
++            self.saveButtonTapped(withReset: true)
++        }
++       
++        let deleteOption = UIAlertAction(title: NSLocalizedString("RESET", comment: "no comment"), style: .destructive) { _ in
++            self.gpxTrackingStatus = .notStarted
++        }
++        
++        sheet.addAction(cancelOption)
++        sheet.addAction(saveAndStartOption)
++        sheet.addAction(deleteOption)
++        
++        self.present(sheet, animated: true) {
++            print("Loaded actionSheet")
++        }
++    }
++
++    ///
++    /// Main Start/Pause Button was tapped.
++    ///
++    /// It sets the status to tracking or paused.
++    ///
++    @objc func trackerButtonTapped() {
++        print("startGpxTracking::")
++        switch gpxTrackingStatus {
++        case .notStarted:
++            gpxTrackingStatus = .tracking
++        case .tracking:
++            gpxTrackingStatus = .paused
++        case .paused:
++            gpxTrackingStatus = .tracking
++        }
++    }
++    
++    ///
++    /// Triggered when user taps on save Button
++    ///
++    /// It prompts the user to set a name of the file.
++    ///
++    @objc func saveButtonTapped(withReset: Bool = false) {
++        print("save Button tapped")
++        // ignore the save button if there is nothing to save.
++        if (gpxTrackingStatus == .notStarted) && !self.hasWaypoints {
++            return
++        }
++        
++        // save alert configuration and presentation
++        let alertController = UIAlertController(title: NSLocalizedString("SAVE_AS", comment: "no comment"), message: NSLocalizedString("ENTER_SESSION_NAME", comment: "no comment"), preferredStyle: .alert)
++        
++        alertController.addTextField(configurationHandler: { (textField) in
++            textField.clearButtonMode = .always
++            textField.text = self.lastGpxFilename.isEmpty ? self.defaultFilename() : self.lastGpxFilename
++        })
++        
++        let saveAction = UIAlertAction(title: NSLocalizedString("SAVE", comment: "no comment"), style: .default) { _ in
++            let filename = (alertController.textFields?[0].text!.utf16.count == 0) ? self.defaultFilename() : alertController.textFields?[0].text
++            print("Save File \(String(describing: filename))")
++            // Export to a file
++            let gpxString = self.map.exportToGPXString()
++            GPXFileManager.save(filename!, gpxContents: gpxString)
++            self.lastGpxFilename = filename!
++            self.map.coreDataHelper.coreDataDeleteAll(of: CDRoot.self)
++            self.map.coreDataHelper.clearAllExceptWaypoints()
++            self.map.coreDataHelper.add(toCoreData: filename!, willContinueAfterSave: true)
++            if withReset {
++                self.gpxTrackingStatus = .notStarted
++            }
++        }
++        let cancelAction = UIAlertAction(title: NSLocalizedString("CANCEL", comment: "no comment"), style: .cancel) { _ in }
++        
++        alertController.addAction(saveAction)
++        alertController.addAction(cancelAction)
++        
++        present(alertController, animated: true)
++        
++    }
++    
++    ///
++    /// There was a memory warning. Right now, it does nothing but to log a line.
++    ///
++    override func didReceiveMemoryWarning() {
++        print("didReceiveMemoryWarning")
++        super.didReceiveMemoryWarning()
++        // Dispose of any resources that can be recreated.
++    }
++    
++    ///
++    /// Checks the location services status
++    /// - Are location services enabled (access to location device wide)? If not => displays an alert
++    /// - Are location services allowed to this app? If not => displays an alert
++    ///
++    /// - Seealso: displayLocationServicesDisabledAlert, displayLocationServicesDeniedAlert
++    ///
++    func checkLocationServicesStatus() {
++        let authorizationStatus = CLLocationManager.authorizationStatus()
++        
++        // Has the user already made a permission choice?
++        guard authorizationStatus != .notDetermined else {
++            // We should take no action until the user has made a choice
++            // Note that we request location permission as part of the property `locationManager` init
++            return
++        }
++        
++        // Does the app have permissions to use the location servies?
++        guard [.authorizedAlways, .authorizedWhenInUse ].contains(authorizationStatus) else {
++            displayLocationServicesDeniedAlert()
++            return
++        }
++        
++        // Are location services enabled?
++		if authorizationStatus == .denied {
++            displayLocationServicesDisabledAlert()
++        }
++    }
++    ///
++    /// Displays an alert that informs the user that location services are disabled.
++    ///
++    /// When location services are disabled is for all applications, not only this one.
++    ///
++    func displayLocationServicesDisabledAlert() {
++        
++        let alertController = UIAlertController(title: NSLocalizedString("LOCATION_SERVICES_DISABLED", comment: "no comment"), message: NSLocalizedString("ENABLE_LOCATION_SERVICES", comment: "no comment"), preferredStyle: .alert)
++        let settingsAction = UIAlertAction(title: NSLocalizedString("SETTINGS", comment: "no comment"), style: .default) { _ in
++            if let url = URL(string: UIApplication.openSettingsURLString) {
++				UIApplication.shared.open(url)
++            }
++        }
++        let cancelAction = UIAlertAction(title: NSLocalizedString("CANCEL", comment: "no comment"), style: .cancel) { _ in }
++        
++        alertController.addAction(settingsAction)
++        alertController.addAction(cancelAction)
++        
++        present(alertController, animated: true)
++
++    }
++
++    ///
++    /// Displays an alert that informs the user that access to location was denied for this app (other apps may have access).
++    /// It also dispays a button allows the user to go to settings to activate the location.
++    ///
++    func displayLocationServicesDeniedAlert() {
++        if isDisplayingLocationServicesDenied {
++            return // display it only once.
++        }
++        let alertController = UIAlertController(title: NSLocalizedString("ACCESS_TO_LOCATION_DENIED", comment: "no comment"),
++                                                message: NSLocalizedString("ALLOW_LOCATION", comment: "no comment"),
++                                                preferredStyle: .alert)
++        let settingsAction = UIAlertAction(title: NSLocalizedString("SETTINGS", comment: "no comment"),
++										   style: .default) { _ in
++			if let url = URL(string: UIApplication.openSettingsURLString) {
++				UIApplication.shared.open(url)
++			}
++		}
++		let cancelAction = UIAlertAction(title: NSLocalizedString("CANCEL",
++                                                                  comment: "no comment"),
++                                         style: .cancel) { _ in }
++        
++        alertController.addAction(settingsAction)
++        alertController.addAction(cancelAction)
++        
++        present(alertController, animated: true)
++        isDisplayingLocationServicesDenied = false
++    }
++    
++    /// force dark mode (i.e. white text, if map content is known to be dark)
++    func textColorAdaptations() {
++        let needForceDarkMode = self.map.tileServer.needForceDarkMode
++        self.signalAccuracyLabel.textColor = needForceDarkMode ? .white : nil
++        self.timeLabel.textColor = needForceDarkMode ? .white : nil
++        self.speedLabel.textColor = needForceDarkMode ? .white : nil
++        self.totalTrackedDistanceLabel.textColor = needForceDarkMode ? .white : nil
++        self.currentSegmentDistanceLabel.textColor = needForceDarkMode ? .white : nil
++    }
++
++}
++
++// MARK: StopWatchDelegate
++
++///
++/// Updates the `timeLabel` with the `stopWatch` elapsedTime.
++/// In the main ViewController there is a label that holds the elapsed time, that is, the time that
++/// user has been tracking his position.
++///
++///
++extension ViewController: StopWatchDelegate {
++    func stopWatch(_ stropWatch: StopWatch, didUpdateElapsedTimeString elapsedTimeString: String) {
++        timeLabel.text = elapsedTimeString
++    }
++}
++
++// MARK: PreferencesTableViewControllerDelegate
++
++extension ViewController: PreferencesTableViewControllerDelegate {
++    
++    /// Update the activity type that the location manager is using.
++    ///
++    /// When user changes the activity type in preferences, this function is invoked to update the activity type of the location manager.
++    ///
++    func didUpdateActivityType(_ newActivityType: Int) {
++        print("PreferencesTableViewControllerDelegate:: didUpdateActivityType: \(newActivityType)")
++        self.locationManager.activityType = CLActivityType(rawValue: newActivityType)!
++    }
++    
++    ///
++    /// Updates the `tileServer` the map is using.
++    ///
++    /// If user enters preferences and he changes his preferences regarding the `tileServer`,
++    /// the map of the main `ViewController` needs to be aware of it.
++    ///
++    /// `PreferencesTableViewController` informs the main `ViewController` through this delegate.
++    ///
++    func didUpdateTileServer(_ newGpxTileServer: Int) {
++        print("PreferencesTableViewControllerDelegate:: didUpdateTileServer: \(newGpxTileServer)")
++        let newTileServer = GPXTileServer(rawValue: newGpxTileServer)!
++        self.map.tileServer = newTileServer
++        self.textColorAdaptations()
++    }
++    
++    ///
++    /// If user changed the setting of using cache, through this delegate, the main `ViewController`
++    /// informs the map to behave accordingly.
++    ///
++    func didUpdateUseCache(_ newUseCache: Bool) {
++        print("PreferencesTableViewControllerDelegate:: didUpdateUseCache: \(newUseCache)")
++        self.map.useCache = newUseCache
++    }
++    
++    // User changed the setting of use imperial units.
++    func didUpdateUseImperial(_ newUseImperial: Bool) {
++        print("PreferencesTableViewControllerDelegate:: didUpdateUseImperial: \(newUseImperial)")
++        useImperial = newUseImperial
++        totalTrackedDistanceLabel.useImperial = useImperial
++        currentSegmentDistanceLabel.useImperial = useImperial
++        // Because we dont know if last speed was unknown we set it as unknown.
++        // In regular circunstances it will go to the new units relatively fast.
++        speedLabel.text = kUnknownSpeedText
++        signalAccuracyLabel.text = kUnknownAccuracyText
++        
++        //Update the Scale Bar units
++        map.scaleBar?.useImperial = useImperial
++        
++    }
++    
++    func didUpdateShowScaleBar(_ newShowScaleBar: Bool) {
++        print("PreferencesTableViewControllerDelegate:: didUpdateShowScaleBar: \(newShowScaleBar)")
++        self.scaleBar.isHidden = !newShowScaleBar
++    }
++    
++    // User changed the setting of use imperial units.
++    func didUpdateKeepScreenAlwaysOn(_ newKeepScreenAlwaysOn: Bool) {
++        print("PreferencesTableViewControllerDelegate:: didUpdateKeepScreenAlwaysOn: \(newKeepScreenAlwaysOn)")
++        UIApplication.shared.isIdleTimerDisabled = newKeepScreenAlwaysOn
++    }
++}
++
++/// Extends `ViewController`` to support `GPXFilesTableViewControllerDelegate` function
++/// that loads into the map a the file selected by the user.
++extension ViewController: GPXFilesTableViewControllerDelegate {
++    ///
++    /// Loads the selected GPX File into the map.
++    ///
++    /// Resets whatever estatus was before.
++    ///
++    func didLoadGPXFileWithName(_ gpxFilename: String, gpxRoot: GPXRoot) {
++        // Emulate a reset button tap
++        self.resetButtonTapped()
++        // println("Loaded GPX file", gpx.gpx())
++        lastGpxFilename = gpxFilename
++        // Adds last file name to core data as well
++        self.map.coreDataHelper.add(toCoreData: gpxFilename, willContinueAfterSave: false)
++        // Force reset timer just in case reset does not do it
++        self.stopWatch.reset()
++        // Load data
++        self.map.importFromGPXRoot(gpxRoot)
++        // Stop following user
++        self.followUser = false
++        // Center map in GPX data
++        self.map.regionToGPXExtent()
++        self.gpxTrackingStatus = .paused
++        
++        self.totalTrackedDistanceLabel.distance = self.map.session.totalTrackedDistance
++        
++    }
++}
++
++// MARK: CLLocationManagerDelegate
++
++// Extends view controller to support Location Manager delegate protocol
++extension ViewController: CLLocationManagerDelegate {
++
++    /// Location manager calls this func to inform there was an error.
++    ///
++    /// It performs the following actions:
++    ///  - Sets coordsLabel with `kNotGettingLocationText`, signal accuracy to
++    ///    kUnknownAccuracyText and signalImageView to signalImage0.
++    ///  - If the error code is `CLError.denied` it calls `checkLocationServicesStatus`
++    
++    ///
++    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
++        print("didFailWithError \(error)")
++        coordsLabel.text = kNotGettingLocationText
++        signalAccuracyLabel.text = kUnknownAccuracyText
++        signalImageView.image = signalImage0
++        let locationError = error as? CLError
++        switch locationError?.code {
++        case CLError.locationUnknown:
++            print("Location Unknown")
++        case CLError.denied:
++            print("Access to location services denied. Display message")
++            checkLocationServicesStatus()
++        case CLError.headingFailure:
++            print("Heading failure")
++        default:
++            print("Default error")
++        }
++  
++    }
++    
++    ///
++    /// Updates location accuracy and map information when user is in a new position
++    ///
++    ///
++    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
++        // Update signal image accuracy
++        let newLocation = locations.first!
++        // Update horizontal accuracy
++        let hAcc = newLocation.horizontalAccuracy
++        signalAccuracyLabel.text =  hAcc.toAccuracy(useImperial: useImperial)
++        if hAcc < kSignalAccuracy6 {
++            self.signalImageView.image = signalImage6
++        } else if hAcc < kSignalAccuracy5 {
++            self.signalImageView.image = signalImage5
++        } else if hAcc < kSignalAccuracy4 {
++            self.signalImageView.image = signalImage4
++        } else if hAcc < kSignalAccuracy3 {
++            self.signalImageView.image = signalImage3
++        } else if hAcc < kSignalAccuracy2 {
++            self.signalImageView.image = signalImage2
++        } else if hAcc < kSignalAccuracy1 {
++            self.signalImageView.image = signalImage1
++        } else {
++            self.signalImageView.image = signalImage0
++        }
++        
++        // Update coordsLabel
++        let latFormat = String(format: "%.6f", newLocation.coordinate.latitude)
++        let lonFormat = String(format: "%.6f", newLocation.coordinate.longitude)
++        let altitude = newLocation.altitude.toAltitude(useImperial: useImperial)
++        coordsLabel.text = String(format: NSLocalizedString("COORDS_LABEL", comment: "no comment"), latFormat, lonFormat, altitude)
++        
++        // Update speed
++        speedLabel.text = (newLocation.speed < 0) ? kUnknownSpeedText : newLocation.speed.toSpeed(useImperial: useImperial)
++        
++        // Update Map center and track overlay if user is being followed
++        if followUser {
++            map.setCenter(newLocation.coordinate, animated: true)
++        }
++        if gpxTrackingStatus == .tracking {
++            print("didUpdateLocation: adding point to track (\(newLocation.coordinate.latitude),\(newLocation.coordinate.longitude))")
++            map.addPointToCurrentTrackSegmentAtLocation(newLocation)
++            totalTrackedDistanceLabel.distance = map.session.totalTrackedDistance
++            currentSegmentDistanceLabel.distance = map.session.currentSegmentDistance
++        }
++    }
++
++    ///
++    ///
++    /// When there is a change on the heading (direction in which the device oriented) it makes a request to the map
++    /// to updathe the heading indicator (a small arrow next to user location point)
++    ///
++    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
++        print("ViewController::didUpdateHeading true: \(newHeading.trueHeading) magnetic: \(newHeading.magneticHeading)")
++        print("mkMapcamera heading=\(map.camera.heading)")
++        map.heading = newHeading // updates heading variable
++        map.updateHeading() // updates heading view's rotation
++        
++    }
++    
++    ///
++    /// Called by the system when `CLLocationManager` is created and when the user makes a permission choice
++    ///
++    /// We handle this delegate callback so that we can check if the user has allowed location access, else we show a warning
++    ///
++    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
++        checkLocationServicesStatus()
++    }
++}
++
++extension Notification.Name {
++    static let loadRecoveredFile = Notification.Name("loadRecoveredFile")
++    static let updateAppearance = Notification.Name("updateAppearance")
++    // swiftlint:disable file_length
++}
++
++// swiftlint:enable line_length

@@ -1,0 +1,1593 @@
+diff --git a/OpenGpxTracker/GPXScaleBar.swift b/OpenGpxTracker/GPXScaleBar.swift
+index 169518a..797f4cd 100644
+--- a/OpenGpxTracker/GPXScaleBar.swift
++++ b/OpenGpxTracker/GPXScaleBar.swift
+@@ -45,6 +45,18 @@ class GPXScaleBar: UIView {
+             }
+         }
+     }
++
++    /// The current tile server being used.
++    /// Used to determine the appropriate color for overlay elements.
++    public var tileServer: GPXTileServer? {
++        didSet {
++            updateColor()
++        }
++    }
++
++    /// Custom color for the scale bar and its elements.
++    /// If nil, uses system-adaptive colors based on UIUserInterfaceStyle.
++    private var scaleBarColor: UIColor?
+     
+     /// The horizontal bar representing the scale distance.
+     private let scaleBar = UIView()
+@@ -151,27 +163,30 @@ class GPXScaleBar: UIView {
+     /// - Background styling with rounded corners and borders
+     /// - Scale bar and endpoint caps
+     /// - Distance labels with appropriate font and color
++
++    /// Computes the appropriate label color based on system appearance or custom color.
++    private var labelColor: UIColor {
++        if #available(iOS 13.0, *) {
++            return .label
++        } else {
++            return .black
++        }
++    }
++
+     private func setupViews() {
+         // Configure background - transparent, no border
+         backgroundColor = .clear
+         
+-        // Configure scale bar
+-        if #available(iOS 13.0, *) {
+-            scaleBar.backgroundColor = .label
+-        } else {
+-            scaleBar.backgroundColor = .black
+-        }
++        // Configure scale bar - use custom color if set, otherwise use system adaptive
++        let barColor = scaleBarColor ?? (labelColor)
++        scaleBar.backgroundColor = barColor
+         scaleBar.layer.cornerRadius = barHeight / 2
+         addSubview(scaleBar)
+         
+         // Create ticks (numberOfSegments + 1 for start and end)
+         for _ in 0...numberOfSegments {
+             let tick = UIView()
+-            if #available(iOS 13.0, *) {
+-                tick.backgroundColor = .label
+-            } else {
+-                tick.backgroundColor = .black
+-            }
++            tick.backgroundColor = barColor
+             tick.layer.cornerRadius = tickWidth / 2
+             addSubview(tick)
+             ticks.append(tick)
+@@ -181,11 +196,7 @@ class GPXScaleBar: UIView {
+         for _ in 0...numberOfSegments {
+             let label = UILabel()
+             label.font = .systemFont(ofSize: 11, weight: .medium)
+-            if #available(iOS 13.0, *) {
+-                label.textColor = .label
+-            } else {
+-                label.textColor = .black
+-            }
++            label.textColor = scaleBarColor ?? (labelColor)
+             label.textAlignment = .center
+             addSubview(label)
+             labels.append(label)
+@@ -479,7 +490,33 @@ class GPXScaleBar: UIView {
+         }
+     }
+     
+-    // MARK: - Public Methods
++        /// Updates the color of the scale bar and its elements based on the current tile server.
++    ///
++    /// This method is called automatically when `tileServer` is set.
++    /// It determines whether to use light or dark colors based on the tile server's characteristics.
++    private func updateColor() {
++        guard let server = tileServer else { return }
++        
++        // For Apple map, use system adaptive colors (nil means use .label)
++        // For Apple Satellite (dark), use white
++        // For other third-party maps (usually light), use black
++        switch server {
++        case .apple:
++            // Use system adaptive - set to nil
++            scaleBarColor = nil
++        case .appleSatellite:
++            // Dark background, use white
++            scaleBarColor = .white
++        default:
++            // Light background, use black
++            scaleBarColor = .black
++        }
++        
++        // Update all UI elements
++        setupViews()
++    }
++
++// MARK: - Public Methods
+     
+     /// Configures the scale bar with a map view after initialization.
+     ///
+@@ -510,7 +547,8 @@ class GPXScaleBar: UIView {
+         self.mapView = mapView
+         self.useImperial = useImperial
+         setupObserver()
+-        updateScale()
++
++        updateColor()  // Update color based on tile server
+     }
+     
+     /// Manually triggers an update of the scale display.
+@@ -530,6 +568,7 @@ class GPXScaleBar: UIView {
+     ///   and you don't need to call it manually.
+     public func updateForMapViewChange() {
+         updateScale()
++        updateColor()  // Also update color when map changes
+     }
+     
+     /// Updates the unit system preference and refreshes the scale display.
+diff --git a/OpenGpxTracker/GPXScaleBar.swift.bak b/OpenGpxTracker/GPXScaleBar.swift.bak
+new file mode 100644
+index 0000000..169518a
+--- /dev/null
++++ b/OpenGpxTracker/GPXScaleBar.swift.bak
+@@ -0,0 +1,647 @@
++import UIKit
++import MapKit
++
++/// Min width of the ScaleBar
++let kMinScalebarWidth: CGFloat = 75.0
++
++/// Max width of the ScaleBar
++let kMaxScaleBarWidth: CGFloat = 300.0
++
++/// A custom scale view for MapKit that displays distance measurements with support for both imperial and metric units.
++///
++/// `GPXScaleBar` provides a visual representation of map scale, automatically updating as the map region changes.
++/// Unlike `MKScaleView`, this implementation allows you to explicitly control whether imperial or metric units are used.
++///
++/// ## Usage
++///
++/// ```swift
++/// let scaleBar = GPXScaleBar(mapView: mapView, useImperial: true)
++/// view.addSubview(scaleBar)
++///
++/// NSLayoutConstraint.activate([
++///     scaleBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
++///     scaleBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
++/// ])
++/// ```
++///
++/// - Important: Remember to set your `MKMapView` delegate and call `updateForMapViewChange()` in the
++///   `mapView(_:regionDidChangeAnimated:)` delegate method to keep the scale synchronized.
++///
++/// - Note: The scale view automatically adapts to light and dark mode using system colors.
++class GPXScaleBar: UIView {
++    
++    // MARK: - Properties
++    
++    /// The map view that this scale view is associated with.
++    public weak var mapView: MKMapView?
++    
++    /// Determines whether to use imperial (feet/miles) or metric (meters/kilometers) units.
++    ///
++    /// When this property changes, the scale bar automatically updates to reflect the new unit system.
++    public var useImperial: Bool {
++        didSet {
++            if oldValue != useImperial {
++                updateScale()
++            }
++        }
++    }
++    
++    /// The horizontal bar representing the scale distance.
++    private let scaleBar = UIView()
++    
++    /// Array of intermediate tick marks on the scale bar.
++    private var ticks: [UIView] = []
++    
++    /// Array of labels for the scale divisions.
++    private var labels: [UILabel] = []
++    
++    /// The height of the horizontal scale bar.
++    private let barHeight: CGFloat = 4
++    
++    /// The width of the tick marks.
++    private let tickWidth: CGFloat = 1
++    
++    /// The height of the tick marks.
++    private let tickHeight: CGFloat = 8
++    
++    /// The internal padding around the scale view content.
++    private let padding: CGFloat = 8
++    
++    /// Number of segments to display on the scale bar.
++    private let numberOfSegments: Int = 2
++    
++    /// The constant width of the container (slightly bigger than max scale width)
++    private let containerWidth: CGFloat = 320
++    
++    // MARK: - Initialization
++    
++    /// Creates a new custom scale bar for the specified map view.
++    ///
++    /// - Parameters:
++    ///   - mapView: The `MKMapView` instance to display the scale for.
++    ///   - useImperial: `true` to display imperial units (feet/miles), `false` for metric units (meters/kilometers).
++    ///
++    /// - Note: The scale bar will automatically observe map region changes and update accordingly.
++    public init(mapView: MKMapView, useImperial: Bool) {
++        self.mapView = mapView
++        self.useImperial = useImperial
++        super.init(frame: .zero)
++        setupViews()
++        setupObserver()
++        updateScale()
++    }
++    
++    /// Creates a new custom scale bar without an associated map view.
++    ///
++    /// Use this initializer when you need to create the scale bar as a property before `self` is available,
++    /// then call `configure(mapView:useImperial:)` to complete the setup.
++    ///
++    /// ## Example
++    ///
++    /// ```swift
++    /// class MapViewController: UIViewController {
++    ///     let mapView = MKMapView()
++    ///     let scaleBar = GPXScaleBar()
++    ///
++    ///     override func viewDidLoad() {
++    ///         super.viewDidLoad()
++    ///         scaleBar.configure(mapView: mapView, useImperial: preferences.useImperial)
++    ///     }
++    /// }
++    /// ```
++    ///
++    /// - Parameter useImperial: `true` to display imperial units (feet/miles), `false` for metric units (meters/kilometers). Defaults to `true`.
++    public convenience init(useImperial: Bool = true) {
++        self.init(mapView: nil, useImperial: useImperial)
++    }
++    
++    /// Internal initializer that allows for deferred configuration.
++    private init(mapView: MKMapView?, useImperial: Bool) {
++        self.mapView = mapView
++        self.useImperial = useImperial
++        super.init(frame: .zero)
++        setupViews()
++        if mapView != nil {
++            setupObserver()
++            updateScale()
++        }
++    }
++    
++    /// Initializer for use with Interface Builder (storyboards/XIBs).
++    ///
++    /// When using this initializer, you must call `configure(mapView:useImperial:)` after the view loads.
++    ///
++    /// - Parameter coder: An unarchiver object.
++    required public init?(coder: NSCoder) {
++        self.mapView = nil
++        self.useImperial = true
++        super.init(coder: coder)
++        setupViews()
++    }
++    
++    deinit {
++        NotificationCenter.default.removeObserver(self)
++    }
++    
++    // MARK: - Setup
++    
++    /// Configures the visual appearance and layout of all scale view subviews.
++    ///
++    /// This method sets up:
++    /// - Background styling with rounded corners and borders
++    /// - Scale bar and endpoint caps
++    /// - Distance labels with appropriate font and color
++    private func setupViews() {
++        // Configure background - transparent, no border
++        backgroundColor = .clear
++        
++        // Configure scale bar
++        if #available(iOS 13.0, *) {
++            scaleBar.backgroundColor = .label
++        } else {
++            scaleBar.backgroundColor = .black
++        }
++        scaleBar.layer.cornerRadius = barHeight / 2
++        addSubview(scaleBar)
++        
++        // Create ticks (numberOfSegments + 1 for start and end)
++        for _ in 0...numberOfSegments {
++            let tick = UIView()
++            if #available(iOS 13.0, *) {
++                tick.backgroundColor = .label
++            } else {
++                tick.backgroundColor = .black
++            }
++            tick.layer.cornerRadius = tickWidth / 2
++            addSubview(tick)
++            ticks.append(tick)
++        }
++        
++        // Create labels (we'll show labels at strategic points)
++        for _ in 0...numberOfSegments {
++            let label = UILabel()
++            label.font = .systemFont(ofSize: 11, weight: .medium)
++            if #available(iOS 13.0, *) {
++                label.textColor = .label
++            } else {
++                label.textColor = .black
++            }
++            label.textAlignment = .center
++            addSubview(label)
++            labels.append(label)
++        }
++        
++        // Set intrinsic size
++        translatesAutoresizingMaskIntoConstraints = false
++    }
++    
++    /// Sets up notification observer for map region changes.
++    ///
++    /// Listens for `MKMapViewRegionDidChangeNotification` to automatically update the scale display.
++    private func setupObserver() {
++        NotificationCenter.default.addObserver(
++            self,
++            selector: #selector(mapViewRegionDidChange),
++            name: NSNotification.Name("MKMapViewRegionDidChangeNotification"),
++            object: mapView
++        )
++    }
++    
++    /// Handles map region change notifications.
++    ///
++    /// This method is called automatically when the map's visible region changes.
++    @objc private func mapViewRegionDidChange() {
++        updateScale()
++    }
++    
++    // MARK: - Scale Calculation
++    
++    /// Updates the scale display based on the current map region and zoom level.
++    ///
++    /// This method:
++    /// 1. Calculates the real-world distance represented by screen points
++    /// 2. Determines an appropriate scale distance to display
++    /// 3. Updates the UI with the calculated values
++    ///
++    /// - Note: Called automatically when the map region changes, but can also be called manually via `updateForMapViewChange()`.
++    private func updateScale() {
++        guard let mapView = mapView else { return }
++        
++        // Calculate meters per point at center of map
++        let centerPoint = CGPoint(x: mapView.bounds.midX, y: mapView.bounds.midY)
++        let centerCoordinate = mapView.convert(centerPoint, toCoordinateFrom: mapView)
++        
++        // Calculate distance for 100 points horizontally
++        let leftPoint = CGPoint(x: mapView.bounds.midX - 50, y: mapView.bounds.midY)
++        let rightPoint = CGPoint(x: mapView.bounds.midX + 50, y: mapView.bounds.midY)
++        
++        let leftCoordinate = mapView.convert(leftPoint, toCoordinateFrom: mapView)
++        let rightCoordinate = mapView.convert(rightPoint, toCoordinateFrom: mapView)
++        
++        let leftLocation = CLLocation(latitude: leftCoordinate.latitude, longitude: leftCoordinate.longitude)
++        let rightLocation = CLLocation(latitude: rightCoordinate.latitude, longitude: rightCoordinate.longitude)
++        
++        let metersFor100Points = leftLocation.distance(from: rightLocation)
++        let metersPerPoint = metersFor100Points / 100.0
++        
++        // Determine appropriate scale
++        let (distance, width) = calculateScale(metersPerPoint: metersPerPoint)
++        
++        // Update UI
++        updateUI(distance: distance, width: width)
++    }
++    
++    /// Calculates an appropriate scale distance and bar width for the current map zoom level.
++    ///
++    /// - Parameter metersPerPoint: The number of meters represented by one screen point at the current zoom level.
++    /// - Returns: A tuple containing the distance to display and the width of the scale bar in points.
++    ///
++    /// This method selects a "nice" round number for the scale distance (e.g., 100, 500, 1000)
++    /// that fits within the maximum allowed width.
++    private func calculateScale(metersPerPoint: Double) -> (distance: Double, width: CGFloat) {
++        let maxWidth: CGFloat = kMaxScaleBarWidth
++        let maxMeters = Double(maxWidth) * metersPerPoint
++        
++        if useImperial {
++            return calculateImperialScale(maxMeters: maxMeters, metersPerPoint: metersPerPoint)
++        } else {
++            return calculateMetricScale(maxMeters: maxMeters, metersPerPoint: metersPerPoint)
++        }
++    }
++    
++    /// Calculates scale values using metric units (meters and kilometers).
++    ///
++    /// - Parameters:
++    ///   - maxMeters: The maximum distance in meters that can fit within the scale bar.
++    ///   - metersPerPoint: The number of meters represented by one screen point.
++    /// - Returns: A tuple containing the distance in meters and the bar width in points.
++    ///
++    /// Selects from common metric intervals: 1, 2, 5, 10, 20, 50, 100, 200, 500m, and 1, 2, 5, 10, 20, 50, 100, 200, 500km.
++    private func calculateMetricScale(maxMeters: Double, metersPerPoint: Double) -> (distance: Double, width: CGFloat) {
++        let distances: [Double] = [
++            1, 2, 5, 10, 20, 50, 100, 200, 500,
++            1000, 2000, 5000, 10000, 20000, 50000,
++            100000, 200000, 500000, 1000000
++        ]
++        
++        for distance in distances {
++            if distance <= maxMeters {
++                let width = CGFloat(distance / metersPerPoint)
++                if width >= kMinScalebarWidth {
++                    return (distance, width)
++                }
++            }
++        }
++        // default
++        return (distances[0], kMinScalebarWidth)
++    }
++    
++    /// Calculates scale values using imperial units (feet and miles).
++    ///
++    /// - Parameters:
++    ///   - maxMeters: The maximum distance in meters that can fit within the scale bar.
++    ///   - metersPerPoint: The number of meters represented by one screen point.
++    /// - Returns: A tuple containing the distance in feet and the bar width in points.
++    ///
++    /// Selects from common imperial intervals: 1, 2, 5, 10, 20, 50, 100, 200, 500ft, and 1, 2, 5, 10, 20, 50, 100mi.
++    /// One mile equals 5,280 feet.
++    private func calculateImperialScale(maxMeters: Double, metersPerPoint: Double) -> (distance: Double, width: CGFloat) {
++        let feetPerMeter = 3.28084
++        let maxFeet = maxMeters * feetPerMeter
++        
++        // Distances in feet
++        let distances: [Double] = [
++            1, 2, 5, 10, 20, 50, 100, 200, 500,
++            1000, 2000, 5280, // 1 mile
++            10560, 26400, 52800, 105600, 264000, 528000
++        ]
++        
++        for distance in distances {
++            if distance <= maxFeet {
++                let metersForDistance = distance / feetPerMeter
++                let width = CGFloat(metersForDistance / metersPerPoint)
++                if width >= kMinScalebarWidth {
++                    return (distance, width)
++                }
++            }
++        }
++        
++        return (distances[0], kMinScalebarWidth)
++    }
++    
++    /// Updates the visual layout of the scale view based on the calculated distance and width.
++    ///
++    /// - Parameters:
++    ///   - distance: The distance to display (in feet for imperial, meters for metric).
++    ///   - width: The width of the scale bar in points.
++    ///
++    /// This method:
++    /// - Formats and displays the distance labels
++    /// - Calculates the view's size to accommodate all elements
++    /// - Positions the scale bar, endpoint caps, and labels
++    private func updateUI(distance: Double, width: CGFloat) {
++        // Calculate segment width
++        let segmentWidth = width / CGFloat(numberOfSegments)
++        
++        // Update labels - show only 0 and final value
++        let segmentDistance = distance / Double(numberOfSegments)
++        
++        // First, format all labels to check their sizes
++        var labelTexts: [String] = []
++        for index in 0...numberOfSegments {
++            let value = segmentDistance * Double(index)
++            if index == 0 {
++                labelTexts.append("0")
++            } else {
++                labelTexts.append(formatDistance(value))
++            }
++        }
++        
++        // Size all labels
++        for (index, label) in labels.enumerated() {
++            label.text = labelTexts[index]
++            label.sizeToFit()
++        }
++        
++        // Show only first and last labels
++        for (index, label) in labels.enumerated() {
++            if index == 0 {
++                // Show first label (0)
++                label.isHidden = false
++            } else if index == numberOfSegments {
++                // Show last label
++                label.isHidden = false
++            } else {
++                // Hide all intermediate labels
++                label.isHidden = true
++            }
++        }
++        
++        // Calculate total dimensions with constant container size
++        let labelSpace: CGFloat = 4
++        let maxLabelHeight = labels.compactMap { $0.isHidden ? nil : $0.frame.height }.max() ?? 0
++        let totalHeight = tickHeight + labelSpace + maxLabelHeight + padding * 2
++        
++        // Update frame to constant size
++        frame.size = CGSize(width: containerWidth, height: totalHeight)
++        
++        // Calculate offset to center the scale bar within the container
++        let horizontalOffset = (containerWidth - width) / 2
++        
++        // Position scale bar (centered horizontally, at top)
++        let barY = padding
++        scaleBar.frame = CGRect(
++            x: horizontalOffset,
++            y: barY + (tickHeight - barHeight) / 2,
++            width: width,
++            height: barHeight
++        )
++        
++        // Position ticks and labels
++        let labelY = barY + tickHeight + labelSpace
++        
++        for (index, tick) in ticks.enumerated() {
++            let x = horizontalOffset + segmentWidth * CGFloat(index)
++            
++            tick.frame = CGRect(
++                x: x - tickWidth / 2,
++                y: barY,
++                width: tickWidth,
++                height: tickHeight
++            )
++            
++            // Position corresponding label (centered under tick)
++            if index < labels.count && !labels[index].isHidden {
++                let label = labels[index]
++                
++                // Special positioning for first and last labels to prevent overflow
++                var labelX = x - label.frame.width / 2
++                
++                if index == 0 {
++                    // Align left edge with left tick
++                    labelX = horizontalOffset
++                } else if index == numberOfSegments {
++                    // Align right edge with right tick
++                    labelX = horizontalOffset + width - label.frame.width
++                }
++                
++                label.frame = CGRect(
++                    x: labelX,
++                    y: labelY,
++                    width: label.frame.width,
++                    height: label.frame.height
++                )
++            }
++        }
++    }
++    
++    /// Formats a distance value into a human-readable string with appropriate units.
++    ///
++    /// - Parameter distance: The distance to format (in feet for imperial, meters for metric).
++    /// - Returns: A formatted string such as "500 ft", "1.5 mi", "200 m", or "5.2 km".
++    ///
++    /// ## Formatting Rules
++    ///
++    /// **Imperial:**
++    /// - Values under 5,280 feet display as feet (e.g., "500 ft")
++    /// - Values 5,280 feet and above display as miles
++    /// - Miles >= 10 show no decimal places (e.g., "15 mi")
++    /// - Miles < 10 show one decimal place (e.g., "2.5 mi")
++    ///
++    /// **Metric:**
++    /// - Values under 1,000 meters display as meters (e.g., "500 m")
++    /// - Values 1,000 meters and above display as kilometers
++    /// - Kilometers >= 10 show no decimal places (e.g., "15 km")
++    /// - Kilometers < 10 show one decimal place (e.g., "2.5 km")
++    private func formatDistance(_ distance: Double) -> String {
++        if useImperial {
++            if distance >= 5280 {
++                let miles = distance / 5280
++                if miles >= 10 {
++                    return "\(Int(miles))mi"
++                } else {
++                    return String(format: "%.1fmi", miles)
++                }
++            } else {
++                return "\(Int(distance))ft"
++            }
++        } else {
++            if distance >= 1000 {
++                let km = distance / 1000
++                if km >= 10 {
++                    return "\(Int(km))km"
++                } else {
++                    return String(format: "%.1fkm", km)
++                }
++            } else {
++                return "\(Int(distance))m"
++            }
++        }
++    }
++    
++    // MARK: - Public Methods
++    
++    /// Configures the scale bar with a map view after initialization.
++    ///
++    /// Use this method when you've created the scale bar using `init(useImperial:)` and need to
++    /// associate it with a map view later.
++    ///
++    /// ## Example
++    ///
++    /// ```swift
++    /// class MapViewController: UIViewController {
++    ///     let mapView = MKMapView()
++    ///     let scaleBar = GPXScaleBar() // Created without map view
++    ///
++    ///     override func viewDidLoad() {
++    ///         super.viewDidLoad()
++    ///         scaleBar.configure(mapView: mapView, useImperial: preferences.useImperial)
++    ///         view.addSubview(scaleBar)
++    ///     }
++    /// }
++    /// ```
++    ///
++    /// - Parameters:
++    ///   - mapView: The `MKMapView` instance to display the scale for.
++    ///   - useImperial: `true` to display imperial units (feet/miles), `false` for metric units (meters/kilometers).
++    ///
++    /// - Important: Call this method before adding the scale bar to your view hierarchy to ensure proper display.
++    public func configure(mapView: MKMapView, useImperial: Bool) {
++        self.mapView = mapView
++        self.useImperial = useImperial
++        setupObserver()
++        updateScale()
++    }
++    
++    /// Manually triggers an update of the scale display.
++    ///
++    /// Call this method when the map view's region changes if you're not using automatic observation
++    /// through the map view delegate.
++    ///
++    /// ## Example
++    ///
++    /// ```swift
++    /// func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
++    ///     scaleBar.updateForMapViewChange()
++    /// }
++    /// ```
++    ///
++    /// - Note: If you've set up the scale bar with automatic observation, this method is called automatically
++    ///   and you don't need to call it manually.
++    public func updateForMapViewChange() {
++        updateScale()
++    }
++    
++    /// Updates the unit system preference and refreshes the scale display.
++    ///
++    /// This is a convenience method for updating the `useImperial` property. You can either set
++    /// `useImperial` directly or call this method - both will trigger an automatic update.
++    ///
++    /// ## Example
++    ///
++    /// ```swift
++    /// // Option 1: Set property directly
++    /// scaleBar.useImperial = preferences.useImperial
++    ///
++    /// // Option 2: Use this method
++    /// scaleBar.updateUnits(useImperial: preferences.useImperial)
++    /// ```
++    ///
++    /// - Parameter useImperial: `true` for imperial units (feet/miles), `false` for metric units (meters/kilometers).
++    public func updateUnits(useImperial: Bool) {
++        self.useImperial = useImperial
++    }
++}
++
++// MARK: - Usage Example
++
++/*
++// OPTION 1: Initialize with map view directly (when map is available during init)
++
++class MapViewController: UIViewController {
++    
++    let mapView = MKMapView()
++    var scaleBar: GPXScaleBar!
++    var preferences = Preferences()
++    
++    override func viewDidLoad() {
++        super.viewDidLoad()
++        
++        mapView.frame = view.bounds
++        view.addSubview(mapView)
++        mapView.delegate = self
++        
++        // Create with map view
++        scaleBar = GPXScaleBar(mapView: mapView, useImperial: preferences.useImperial)
++        view.addSubview(scaleBar)
++        
++        NSLayoutConstraint.activate([
++            scaleBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
++            scaleBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
++        ])
++    }
++}
++
++// OPTION 2: Declare as property and configure later (avoids "cannot use instance member" error)
++
++class MapViewController: UIViewController {
++    
++    let mapView = MKMapView()
++    let scaleBar = GPXScaleBar() // No map view needed at declaration
++    var preferences = Preferences()
++    
++    override func viewDidLoad() {
++        super.viewDidLoad()
++        
++        mapView.frame = view.bounds
++        view.addSubview(mapView)
++        mapView.delegate = self
++        
++        // Configure the scale bar with map view
++        scaleBar.configure(mapView: mapView, useImperial: preferences.useImperial)
++        view.addSubview(scaleBar)
++        
++        NSLayoutConstraint.activate([
++            scaleBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
++            scaleBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
++        ])
++    }
++    
++    // Called when returning from settings or when preferences change
++    func preferencesDidChange() {
++        scaleBar.useImperial = preferences.useImperial
++    }
++}
++
++extension MapViewController: MKMapViewDelegate {
++    func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
++        scaleBar.updateForMapViewChange()
++    }
++}
++
++struct Preferences {
++    var useImperial: Bool = true
++}
++
++// MARK: - Settings Integration Example
++
++class SettingsViewController: UIViewController {
++    
++    weak var mapViewController: MapViewController?
++    var preferences = Preferences()
++    
++    @IBAction func unitsToggleChanged(_ sender: UISwitch) {
++        preferences.useImperial = sender.isOn
++        
++        // Update the scale bar immediately
++        mapViewController?.scaleBar.useImperial = preferences.useImperial
++    }
++    
++    override func viewWillDisappear(_ animated: Bool) {
++        super.viewWillDisappear(animated)
++        
++        // Or update when leaving settings
++        mapViewController?.preferencesDidChange()
++    }
++}
++*/
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index fe592ce..43b2554 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -790,6 +790,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+ 	
+ 	private func addScaleBarOnTopOfTrackButton() {
+         scaleBar = GPXScaleBar(mapView: map, useImperial: Preferences.shared.useImperial)
++        scaleBar.tileServer = Preferences.shared.tileServer
+         view.addSubview(scaleBar)
+         
+         map.scaleBar = scaleBar
+@@ -1309,6 +1310,9 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         self.speedLabel.textColor = needForceDarkMode ? .white : nil
+         self.totalTrackedDistanceLabel.textColor = needForceDarkMode ? .white : nil
+         self.currentSegmentDistanceLabel.textColor = needForceDarkMode ? .white : nil
++        
++        // Update scale bar color based on tile server
++        self.scaleBar.tileServer = self.map.tileServer
+     }
+ 
+ }
+@@ -1352,6 +1356,8 @@ extension ViewController: PreferencesTableViewControllerDelegate {
+         print("PreferencesTableViewControllerDelegate:: didUpdateTileServer: \(newGpxTileServer)")
+         let newTileServer = GPXTileServer(rawValue: newGpxTileServer)!
+         self.map.tileServer = newTileServer
++        // Update scale bar tile server to update its color
++        self.scaleBar.tileServer = newTileServer
+         self.textColorAdaptations()
+     }
+     
+diff --git a/apply_fix.py b/apply_fix.py
+new file mode 100644
+index 0000000..52faa69
+--- /dev/null
++++ b/apply_fix.py
+@@ -0,0 +1,190 @@
++#!/usr/bin/env python3
++
++# Read the backup file
++with open('/app/OpenGpxTracker/GPXScaleBar.swift.bak', 'r') as f:
++    lines = f.readlines()
++
++# Track insertions to make
++insertions = []  # List of (line_idx, text_lines)
++
++# Find position to insert tileServer and scaleBarColor after useImperial property
++for i, line in enumerate(lines):
++    # Look for the end of useImperial property
++    if 'public var useImperial: Bool {' in line:
++        # Find the closing brace of didSet
++        j = i + 1
++        while j < len(lines) and '}' not in lines[j]:
++            j += 1
++        if j < len(lines):
++            # Insert after the closing brace of useImperial (after line j)
++            insertions.append((j + 1, [
++                '\n',
++                '    /// The current tile server being used.\n',
++                '    /// Used to determine the appropriate color for overlay elements.\n',
++                '    public var tileServer: GPXTileServer? {\n',
++                '        didSet {\n',
++                '            updateColor()\n',
++                '        }\n',
++                '    }\n',
++                '\n',
++                '    /// Custom color for the scale bar and its elements.\n',
++                '    /// If nil, uses system-adaptive colors based on UIUserInterfaceStyle.\n',
++                '    private var scaleBarColor: UIColor?\n'
++            ]))
++        break
++
++# Find position to add labelColor before setupViews
++for i, line in enumerate(lines):
++    if 'private func setupViews()' in line:
++        # Insert before this line (insert at i)
++        insertions.append((i, [
++            '\n',
++            '    /// Computes the appropriate label color based on system appearance or custom color.\n',
++            '    private var labelColor: UIColor {\n',
++            '        if #available(iOS 13.0, *) {\n',
++            '            return .label\n',
++            '        } else {\n',
++            '            return .black\n',
++            '        }\n',
++            '    }\n'
++        ]))
++        break
++
++# Sort insertions in reverse order so indices don't shift
++insertions.sort(key=lambda x: x[0], reverse=True)
++
++# Perform insertions
++for line_idx, text_lines in insertions:
++    for j, text_line in enumerate(text_lines):
++        lines.insert(line_idx + j, text_line)
++
++# Now update the setupViews method body
++for i, line in enumerate(lines):
++    if 'private func setupViews()' in line:
++        # Find the end of this method
++        brace_count = 0
++        j = i
++        method_ended = False
++        while j < len(lines) and not method_ended:
++            for char in lines[j]:
++                if char == '{':
++                    brace_count += 1
++                elif char == '}':
++                    brace_count -= 1
++                    if brace_count < 0:
++                        # Found the end
++                        # Replace the method body
++                        new_body = '''    private func setupViews() {
++        // Configure background - transparent, no border
++        backgroundColor = .clear
++        
++        // Configure scale bar - use custom color if set, otherwise use system adaptive
++        let barColor = scaleBarColor ?? (labelColor)
++        scaleBar.backgroundColor = barColor
++        scaleBar.layer.cornerRadius = barHeight / 2
++        addSubview(scaleBar)
++        
++        // Create ticks (numberOfSegments + 1 for start and end)
++        for _ in 0...numberOfSegments {
++            let tick = UIView()
++            tick.backgroundColor = barColor
++            tick.layer.cornerRadius = tickWidth / 2
++            addSubview(tick)
++            ticks.append(tick)
++        }
++        
++        // Create labels (we'll show labels at strategic points)
++        for _ in 0...numberOfSegments {
++            let label = UILabel()
++            label.font = .systemFont(ofSize: 11, weight: .medium)
++            label.textColor = scaleBarColor ?? (labelColor)
++            label.textAlignment = .center
++            addSubview(label)
++            labels.append(label)
++        }
++        
++        // Set intrinsic size
++        translatesAutoresizingMaskIntoConstraints = false
++    }
++'''
++                        # Find where the body starts (after the opening brace)
++                        body_start_line = j
++                        body_end_line = j
++                        
++                        # Build new lines
++                        new_lines = lines[:body_start_line] + [new_body] + lines[j+1:]
++                        lines = new_lines
++                        method_ended = True
++                        break
++            j += 1
++        if method_ended:
++            break
++
++# Add updateColor method before Public Methods section
++for i, line in enumerate(lines):
++    if '    // MARK: - Public Methods' in line:
++        update_color_method = '''    /// Updates the color of the scale bar and its elements based on the current tile server.
++    ///
++    /// This method is called automatically when `tileServer` is set.
++    /// It determines whether to use light or dark colors based on the tile server's characteristics.
++    private func updateColor() {
++        guard let server = tileServer else { return }
++        
++        // For Apple map, use system adaptive colors (nil means use .label)
++        // For Apple Satellite (dark), use white
++        // For other third-party maps (usually light), use black
++        switch server {
++        case .apple:
++            // Use system adaptive - set to nil
++            scaleBarColor = nil
++        case .appleSatellite:
++            // Dark background, use white
++            scaleBarColor = .white
++        default:
++            // Light background, use black
++            scaleBarColor = .black
++        }
++        
++        // Update all UI elements
++        setupViews()
++    }
++
++'''
++        lines.insert(i, update_color_method)
++        break
++
++# Update configure method to call updateColor
++for i, line in enumerate(lines):
++    if 'public func configure(mapView: MKMapView, useImperial: Bool)' in line:
++        # Find the end of this method
++        brace_count = 0
++        j = i
++        method_ended = False
++        while j < len(lines) and not method_ended:
++            for char in lines[j]:
++                if char == '{':
++                    brace_count += 1
++                elif char == '}':
++                    brace_count -= 1
++                    if brace_count < 0:
++                        # Found the end, check if updateColor is already there
++                        method_text = ''.join(lines[i:j+1])
++                        if 'updateColor()' not in method_text:
++                            # Find the last statement before closing brace
++                            k = j - 1
++                            while k > i and (lines[k].strip() == '' or '}' in lines[k]):
++                                k -= 1
++                            
++                            # Insert updateColor call
++                            lines.insert(k + 1, '        updateColor()  // Update color based on tile server\n')
++                        method_ended = True
++                        break
++            j += 1
++        if method_ended:
++            break
++
++# Write the result
++with open('/app/OpenGpxTracker/GPXScaleBar.swift', 'w') as f:
++    f.writelines(lines)
++
++print("GPXScaleBar.swift has been updated successfully")
+diff --git a/apply_fix2.py b/apply_fix2.py
+new file mode 100644
+index 0000000..74c4787
+--- /dev/null
++++ b/apply_fix2.py
+@@ -0,0 +1,171 @@
++#!/usr/bin/env python3
++
++# Read the backup file
++with open('/app/OpenGpxTracker/GPXScaleBar.swift.bak', 'r') as f:
++    content = f.read()
++
++# 1. Add tileServer and scaleBarColor properties after useImperial
++# Find the useImperial property
++import re
++
++# Pattern to match useImperial property with its didSet
++pattern1 = r'(    /// Determines whether to use imperial.*?public var useImperial: Bool \{[^}]+updateScale\(\)\s+\})\s+(\n\s+/// The horizontal bar)'
++
++replacement1 = r'''\1
++
++    /// The current tile server being used.
++    /// Used to determine the appropriate color for overlay elements.
++    public var tileServer: GPXTileServer? {
++        didSet {
++            updateColor()
++        }
++    }
++
++    /// Custom color for the scale bar and its elements.
++    /// If nil, uses system-adaptive colors based on UIUserInterfaceStyle.
++    private var scaleBarColor: UIColor?\\2'''
++
++content = re.sub(pattern1, replacement1, content, flags=re.DOTALL)
++
++# 2. Add labelColor computed property before setupViews
++pattern2 = r'(\n    /// Configures the visual appearance.*?\n    private func setupViews\(\) \{)'
++replacement2 = r'''\n    /// Computes the appropriate label color based on system appearance or custom color.
++    private var labelColor: UIColor {
++        if #available(iOS 13.0, *) {
++            return .label
++        } else {
++            return .black
++        }
++    }
++
++\2'''
++
++content = re.sub(pattern2, replacement2, content, flags=re.DOTALL)
++
++# 3. Update setupViews to use scaleBarColor and labelColor
++# Find the old setupViews implementation and replace it
++pattern3 = r'(    private func setupViews\(\) \{.*?)(/// Set intrinsic size\s+translatesAutoresizingMaskIntoConstraints = false\s+\})'
++# We need to capture the method and replace it
++
++# Let's do this more carefully - find setupViews and replace body
++setup_pos = content.find('    private func setupViews() {')
++if setup_pos != -1:
++    # Find the closing brace
++    brace_count = 0
++    i = content.find('{', setup_pos)
++    j = i + 1
++    while j < len(content):
++        if content[j] == '{':
++            brace_count += 1
++        elif content[j] == '}':
++            brace_count -= 1
++            if brace_count < 0:
++                # Found the end of setupViews
++                old_body = content[setup_pos:j+1]
++                
++                new_body = '''    private func setupViews() {
++        // Configure background - transparent, no border
++        backgroundColor = .clear
++        
++        // Configure scale bar - use custom color if set, otherwise use system adaptive
++        let barColor = scaleBarColor ?? (labelColor)
++        scaleBar.backgroundColor = barColor
++        scaleBar.layer.cornerRadius = barHeight / 2
++        addSubview(scaleBar)
++        
++        // Create ticks (numberOfSegments + 1 for start and end)
++        for _ in 0...numberOfSegments {
++            let tick = UIView()
++            tick.backgroundColor = barColor
++            tick.layer.cornerRadius = tickWidth / 2
++            addSubview(tick)
++            ticks.append(tick)
++        }
++        
++        // Create labels (we'll show labels at strategic points)
++        for _ in 0...numberOfSegments {
++            let label = UILabel()
++            label.font = .systemFont(ofSize: 11, weight: .medium)
++            label.textColor = scaleBarColor ?? (labelColor)
++            label.textAlignment = .center
++            addSubview(label)
++            labels.append(label)
++        }
++        
++        // Set intrinsic size
++        translatesAutoresizingMaskIntoConstraints = false
++    }
++'''
++                
++                content = content[:setup_pos] + new_body + content[j+1:]
++                break
++        j += 1
++
++# 4. Add updateColor method before Public Methods
++pattern4 = r'(\n    // MARK: - Public Methods)'
++update_color_method = '''    /// Updates the color of the scale bar and its elements based on the current tile server.
++    ///
++    /// This method is called automatically when `tileServer` is set.
++    /// It determines whether to use light or dark colors based on the tile server's characteristics.
++    private func updateColor() {
++        guard let server = tileServer else { return }
++        
++        // For Apple map, use system adaptive colors (nil means use .label)
++        // For Apple Satellite (dark), use white
++        // For other third-party maps (usually light), use black
++        switch server {
++        case .apple:
++            // Use system adaptive - set to nil
++            scaleBarColor = nil
++        case .appleSatellite:
++            // Dark background, use white
++            scaleBarColor = .white
++        default:
++            // Light background, use black
++            scaleBarColor = .black
++        }
++        
++        // Update all UI elements
++        setupViews()
++    }
++
++\1'''
++
++content = re.sub(pattern4, update_color_method, content)
++
++# 5. Update configure method to call updateColor
++configure_pos = content.find('public func configure(mapView: MKMapView, useImperial: Bool)')
++if configure_pos != -1:
++    # Find the end of configure
++    brace_count = 0
++    i = content.find('{', configure_pos)
++    j = i + 1
++    while j < len(content):
++        if content[j] == '{':
++            brace_count += 1
++        elif content[j] == '}':
++            brace_count -= 1
++            if brace_count < 0:
++                # Found the end
++                method_text = content[configure_pos:j+1]
++                if 'updateColor()' not in method_text:
++                    # Find last statement before closing brace
++                    k = j - 1
++                    while k > i and content[k] in [' ', '\n', '\t', '}']:
++                        k -= 1
++                    
++                    # Find the end of the line k is on
++                    line_end = k
++                    while line_end > i and content[line_end] != '\n':
++                        line_end -= 1
++                    
++                    # Insert updateColor call
++                    content = content[:line_end+1] + '        updateColor()  // Update color based on tile server\n' + content[line_end+1:]
++                break
++        j += 1
++
++# Write the result
++with open('/app/OpenGpxTracker/GPXScaleBar.swift', 'w') as f:
++    f.write(content)
++
++print("GPXScaleBar.swift has been updated successfully")
+diff --git a/apply_fix3.py b/apply_fix3.py
+new file mode 100644
+index 0000000..dea1d45
+--- /dev/null
++++ b/apply_fix3.py
+@@ -0,0 +1,199 @@
++#!/usr/bin/env python3
++
++# Read the backup file
++with open('/app/OpenGpxTracker/GPXScaleBar.swift.bak', 'r') as f:
++    lines = f.readlines()
++
++# Step 1: Insert tileServer and scaleBarColor after useImperial property
++output_lines = []
++i = 0
++while i < len(lines):
++    output_lines.append(lines[i])
++    
++    # Check if this is the useImperial property
++    if 'public var useImperial: Bool {' in lines[i]:
++        # Skip to the end of this property
++        i += 1
++        while i < len(lines) and '}' not in lines[i]:
++            output_lines.append(lines[i])
++            i += 1
++        if i < len(lines):
++            output_lines.append(lines[i])  # Add the closing brace
++            i += 1
++        
++        # Now insert new properties
++        output_lines.append('\n')
++        output_lines.append('    /// The current tile server being used.\n')
++        output_lines.append('    /// Used to determine the appropriate color for overlay elements.\n')
++        output_lines.append('    public var tileServer: GPXTileServer? {\n')
++        output_lines.append('        didSet {\n')
++        output_lines.append('            updateColor()\n')
++        output_lines.append('        }\n')
++        output_lines.append('    }\n')
++        output_lines.append('\n')
++        output_lines.append('    /// Custom color for the scale bar and its elements.\n')
++        output_lines.append('    /// If nil, uses system-adaptive colors based on UIUserInterfaceStyle.\n')
++        output_lines.append('    private var scaleBarColor: UIColor?\n')
++        continue
++    
++    i += 1
++
++# Step 2: Add labelColor before setupViews
++output_lines2 = []
++for i, line in enumerate(output_lines):
++    if 'private func setupViews()' in line:
++        # Insert labelColor before this
++        output_lines2.append('\n')
++        output_lines2.append('    /// Computes the appropriate label color based on system appearance or custom color.\n')
++        output_lines2.append('    private var labelColor: UIColor {\n')
++        output_lines2.append('        if #available(iOS 13.0, *) {\n')
++        output_lines2.append('            return .label\n')
++        output_lines2.append('        } else {\n')
++        output_lines2.append('            return .black\n')
++        output_lines2.append('        }\n')
++        output_lines2.append('    }\n')
++    
++    output_lines2.append(line)
++
++# Step 3: Update setupViews body
++output_lines3 = []
++i = 0
++in_setupViews = False
++while i < len(output_lines2):
++    line = output_lines2[i]
++    
++    if 'private func setupViews()' in line and not in_setupViews:
++        in_setupViews = True
++        # Add the method signature
++        output_lines3.append(line)
++        i += 1
++        
++        # Find the opening brace
++        while i < len(output_lines2) and '{' not in output_lines2[i]:
++            output_lines3.append(output_lines2[i])
++            i += 1
++        
++        if i < len(output_lines2):
++            # Found opening brace, now find closing brace
++            brace_count = 0
++            start_line = i
++            j = i
++            while j < len(output_lines2):
++                for char in output_lines2[j]:
++                    if char == '{':
++                        brace_count += 1
++                    elif char == '}':
++                        brace_count -= 1
++                        if brace_count < 0:
++                            # Found the end of the method
++                            # Skip all lines from start_line to j (inclusive)
++                            # We'll replace them with new body
++                            
++                            # Add new body
++                            new_body = '''        // Configure background - transparent, no border
++        backgroundColor = .clear
++        
++        // Configure scale bar - use custom color if set, otherwise use system adaptive
++        let barColor = scaleBarColor ?? (labelColor)
++        scaleBar.backgroundColor = barColor
++        scaleBar.layer.cornerRadius = barHeight / 2
++        addSubview(scaleBar)
++        
++        // Create ticks (numberOfSegments + 1 for start and end)
++        for _ in 0...numberOfSegments {
++            let tick = UIView()
++            tick.backgroundColor = barColor
++            tick.layer.cornerRadius = tickWidth / 2
++            addSubview(tick)
++            ticks.append(tick)
++        }
++        
++        // Create labels (we'll show labels at strategic points)
++        for _ in 0...numberOfSegments {
++            let label = UILabel()
++            label.font = .systemFont(ofSize: 11, weight: .medium)
++            label.textColor = scaleBarColor ?? (labelColor)
++            label.textAlignment = .center
++            addSubview(label)
++            labels.append(label)
++        }
++        
++        // Set intrinsic size
++        translatesAutoresizingMaskIntoConstraints = false
++    }
++'''
++                            output_lines3.append(new_body)
++                            i = j + 1
++                            in_setupViews = False
++                            break
++                j += 1
++            if in_setupViews == False:
++                continue
++    else:
++        output_lines3.append(line)
++        i += 1
++
++# Step 4: Add updateColor method before Public Methods
++output_lines4 = []
++for i, line in enumerate(output_lines3):
++    if '    // MARK: - Public Methods' in line:
++        output_lines4.append('    /// Updates the color of the scale bar and its elements based on the current tile server.\n')
++        output_lines4.append('    ///\n')
++        output_lines4.append('    /// This method is called automatically when `tileServer` is set.\n')
++        output_lines4.append('    /// It determines whether to use light or dark colors based on the tile server\'s characteristics.\n')
++        output_lines4.append('    private func updateColor() {\n')
++        output_lines4.append('        guard let server = tileServer else { return }\n')
++        output_lines4.append('        \n')
++        output_lines4.append('        // For Apple map, use system adaptive colors (nil means use .label)\n')
++        output_lines4.append('        // For Apple Satellite (dark), use white\n')
++        output_lines4.append('        // For other third-party maps (usually light), use black\n')
++        output_lines4.append('        switch server {\n')
++        output_lines4.append('        case .apple:\n')
++        output_lines4.append('            // Use system adaptive - set to nil\n')
++        output_lines4.append('            scaleBarColor = nil\n')
++        output_lines4.append('        case .appleSatellite:\n')
++        output_lines4.append('            // Dark background, use white\n')
++        output_lines4.append('            scaleBarColor = .white\n')
++        output_lines4.append('        default:\n')
++        output_lines4.append('            // Light background, use black\n')
++        output_lines4.append('            scaleBarColor = .black\n')
++        output_lines4.append('        }\n')
++        output_lines4.append('        \n')
++        output_lines4.append('        // Update all UI elements\n')
++        output_lines4.append('        setupViews()\n')
++        output_lines4.append('    }\n')
++        output_lines4.append('\n')
++    
++    output_lines4.append(line)
++
++# Step 5: Update configure method to call updateColor
++output_lines5 = []
++i = 0
++while i < len(output_lines4):
++    line = output_lines4[i]
++    output_lines5.append(line)
++    
++    if 'public func configure(mapView: MKMapView, useImperial: Bool)' in line:
++        # Find the end of this method
++        i += 1
++        while i < len(output_lines4) and '}' not in output_lines4[i]:
++            output_lines5.append(output_lines4[i])
++            i += 1
++        
++        if i < len(output_lines4):
++            # Check if we already have updateColor
++            method_text = ''.join(output_lines5)
++            if 'updateColor()' not in method_text:
++                # Add updateColor before the closing brace
++                output_lines5.append('        updateColor()  // Update color based on tile server\n')
++            output_lines5.append(output_lines4[i])
++            i += 1
++        continue
++    
++    i += 1
++
++# Write the result
++with open('/app/OpenGpxTracker/GPXScaleBar.swift', 'w') as f:
++    f.writelines(output_lines5)
++
++print("GPXScaleBar.swift has been updated successfully")
+diff --git a/apply_fix4.py b/apply_fix4.py
+new file mode 100644
+index 0000000..1204672
+--- /dev/null
++++ b/apply_fix4.py
+@@ -0,0 +1,194 @@
++#!/usr/bin/env python3
++
++# Read the backup file
++with open('/app/OpenGpxTracker/GPXScaleBar.swift.bak', 'r') as f:
++    lines = f.readlines()
++
++# Find and replace in multiple passes
++# Pass 1: Add properties after useImperial
++for i in range(len(lines)):
++    if 'public var useImperial: Bool {' in lines[i]:
++        # Find the end of this property (the } after didSet)
++        j = i + 1
++        brace_count = 0
++        while j < len(lines):
++            if '{' in lines[j]:
++                brace_count += 1
++            if '}' in lines[j]:
++                brace_count -= 1
++                if brace_count < 0:
++                    # Found the end
++                    # Insert new properties after this line
++                    new_props = [
++                        '\n',
++                        '    /// The current tile server being used.\n',
++                        '    /// Used to determine the appropriate color for overlay elements.\n',
++                        '    public var tileServer: GPXTileServer? {\n',
++                        '        didSet {\n',
++                        '            updateColor()\n',
++                        '        }\n',
++                        '    }\n',
++                        '\n',
++                        '    /// Custom color for the scale bar and its elements.\n',
++                        '    /// If nil, uses system-adaptive colors based on UIUserInterfaceStyle.\n',
++                        '    private var scaleBarColor: UIColor?\n'
++                    ]
++                    for k, prop_line in enumerate(new_props):
++                        lines.insert(j + 1 + k, prop_line)
++                    break
++            j += 1
++        break
++
++# Pass 2: Add labelColor before setupViews
++for i in range(len(lines)):
++    if 'private func setupViews()' in lines[i]:
++        # Insert before this line
++        label_color = [
++            '\n',
++            '    /// Computes the appropriate label color based on system appearance or custom color.\n',
++            '    private var labelColor: UIColor {\n',
++            '        if #available(iOS 13.0, *) {\n',
++            '            return .label\n',
++            '        } else {\n',
++            '            return .black\n',
++            '        }\n',
++            '    }\n'
++        ]
++        for k, line in enumerate(label_color):
++            lines.insert(i + k, line)
++        break
++
++# Pass 3: Update setupViews method body
++for i in range(len(lines)):
++    if 'private func setupViews()' in lines[i]:
++        # Find the opening brace
++        j = i
++        while j < len(lines) and '{' not in lines[j]:
++            j += 1
++        
++        if j < len(lines):
++            # Find the closing brace
++            brace_count = 0
++            k = j
++            while k < len(lines):
++                for char in lines[k]:
++                    if char == '{':
++                        brace_count += 1
++                    elif char == '}':
++                        brace_count -= 1
++                        if brace_count < 0:
++                            # Found the end, replace the body
++                            new_body_lines = [
++                                '    private func setupViews() {\n',
++                                '        // Configure background - transparent, no border\n',
++                                '        backgroundColor = .clear\n',
++                                '        \n',
++                                '        // Configure scale bar - use custom color if set, otherwise use system adaptive\n',
++                                '        let barColor = scaleBarColor ?? (labelColor)\n',
++                                '        scaleBar.backgroundColor = barColor\n',
++                                '        scaleBar.layer.cornerRadius = barHeight / 2\n',
++                                '        addSubview(scaleBar)\n',
++                                '        \n',
++                                '        // Create ticks (numberOfSegments + 1 for start and end)\n',
++                                '        for _ in 0...numberOfSegments {\n',
++                                '            let tick = UIView()\n',
++                                '            tick.backgroundColor = barColor\n',
++                                '            tick.layer.cornerRadius = tickWidth / 2\n',
++                                '            addSubview(tick)\n',
++                                '            ticks.append(tick)\n',
++                                '        }\n',
++                                '        \n',
++                                '        // Create labels (we\'ll show labels at strategic points)\n',
++                                '        for _ in 0...numberOfSegments {\n',
++                                '            let label = UILabel()\n',
++                                '            label.font = .systemFont(ofSize: 11, weight: .medium)\n',
++                                '            label.textColor = scaleBarColor ?? (labelColor)\n',
++                                '            label.textAlignment = .center\n',
++                                '            addSubview(label)\n',
++                                '            labels.append(label)\n',
++                                '        }\n',
++                                '        \n',
++                                '        // Set intrinsic size\n',
++                                '        translatesAutoresizingMaskIntoConstraints = false\n',
++                                '    }\n'
++                            ]
++                            # Remove old lines from i to k (inclusive)
++                            del lines[i:k+1]
++                            # Insert new body
++                            for idx, new_line in enumerate(new_body_lines):
++                                lines.insert(i + idx, new_line)
++                            break
++                if brace_count < 0:
++                    break
++                k += 1
++        break
++
++# Pass 4: Add updateColor method before Public Methods
++for i in range(len(lines)):
++    if '    // MARK: - Public Methods' in lines[i]:
++        update_color = [
++            '    /// Updates the color of the scale bar and its elements based on the current tile server.\n',
++            '    ///\n',
++            '    /// This method is called automatically when `tileServer` is set.\n',
++            '    /// It determines whether to use light or dark colors based on the tile server\'s characteristics.\n',
++            '    private func updateColor() {\n',
++            '        guard let server = tileServer else { return }\n',
++            '        \n',
++            '        // For Apple map, use system adaptive colors (nil means use .label)\n',
++            '        // For Apple Satellite (dark), use white\n',
++            '        // For other third-party maps (usually light), use black\n',
++            '        switch server {\n',
++            '        case .apple:\n',
++            '            // Use system adaptive - set to nil\n',
++            '            scaleBarColor = nil\n',
++            '        case .appleSatellite:\n',
++            '            // Dark background, use white\n',
++            '            scaleBarColor = .white\n',
++            '        default:\n',
++            '            // Light background, use black\n',
++            '            scaleBarColor = .black\n',
++            '        }\n',
++            '        \n',
++            '        // Update all UI elements\n',
++            '        setupViews()\n',
++            '    }\n',
++            '\n'
++        ]
++        for idx, line in enumerate(update_color):
++            lines.insert(i + idx, line)
++        break
++
++# Pass 5: Update configure to call updateColor
++for i in range(len(lines)):
++    if 'public func configure(mapView: MKMapView, useImperial: Bool)' in lines[i]:
++        # Find the end of this method
++        j = i
++        brace_count = 0
++        while j < len(lines):
++            for char in lines[j]:
++                if char == '{':
++                    brace_count += 1
++                elif char == '}':
++                    brace_count -= 1
++                    if brace_count < 0:
++                        # Found the end
++                        # Check if updateColor is already called
++                        method_text = ''.join(lines[i:j+1])
++                        if 'updateColor()' not in method_text:
++                            # Find last statement before closing brace
++                            k = j - 1
++                            while k > i and (lines[k].strip() == '' or '}' in lines[k]):
++                                k -= 1
++                            # Insert updateColor call
++                            lines.insert(k + 1, '        updateColor()  // Update color based on tile server\n')
++                        break
++            if brace_count < 0:
++                break
++            j += 1
++        break
++
++# Write the result
++with open('/app/OpenGpxTracker/GPXScaleBar.swift', 'w') as f:
++    f.writelines(lines)
++
++print("GPXScaleBar.swift has been updated successfully")

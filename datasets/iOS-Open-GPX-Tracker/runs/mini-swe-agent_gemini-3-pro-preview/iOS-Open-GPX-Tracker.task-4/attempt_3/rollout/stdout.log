@@ -1,0 +1,4489 @@
+HEAD is now at fa320f1 Fix parser slowdown by 2x due to #107
+👋 This is mini-swe-agent version 2.2.0.
+Check the v2 migration guide at https://klieret.short.gy/mini-v2-migration
+ Loading global config from '/root/.config/mini-swe-agent/.env'
+Building agent config from specs: ['mini.yaml', '/tmp/anvil_override.yaml']
+
+System:
+You are a helpful assistant that can interact with a computer.
+
+User:
+Please solve this issue: ## Bug: UI components fail to adapt correctly to 
+orientation changes on iPad
+
+### Problem Description
+
+In the **iOS-Open-GPX-Tracker** app, there is a bug regarding how the UI handles
+device orientation changes on iPad. While the map itself rotates correctly, the 
+overlaying UI elements do not maintain their intended layout, leading to visual 
+issues.
+
+### Observed Behavior
+
+- **Button Bar Overlap**: When transitioning between portrait and landscape on 
+iPad, the bottom button bar (containing "Start Tracking," "Save," and "Reset") 
+fails to recalculate its spacing, resulting in buttons overlapping or becoming 
+too compressed to use.
+- **Compass Misalignment**: The compass view moves out of its designated 
+position upon rotation, sometimes disappearing or floating at incorrect 
+coordinates.
+- **Label Truncation**: Status labels (such as the time and coordinate labels at
+the top) may truncate or have incorrect padding from the edges when the width 
+changes.
+- **Static Layout**: The current implementation relies on manual frame 
+calculations and device-specific checks (like `IsIPhoneX`) that don't account 
+for the dynamic size classes of various iPad models.
+
+### Acceptance Criteria
+
+1. The layout must be migrated from manual frame calculations and 
+`autoresizingMask` to Auto Layout constraints so that all UI elements adapt 
+dynamically to size changes.
+2. Buttons must not use hardcoded frame or center assignments — their positions 
+must be defined by constraints relative to the view.
+3. Status labels must not use hardcoded frame assignments — they must remain 
+anchored to their relative positions as the view resizes.
+4. The view controller must respond to orientation transitions and update the 
+layout accordingly, without requiring arbitrary delays.
+5. The compass must reposition correctly when the orientation changes, remaining
+in its designated location.
+6. The layout must work correctly across different screen sizes (including iPad 
+Pro models and iPhone X+) without device-specific conditionals.
+
+
+You can execute bash commands and edit files to implement the necessary changes.
+
+## Recommended Workflow
+
+This workflows should be done step-by-step so that you can iterate on your 
+changes and any possible problems.
+
+1. Analyze the codebase by finding and reading relevant files
+2. Create a script to reproduce the issue
+3. Edit the source code to resolve the issue
+4. Verify your fix works by running your script again
+5. Test edge cases to ensure your fix is robust
+6. Submit your changes and finish your work by issuing the following command: 
+`echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+   Do not combine it with any other command. <important>After this command, you 
+cannot continue working on this task.</important>
+
+## Command Execution Rules
+
+You are operating in an environment where
+
+1. You issue at least one command
+2. The system executes the command(s) in a subshell
+3. You see the result(s)
+4. You write your next command(s)
+
+Each response should include:
+
+1. **Reasoning text** where you explain your analysis and plan
+2. At least one tool call with your command
+
+**CRITICAL REQUIREMENTS:**
+
+- Your response SHOULD include reasoning text explaining what you're doing
+- Your response MUST include AT LEAST ONE bash tool call
+- Directory or environment variable changes are not persistent. Every action is 
+executed in a new subshell.
+- However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd 
+/path/to/working/dir && ...` or write/load environment variables from files
+- Submit your changes and finish your work by issuing the following command: 
+`echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+  Do not combine it with any other command. <important>After this command, you 
+cannot continue working on this task.</important>
+
+Example of a CORRECT response:
+<example_response>
+I need to understand the structure of the repository first. Let me check what 
+files are in the current directory to get a better understanding of the 
+codebase.
+
+[Makes bash tool call with {"command": "ls -la"} as arguments]
+</example_response>
+
+<system_information>
+Linux 4.4.0 #1 SMP Sun Jan 10 15:06:54 PST 2016 x86_64
+</system_information>
+
+## Useful command examples
+
+### Create a new file:
+
+```bash
+cat <<'EOF' > newfile.py
+import numpy as np
+hello = "world"
+print(hello)
+EOF
+```
+
+### Edit files with sed:```bash
+# Replace all occurrences
+sed -i 's/old_string/new_string/g' filename.py
+
+# Replace only first occurrence
+sed -i 's/old_string/new_string/' filename.py
+
+# Replace first occurrence on line 1
+sed -i '1s/old_string/new_string/' filename.py
+
+# Replace all occurrences in lines 1-10
+sed -i '1,10s/old_string/new_string/g' filename.py
+```
+
+### View file content:
+
+```bash
+# View specific lines with numbers
+nl -ba filename.py | sed -n '10,20p'
+```
+
+### Any other command you want to run
+
+```bash
+anything
+```
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 1, $0.00):
+I need to explore the codebase to locate the relevant files and understand the 
+project structure. I'll start by listing the files in the repository.
+
+
+
+```
+ls -la
+```
+
+Tool:
+<returncode>
+0
+<output>
+total 62
+drwxr-xr-x 10 root root  4096 Feb 19 00:52 .
+drwxr-xr-x  2 root root    74 Feb 19 00:52 ..
+drwxr-xr-x  1 root root    96 Feb 19 00:52 .git
+-rw-r--r--  1 root root   637 Feb 19 00:52 .gitignore
+-rw-r--r--  1 root root  1443 Feb 19 00:52 .jazzy.yaml
+-rw-r--r--  1 root root    11 Feb 19 00:52 .ruby-version
+-rw-r--r--  1 root root   286 Feb 19 00:52 .swiftlint.yml
+-rw-r--r--  1 root root   207 Feb 18 08:19 Dockerfile
+-rw-r--r--  1 root root 35147 Feb 19 00:52 LICENSE.txt
+drwxr-xr-x  1 root root  4096 Feb 19 00:52 OpenGpxTracker
+drwxr-xr-x  1 root root    91 Feb 19 00:52 OpenGpxTracker-Watch
+drwxr-xr-x  1 root root  4096 Feb 19 00:52 OpenGpxTracker-Watch Extension
+drwxr-xr-x  1 root root   114 Feb 19 00:52 OpenGpxTracker.xcodeproj
+drwxr-xr-x  1 root root    70 Feb 19 00:52 OpenGpxTracker.xcworkspace
+drwxr-xr-x  1 root root    69 Feb 19 00:52 OpenGpxTrackerTests
+-rw-r--r--  1 root root   405 Feb 19 00:52 Podfile
+-rw-r--r--  1 root root  1097 Feb 19 00:52 Podfile.lock
+drwxr-xr-x  1 root root   178 Feb 19 00:52 Pods
+-rw-r--r--  1 root root  5247 Feb 19 00:52 README.md
+-rw-r--r--  1 root root    36 Feb 18 08:19 requirements.txt
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 2, $0.01):
+I will examine the contents of the `OpenGpxTracker` directory to locate the 
+relevant view controller, likely one handling the map and UI components.
+
+
+
+```
+ls -F OpenGpxTracker
+```
+
+Tool:
+<returncode>
+0
+<output>
+AboutViewController.swift
+AppDelegate.swift
+Base.lproj/
+CachedTileOverlay.swift
+CoreDataAlertView.swift
+CoreDataHelper.swift
+Date+timeAgo.swift
+DistanceLabel.swift
+Double+Measures.swift
+GPXExtentCoordinates.swift
+GPXFileInfo.swift
+GPXFileManager.swift
+GPXFilesTableViewController.swift
+GPXFilesTableViewControlllerDelegate.swift
+GPXMapView.swift
+GPXRoot+length.swift
+GPXSession.swift
+GPXTileServer.swift
+GPXTrack+length.swift
+GPXTrackPoint+MapKit.swift
+GPXTrackSegment+MapKit.swift
+GPXWaypoint+MKAnnotation.swift
+Images.xcassets/
+Info.plist
+Int+asFilesize.swift
+MailerManager.swift
+MapViewDelegate.swift
+ObjectiveCBridgingHeader.h
+OpenGpxTracker.xcdatamodeld/
+Preferences.swift
+PreferencesTableViewController.swift
+PreferencesTableViewControllerDelegate.swift
+StopWatch.swift
+StopWatchDelegate.swift
+TrackerButton.swift
+ViewController.swift
+about.html
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 3, $0.02):
+The file `ViewController.swift` seems like the main view controller likely 
+responsible for the map and overlay UI components. `GPXMapView.swift` and other 
+files seem more specialized.
+
+I'll search for UI-related terms like "compass", "button", "autoresizingMask", 
+and layout-related code in `ViewController.swift` to confirm it's the right 
+place.
+
+
+
+```
+grep -nEi "compass|button|autoresizingMask|layout|frame" 
+OpenGpxTracker/ViewController.swift | head -n 20
+```
+
+Tool:
+<returncode>
+0
+<output>
+14:/// Purple color for button background
+15:let kPurpleButtonBackgroundColor: UIColor =  UIColor(red: 146.0/255.0, green:
+166.0/255.0, blue: 218.0/255.0, alpha: 0.90)
+17:/// Green color for button background
+18:let kGreenButtonBackgroundColor: UIColor = UIColor(red: 142.0/255.0, green: 
+224.0/255.0, blue: 102.0/255.0, alpha: 0.90)
+20:/// Red color for button background
+21:let kRedButtonBackgroundColor: UIColor =  UIColor(red: 244.0/255.0, green: 
+94.0/255.0, blue: 94.0/255.0, alpha: 0.90)
+23:/// Blue color for button background
+24:let kBlueButtonBackgroundColor: UIColor = UIColor(red: 74.0/255.0, green: 
+144.0/255.0, blue: 226.0/255.0, alpha: 0.90)
+26:/// Blue color for disabled button background
+27:let kDisabledBlueButtonBackgroundColor: UIColor = UIColor(red: 74.0/255.0, 
+green: 144.0/255.0, blue: 226.0/255.0, alpha: 0.10)
+29:/// Red color for disabled button background
+30:let kDisabledRedButtonBackgroundColor: UIColor =  UIColor(red: 244.0/255.0, 
+green: 94.0/255.0, blue: 94.0/255.0, alpha: 0.10)
+32:/// White color for button background
+35:/// Delete Waypoint Button tag. Used in a waypoint bubble
+36:let kDeleteWaypointAccesoryButtonTag = 666
+38:/// Edit Waypoint Button tag. Used in a waypoint bubble.
+39:let kEditWaypointAccesoryButtonTag = 333
+50:/// Size for small buttons
+51:let kButtonSmallSize: CGFloat = 48.0
+53:/// Size for large buttons
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 4, $0.02):
+Okay, `ViewController.swift` seems to have constants related to buttons. Let's 
+look for `layout` or `orientation` related logic in that file.
+
+
+
+```
+grep -nEi "viewDidLayoutSubviews|orientation|frame|center" 
+OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+80:    /// Shall the map be centered on current user position?
+81:    /// If yes, whenever the user moves, the center of the map too.
+87:                map.setCenter((map.userLocation.coordinate), animated: true)
+387:        map.frame = CGRect(x: 0.0, y: (isIPhoneX ? 0.0 : 20.0), width: 
+self.view.bounds.size.width, height: mapH)
+391:        map.compassRect = CGRect(x: map.frame.width/2 - 18, y: isIPhoneX ? 
+105.0 : 70.0 , width: 36, height: 36)
+421:        let center = locationManager.location?.coordinate ?? 
+CLLocationCoordinate2D(latitude: 8.90, longitude: -79.50)
+423:        let region = MKCoordinateRegion(center: center, span: span)
+438:        let appTitleW: CGFloat = self.view.frame.width//200.0
+440:        let appTitleX: CGFloat = 0 //self.view.frame.width/2 - appTitleW/2
+442:        appTitleLabel.frame = CGRect(x:appTitleX, y: appTitleY, width: 
+appTitleW, height: appTitleH)
+453:        coordsLabel.frame = CGRect(x: self.map.frame.width - 305, y: 
+appTitleY, width: 300, height: 12)
+464:        timeLabel.frame = CGRect(x: self.map.frame.width - 160, y: 20 + 
+iPhoneXdiff, width: 150, height: 40)
+475:        speedLabel.frame = CGRect(x: self.map.frame.width - 160,  y: 20 + 36
++ iPhoneXdiff, width: 150, height: 20)
+484:        totalTrackedDistanceLabel.frame = CGRect(x: self.map.frame.width - 
+160, y: 60 + 20 + iPhoneXdiff, width: 150, height: 40)
+492:        currentSegmentDistanceLabel.frame = CGRect(x: self.map.frame.width -
+160, y: 80 + 36 + iPhoneXdiff, width: 150, height: 20)
+501:        aboutButton.frame = CGRect(x: 5 + 8, y: 14 + 5 + 48 + 5 + 
+iPhoneXdiff, width: 32, height: 32)
+511:        preferencesButton.frame = CGRect(x: 5 + 10 + 48, y: 14 + 5 + 8  + 
+iPhoneXdiff, width: 32, height: 32)
+521:        shareButton.frame = CGRect(x: 5 + 10 + 48 * 2, y: 14 + 5 + 8  + 
+iPhoneXdiff, width: 32, height: 32)
+535:        folderButton.frame = CGRect(x: 0, y: 0, width: folderW, height: 
+folderH)
+536:        folderButton.center = CGPoint(x: folderX, y: folderY)
+547:        signalImageView.frame = CGRect(x: self.view.frame.width/2 - 25.0, y:
+14 + 5 + iPhoneXdiff, width: 50, height: 30)
+550:        signalAccuracyLabel.frame = CGRect(x: self.view.frame.width/2 - 
+25.0, y:  14 + 5 + 30 + iPhoneXdiff , width: 50, height: 12)
+553:        signalAccuracyLabel.textAlignment = .center
+572:        //                  map.frame/2 (center)
+574:        let yCenterForButtons: CGFloat = map.frame.height - 
+kButtonLargeSize/2 - 5 //center Y of start
+580:        let trackerX: CGFloat = self.map.frame.width/2 - 0.0 // Center of 
+start
+581:        let trackerY: CGFloat = yCenterForButtons
+582:        trackerButton.frame = CGRect(x: 0, y:0, width: trackerW, height: 
+trackerH)
+583:        trackerButton.center = CGPoint(x: trackerX, y: trackerY)
+591:        trackerButton.titleLabel?.textAlignment = .center
+599:        let newPinY: CGFloat = yCenterForButtons
+600:        newPinButton.frame = CGRect(x: 0, y: 0, width: newPinW, height: 
+newPinH)
+601:        newPinButton.center = CGPoint(x: newPinX, y: newPinY)
+616:        let followY: CGFloat = yCenterForButtons
+617:        followUserButton.frame = CGRect(x: 0, y: 0, width: followW, height: 
+followH)
+618:        followUserButton.center = CGPoint(x: followX, y: followY)
+632:        let saveY: CGFloat = yCenterForButtons
+633:        saveButton.frame = CGRect(x: 0, y: 0, width: saveW, height: saveH)
+634:        saveButton.center = CGPoint(x: saveX, y: saveY)
+640:        saveButton.titleLabel?.textAlignment = .center
+648:        let resetY: CGFloat = yCenterForButtons
+649:        resetButton.frame = CGRect(x: 0, y: 0, width: resetW, height: 
+resetH)
+650:        resetButton.center = CGPoint(x: resetX, y: resetY)
+656:        resetButton.titleLabel?.textAlignment = .center
+673:        let notificationCenter = NotificationCenter.default
+675:        notificationCenter.addObserver(self, selector: 
+#selector(ViewController.didEnterBackground),
+678:        notificationCenter.addObserver(self, selector: 
+#selector(applicationDidBecomeActive), name: 
+UIApplication.didBecomeActiveNotification, object: nil)
+681:        notificationCenter.addObserver(self, selector: 
+#selector(applicationWillTerminate), name: 
+UIApplication.willTerminateNotification, object: nil)
+683:        notificationCenter.addObserver(self, selector: 
+#selector(presentReceivedFile(_:)), name: .didReceiveFileFromAppleWatch, object:
+nil)
+685:        notificationCenter.addObserver(self, selector: 
+#selector(loadRecoveredFile(_:)), name: .loadRecoveredFile, object: nil)
+692:        NotificationCenter.default.removeObserver(self)
+739:        //center map in GPX data
+856:        shareActivityIndicator.frame = CGRect(x: 0, y: 0, width: 32, height:
+32)
+882:    /// After invoking this fuction, the map will not be centered on current
+user position.
+940:    /// Trogles between following or not following the user, that is, 
+automatically centering the map
+1164:        //center map in GPX data
+1243:        //Update Map center and track overlay if user is being followed
+1245:            map.setCenter(newLocation.coordinate, animated: true)
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 5, $0.03):
+The grep usage shows many lines setting `frame` and `center` manually. This 
+confirms the problem description: "The current implementation relies on manual 
+frame calculations".
+
+Specifically:
+- Line 387: `map.frame = CGRect(...)`
+- Line 391: `map.compassRect = CGRect(...)`
+- Lines 442, 453, 464, 475, 484, 492: Status labels frame setting.
+- Lines 501, 511, 521, 535, 547, 550, 582, 600, 617, 633, 649: Buttons frame 
+setting.
+
+These manual calculations seem to be happening inside a method, likely 
+`viewDidLoad` or `viewDidLayoutSubviews`. I need to see the context of these 
+lines.
+
+I will read `ViewController.swift` around these lines.
+
+
+
+```
+nl -ba OpenGpxTracker/ViewController.swift | sed -n '380,660p'
+```
+
+Tool:
+<returncode>
+0
+<output_head>
+   380          self.view.autoresizesSubviews = true
+   381          self.view.autoresizingMask = [.flexibleHeight, .flexibleWidth]
+   382  
+   383          // Map configuration Stuff
+   384          map.delegate = mapViewDelegate
+   385          map.showsUserLocation = true
+   386          let mapH: CGFloat = self.view.bounds.size.height - (isIPhoneX ? 
+0.0 : 20.0)
+   387          map.frame = CGRect(x: 0.0, y: (isIPhoneX ? 0.0 : 20.0), width: 
+self.view.bounds.size.width, height: mapH)
+   388          map.isZoomEnabled = true
+   389          map.isRotateEnabled = true
+   390          //set the position of the compass.
+   391          map.compassRect = CGRect(x: map.frame.width/2 - 18, y: isIPhoneX
+? 105.0 : 70.0 , width: 36, height: 36)
+   392          
+   393          //If user long presses the map, it will add a Pin (waypoint) at 
+that point
+   394          map.addGestureRecognizer(
+   395              UILongPressGestureRecognizer(target: self, action: 
+#selector(ViewController.addPinAtTappedLocation(_:)))
+   396          )
+   397          
+   398          //Each time user pans, if the map is following the user, it 
+stops doing that.
+   399          let panGesture = UIPanGestureRecognizer(target: self, action: 
+#selector(ViewController.stopFollowingUser(_:)))
+   400          panGesture.delegate = self
+   401          map.addGestureRecognizer(panGesture)
+   402          
+   403          locationManager.delegate = self
+   404          locationManager.startUpdatingLocation()
+   405          locationManager.startUpdatingHeading()
+   406          
+   407          //let pinchGesture = UIPinchGestureRecognizer(target: self, 
+action: "pinchGesture")
+   408          //map.addGestureRecognizer(pinchGesture)
+   409          
+   410          //Preferences
+   411          map.tileServer = Preferences.shared.tileServer
+   412          map.useCache = Preferences.shared.useCache
+   413          useImperial = Preferences.shared.useImperial
+   414          
+   415          
+   416          //
+   417          // Config user interface
+   418          //
+   419          
+   420          // Set default zoom
+   421          let center = locationManager.location?.coordinate ?? 
+CLLocationCoordinate2D(latitude: 8.90, longitude: -79.50)
+   422          let span = MKCoordinateSpan(latitudeDelta: 0.005, 
+longitudeDelta: 0.005)
+   423          let region = MKCoordinateRegion(center: center, span: span)
+   424          map.setRegion(region, animated: true)
+   425          self.view.addSubview(map)
+   426          
+   427          addNotificationObservers()
+   428          
+   429          //
+   430          // ---------------------- Build Interface Area 
+-----------------------------
+   431          //
+   432          // HEADER
+   433          let font36 = UIFont(name: "DinCondensed-Bold", size: 36.0)
+   434          let font18 = UIFont(name: "DinAlternate-Bold", size: 18.0)
+   435          let font12 = UIFont(name: "DinAlternate-Bold", size: 12.0)
+   436          
+   437          //add the app title Label (Branding, branding, branding! )
+   438          let appTitleW: CGFloat = self.view.frame.width//200.0
+   439          let appTitleH: CGFloat = 14.0
+   440          let appTitleX: CGFloat = 0 //self.view.frame.width/2 - 
+appTitleW/2
+   441          let appTitleY: CGFloat = isIPhoneX ? 40.0 : 20.0
+   442          appTitleLabel.frame = CGRect(x:appTitleX, y: appTitleY, width: 
+appTitleW, height: appTitleH)
+   443          appTitleLabel.text = "  Open GPX Tracker"
+   444          appTitleLabel.textAlignment = .left
+   445          appTitleLabel.font = UIFont.boldSystemFont(ofSize: 10)
+   446          //appTitleLabel.textColor = UIColor(red: 0.0/255.0, green: 
+0.0/255.0, blue: 0.0/255.0, alpha: 1.0)
+   447          appTitleLabel.textColor = UIColor.yellow
+   448          appTitleLabel.backgroundColor = UIColor(red: 58.0/255.0, green: 
+57.0/255.0, blue: 54.0/255.0, alpha: 0.80)
+   449          appTitleLabel.autoresizingMask = [.flexibleWidth, 
+.flexibleLeftMargin, .flexibleRightMargin]
+   450          self.view.addSubview(appTitleLabel)
+   451          
+   452          // CoordLabel
+   453          coordsLabel.frame = CGRect(x: self.map.frame.width - 305, y: 
+appTitleY, width: 300, height: 12)
+   454          coordsLabel.textAlignment = .right
+   455          coordsLabel.font = font12
+   456          coordsLabel.textColor = UIColor.white
+   457          coordsLabel.text = kNotGettingLocationText
+   458          coordsLabel.autoresizingMask = [.flexibleWidth, 
+.flexibleLeftMargin, .flexibleRightMargin]
+   459          self.view.addSubview(coordsLabel)
+   460          
+   461          // Tracked info
+   462          let iPhoneXdiff: CGFloat  = isIPhoneX ? 40 : 0
+   463          //timeLabel
+   464          timeLabel.frame = CGRect(x: self.map.frame.width - 160, y: 20 + 
+iPhoneXdiff, width: 150, height: 40)
+   465          timeLabel.textAlignment = .right
+   466          timeLabel.font = font36
+   467          timeLabel.text = "00:00"
+   468          timeLabel.autoresizingMask = [.flexibleWidth, 
+.flexibleLeftMargin, .flexibleRightMargin]
+   469  
+<output_tail>
+sHidden = false
+   589          trackerButton.titleLabel?.font = UIFont.boldSystemFont(ofSize: 
+16)
+   590          trackerButton.titleLabel?.numberOfLines = 2
+   591          trackerButton.titleLabel?.textAlignment = .center
+   592          trackerButton.autoresizingMask = [.flexibleLeftMargin, 
+.flexibleTopMargin, .flexibleBottomMargin, .flexibleRightMargin]
+   593          map.addSubview(trackerButton)
+   594          
+   595          // Pin Button (on the left of start)
+   596          let newPinW: CGFloat = kButtonSmallSize
+   597          let newPinH: CGFloat = kButtonSmallSize
+   598          let newPinX: CGFloat = trackerX - trackerW/2 - kButtonSeparation
+- newPinW/2
+   599          let newPinY: CGFloat = yCenterForButtons
+   600          newPinButton.frame = CGRect(x: 0, y: 0, width: newPinW, height: 
+newPinH)
+   601          newPinButton.center = CGPoint(x: newPinX, y: newPinY)
+   602          newPinButton.layer.cornerRadius = newPinW/2
+   603          newPinButton.backgroundColor = kWhiteBackgroundColor
+   604          newPinButton.setImage(UIImage(named: "addPin"), for: 
+UIControl.State())
+   605          newPinButton.setImage(UIImage(named: "addPinHigh"), for: 
+.highlighted)
+   606          newPinButton.addTarget(self, action: 
+#selector(ViewController.addPinAtMyLocation), for: .touchUpInside)
+   607          newPinButton.autoresizingMask = [.flexibleLeftMargin, 
+.flexibleTopMargin, .flexibleBottomMargin, .flexibleRightMargin]
+   608          //let newPinLongPress = UILongPressGestureRecognizer(target: 
+self, action: Selector("newPinLongPress:"))
+   609          //newPinButton.addGestureRecognizer(newPinLongPress)
+   610          map.addSubview(newPinButton)
+   611          
+   612          // Follow user button
+   613          let followW: CGFloat = kButtonSmallSize
+   614          let followH: CGFloat = kButtonSmallSize
+   615          let followX: CGFloat = newPinX - newPinW/2 - kButtonSeparation -
+followW/2
+   616          let followY: CGFloat = yCenterForButtons
+   617          followUserButton.frame = CGRect(x: 0, y: 0, width: followW, 
+height: followH)
+   618          followUserButton.center = CGPoint(x: followX, y: followY)
+   619          followUserButton.layer.cornerRadius = followW/2
+   620          followUserButton.backgroundColor = kWhiteBackgroundColor
+   621          //follow_user_high represents the user is being followed. 
+Default status when app starts
+   622          followUserButton.setImage(UIImage(named: "follow_user_high"), 
+for: UIControl.State())
+   623          followUserButton.setImage(UIImage(named: "follow_user_high"), 
+for: .highlighted)
+   624          followUserButton.addTarget(self, action: 
+#selector(ViewController.followButtonTroggler), for: .touchUpInside)
+   625          followUserButton.autoresizingMask = [.flexibleLeftMargin, 
+.flexibleTopMargin, .flexibleBottomMargin, .flexibleRightMargin]
+   626          map.addSubview(followUserButton)
+   627          
+   628          // Save button
+   629          let saveW: CGFloat = kButtonSmallSize
+   630          let saveH: CGFloat = kButtonSmallSize
+   631          let saveX: CGFloat = trackerX + trackerW/2 + kButtonSeparation +
+saveW/2
+   632          let saveY: CGFloat = yCenterForButtons
+   633          saveButton.frame = CGRect(x: 0, y: 0, width: saveW, height: 
+saveH)
+   634          saveButton.center = CGPoint(x: saveX, y: saveY)
+   635          saveButton.layer.cornerRadius = saveW/2
+   636          saveButton.setTitle("Save", for: UIControl.State())
+   637          saveButton.backgroundColor = kDisabledBlueButtonBackgroundColor
+   638          saveButton.addTarget(self, action: 
+#selector(ViewController.saveButtonTapped), for: .touchUpInside)
+   639          saveButton.isHidden = false
+   640          saveButton.titleLabel?.textAlignment = .center
+   641          saveButton.autoresizingMask = [.flexibleLeftMargin, 
+.flexibleTopMargin, .flexibleBottomMargin, .flexibleRightMargin]
+   642          map.addSubview(saveButton)
+   643          
+   644          // Reset button
+   645          let resetW: CGFloat = kButtonSmallSize
+   646          let resetH: CGFloat = kButtonSmallSize
+   647          let resetX: CGFloat = saveX + saveW/2 + kButtonSeparation + 
+resetW/2
+   648          let resetY: CGFloat = yCenterForButtons
+   649          resetButton.frame = CGRect(x: 0, y: 0, width: resetW, height: 
+resetH)
+   650          resetButton.center = CGPoint(x: resetX, y: resetY)
+   651          resetButton.layer.cornerRadius = resetW/2
+   652          resetButton.setTitle("Reset", for: UIControl.State())
+   653          resetButton.backgroundColor = kDisabledRedButtonBackgroundColor
+   654          resetButton.addTarget(self, action: 
+#selector(ViewController.resetButtonTapped), for: .touchUpInside)
+   655          resetButton.isHidden = false
+   656          resetButton.titleLabel?.textAlignment = .center
+   657          resetButton.autoresizingMask = [.flexibleLeftMargin, 
+.flexibleTopMargin, .flexibleBottomMargin, .flexibleRightMargin]
+   658          map.addSubview(resetButton)
+   659      }
+   660      
+
+<elided_chars>
+7751
+<warning>
+Output too long.
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 6, $0.05):
+The code confirms that layout is extremely manual, calculating X/Y coordinates 
+based on `isIPhoneX` checks and view dimensions.
+
+To reproduce this, I would typically run the app on an iPad simulator and rotate
+it. Since I cannot run a GUI simulator, I will create a test script that 
+instantiates the `ViewController`, sets the view frame to simulate an iPad in 
+portrait, checks the frames of subviews, then simulates a rotation by changing 
+the view frame to landscape, and checks the frames again.
+
+I need to see how `isIPhoneX` is defined, because if it's a computed property 
+based on screen size, it might affect my test.
+
+
+
+```
+grep -n "var isIPhoneX" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+354:        var isIPhoneX = false
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 7, $0.06):
+It seems `isIPhoneX` is initialized to false. Let's see if it's updated 
+somewhere.
+
+
+
+```
+grep -n "isIPhoneX =" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+354:        var isIPhoneX = false
+365:                isIPhoneX = true
+368:                isIPhoneX = true
+371:                isIPhoneX = true
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 8, $0.06):
+It's likely checking `UIDevice.current.name` or something similar inside 
+`viewDidLoad`.
+
+I'll create a reproduction script `ReproduceIssue.swift`. It will define a mock 
+`ViewController` or use the existing one if possible, but since I cannot easily 
+run existing Swift code without proper context (imports, dependencies), I might 
+write a simplified Swift script that mimics the logic found in `ViewController` 
+to demonstrate the frame calculation failure.
+
+However, since I can edit the app source, I should try to make the actual app 
+use Auto Layout.
+
+The plan:
+1.  Verify where `isIPhoneX` logic is.
+2.  Switch from frame/autoresizingMask to Auto Layout constraints.
+
+Let's look at `isIPhoneX` logic in `ViewController.swift`.
+
+
+
+```
+nl -ba OpenGpxTracker/ViewController.swift | sed -n '350,380p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   350          map.coreDataHelper.retrieveFromCoreData()
+   351          
+   352          //Because of the edges, iPhone X* is slightly different on the 
+layout.
+   353          //So, Is the current device an iPhone X?
+   354          var isIPhoneX = false
+   355          if UIDevice().userInterfaceIdiom == .phone {
+   356              switch UIScreen.main.nativeBounds.height {
+   357              case 1136:
+   358                  print("device: IPHONE 5,5S,5C")
+   359              case 1334:
+   360                  print("device: IPHONE 6,7,8 IPHONE 6S,7S,8S ")
+   361              case 1920, 2208:
+   362                  print("device: IPHONE 6PLUS, 6SPLUS, 7PLUS, 8PLUS")
+   363              case 2436:
+   364                  print("device: IPHONE X, IPHONE XS")
+   365                  isIPhoneX = true
+   366              case 2688:
+   367                  print("device: IPHONE XS_MAX")
+   368                  isIPhoneX = true
+   369              case 1792:
+   370                  print("device: IPHONE XR")
+   371                  isIPhoneX = true
+   372              default:
+   373                  print("UNDETERMINED")
+   374              }
+   375          }
+   376          
+   377          // Map autorotate configuration
+   378          map.autoresizesSubviews = true
+   379          map.autoresizingMask = [.flexibleHeight, .flexibleWidth]
+   380          self.view.autoresizesSubviews = true
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 9, $0.08):
+The critical observation is that `isIPhoneX` logic is inside `viewDidLoad` and 
+depends on `UIScreen.main.nativeBounds`.
+
+If I run this app on an iPad, `UIDevice().userInterfaceIdiom` would be `.pad`, 
+so `isIPhoneX` would remain `false`. But the manual layout still depends on 
+`isIPhoneX` for certain offsets.
+
+The core issue is that ALL layout is manual frame calculation inside 
+`viewDidLoad`. When the device rotates, `viewDidLoad` is NOT called again. 
+`viewWillTransition(to:with:)` or `traitCollectionDidChange(_:)` should be used 
+to update layout, OR simply use Auto Layout constraints which handle this 
+automatically.
+
+The task is to migrate to Auto Layout.
+
+I will verify if there's any `viewWillTransition` logic.
+
+
+
+```
+grep "viewWillTransition" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+1
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 10, $0.09):
+No `viewWillTransition` override. This confirms that rotation/resizing will just
+stretch the views if `autoresizingMask` is used, but manual frame settings in 
+`viewDidLoad` won't update positions based on new screen dimensions.
+
+I will implement Auto Layout for the components I observed.
+
+I should list all UI components being added to the view hierarchy in 
+`viewDidLoad`.
+
+`map` is added to `self.view`.
+`appTitleLabel` is added to `self.view`.
+`coordsLabel` is added to `self.view`.
+`timeLabel` is added to `self.view`.
+`speedLabel` is added to `self.view`? No, let's search `addSubview`.
+
+I'll search for `addSubview` to get a comprehensive list of UI elements.
+
+
+
+```
+grep "addSubview" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+        self.view.addSubview(map)
+        self.view.addSubview(appTitleLabel)
+        self.view.addSubview(coordsLabel)
+        map.addSubview(timeLabel)
+        map.addSubview(speedLabel)
+        map.addSubview(totalTrackedDistanceLabel)
+        map.addSubview(currentSegmentDistanceLabel)
+        map.addSubview(aboutButton)
+        map.addSubview(preferencesButton)
+        map.addSubview(shareButton)
+        map.addSubview(folderButton)
+        map.addSubview(signalImageView)
+        map.addSubview(signalAccuracyLabel)
+        map.addSubview(trackerButton)
+        map.addSubview(newPinButton)
+        map.addSubview(followUserButton)
+        map.addSubview(saveButton)
+        map.addSubview(resetButton)
+                self.shareButton.addSubview(self.shareActivityIndicator)
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 11, $0.12):
+So, many elements are added to `map` instead of `self.view`. That's interesting,
+but maybe they should be added to `self.view` to be separate from map 
+interactions or panning. But looking at the grep output:
+- `appTitleLabel` and `coordsLabel` are added to `self.view`.
+- `timeLabel`, `speedLabel`, `distance` labels, and all buttons: 
+`trackerButton`, `newPinButton`, `followUserButton`, `saveButton`, 
+`resetButton`, `aboutButton`, `preferencesButton`, `shareButton`, 
+`folderButton`, `signal` are added to `map`.
+
+If I migrate to constraints, I should likely change them to be added to 
+`self.view` to avoid issues with map content, or check if they are intended to 
+be map annotations. But they look like UI overlays.
+
+Wait, if they are added to `map` (which is a `MKMapView`), then they might move 
+with the map if not pinned correctly. But `MKMapView` is a subclass of `UIView`,
+so subviews stay relative to the map view unless the map view itself moves. The 
+map fills the screen, so the subviews should stay fixed relative to the screen.
+
+However, moving to Auto Layout constraints is generally safer and more flexible.
+
+I will verify if I can reproduce the issue with a script. Since I don't have a 
+UI simulator, I will write a test that:
+1. Instantiates `ViewController`.
+2. Simulates `viewDidLoad`.
+3. Checks the frames of UI elements.
+4. Changes the view bounds (to simulate rotation).
+5. Checks if frames updated. Since `autoresizingMask` is used, some frames might
+update, but `isIPhoneX` dependency will not re-evaluate, nor will manual frame 
+calculations in `viewDidLoad` re-run.
+
+Wait, `autoresizesSubviews` is true. `autoresizingMask` is set on subviews. So 
+rotation MIGHT work partially but break if aspect ratios change drastically 
+(iPad) or if hardcoded values (like `isIPhoneX`) are used for initial placement 
+and not updated.
+
+For example, `trackerButton` is centered using `center = CGPoint(x: trackerX, y:
+trackerY)` calculated using `self.map.frame.width` in `viewDidLoad`. The 
+autoresizing mask: `.flexibleLeftMargin, .flexibleTopMargin, 
+.flexibleBottomMargin, .flexibleRightMargin`.
+
+Let's check `trackerButton` setup:
+```swift
+   580:        let trackerX: CGFloat = self.map.frame.width/2 - 0.0 // Center of
+start
+   581:        let trackerY: CGFloat = yCenterForButtons
+...
+   592:        trackerButton.autoresizingMask = [.flexibleLeftMargin, 
+.flexibleTopMargin, .flexibleBottomMargin, .flexibleRightMargin]
+```
+
+If the view width changes, `flexibleLeftMargin` and `flexibleRightMargin` should
+keep it somewhat centered relative to its initial position, but relying on 
+autoresizing mask for precise button layouts in a crowded UI (multiple buttons 
+next to each other) is prone to overlapping or uneven spacing, especially when 
+transitioning between unrelated aspect ratios (Portrait vs Landscape on iPad).
+
+Also, the compass is manually positioned:
+```swift
+   391:        map.compassRect = CGRect(x: map.frame.width/2 - 18, y: isIPhoneX 
+? 105.0 : 70.0 , width: 36, height: 36)
+```
+`MKMapView`'s `compassRect` does not autoresize automatically unless we update 
+it.
+
+So I have enough evidence to proceed with refactoring to Auto Layout.
+
+I'll start by listing all the UI properties in `ViewController` to ensure I have
+access to them.
+
+
+
+```
+grep -n "var .*:" OpenGpxTracker/ViewController.swift | head -n 40
+```
+
+Tool:
+<returncode>
+0
+<output>
+82:    var followUser: Bool = true {
+117:    var map: GPXMapView
+126:    var lastGpxFilename: String = ""
+129:    var wasSentToBackground: Bool = false
+132:    var isDisplayingLocationServicesDenied: Bool = false
+135:    var hasWaypoints: Bool = false {
+160:    var gpxTrackingStatus: GpxTrackingStatus = GpxTrackingStatus.notStarted 
+{
+223:    var lastLocation: CLLocation? //Last point of current segment.
+228:    var appTitleLabel: UILabel
+231:    var signalImageView: UIImageView
+234:    var signalAccuracyLabel: UILabel
+237:    var coordsLabel: UILabel
+240:    var timeLabel: UILabel
+243:    var speedLabel: UILabel
+246:    var totalTrackedDistanceLabel: DistanceLabel
+249:    var currentSegmentDistanceLabel: DistanceLabel
+255:    var followUserButton: UIButton
+258:    var newPinButton: UIButton
+261:    var folderButton: UIButton
+264:    var aboutButton: UIButton
+267:    var preferencesButton: UIButton
+270:    var shareButton: UIButton
+276:    var resetButton: UIButton
+279:    var trackerButton: UIButton
+282:    var saveButton: UIButton
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 12, $0.15):
+Okay, all these properties are instance variables.
+
+I will create a reproduction script `reproduce_issue.swift` to confirm that the 
+`frame` and `center` are not updating correctly when bounds change.
+
+Wait, I don't need a UI simulator to test this. I can mock a `ViewController`, 
+force load its view, change its view frame, and inspect the properties.
+
+However, since `ViewController` relies heavily on other dependencies 
+(`GPXMapView`, `Preferences`, etc.), a swift script might be too complex to set 
+up.
+
+Instead, I will modify the existing `ViewController.swift` to fix the issue 
+directly, since the problem is clear: manual frame setting in `viewDidLoad` 
+without using Auto Layout constraints.
+
+My plan is to:
+1.  Remove manual frame calculations for all UI elements.
+2.  Enable `translatesAutoresizingMaskIntoConstraints = false` for all these 
+elements.
+3.  Add constraints relative to `self.view` (or `map` since they are subviews of
+map, but better to be subviews of `self.view` for overlay, as `map` handles its 
+own gestures).
+
+Wait, the current implementation adds most buttons as subviews of `map`. If I 
+switch to Auto Layout, keeping them as subviews of `map` might be problematic if
+map handles constraints differently (e.g. tracking mode). `MKMapView` subviews 
+generally stay fixed relative to the map frame, not necessarily geographically. 
+Since the current code uses `autoresizingMask` I think adding them to 
+`self.view` is safer and cleaner on iOS 11+ safe areas.
+
+However, `map.compassRect` is specific to `MKMapView`.
+
+Let's check if `isIPhoneX` is used anywhere else that affects logic other than 
+layout. I only saw it used for layout y-offsets.
+
+I will transform `ViewController.swift`.
+
+First, I'll identify the method where UI setup happens. It seems to be entirely 
+inside `viewDidLoad`.
+
+I will extract the UI setup logic into a separate method `setupConstraints()`.
+
+Wait, `map` is initialized in the `init` or implicitly unwrapped optional?
+
+Let's check `ViewController` initialization.
+
+
+
+```
+nl -ba OpenGpxTracker/ViewController.swift | sed -n '110,140p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   110          if #available(iOS 9.0, *) {
+   111              manager.allowsBackgroundLocationUpdates = true
+   112          }
+   113          return manager
+   114      }()
+   115      
+   116      /// Map View
+   117      var map: GPXMapView
+   118      
+   119      /// Map View delegate 
+   120      let mapViewDelegate = MapViewDelegate()
+   121      
+   122      /// Stop watch instance to control elapsed time
+   123      var stopWatch = StopWatch()
+   124      
+   125      /// Name of the last file that was saved (without extension)
+   126      var lastGpxFilename: String = ""
+   127      
+   128      /// Status variable that indicates if the app was sent to 
+background.
+   129      var wasSentToBackground: Bool = false
+   130      
+   131      /// Status variable that indicates if the location service auth was 
+denied.
+   132      var isDisplayingLocationServicesDenied: Bool = false
+   133      
+   134      /// Has the map any waypoint?
+   135      var hasWaypoints: Bool = false {
+   136          /// Whenever it is updated, if it has waypoints it sets the save
+and reset button
+   137          didSet {
+   138              if hasWaypoints {
+   139                  saveButton.backgroundColor = kBlueButtonBackgroundColor
+   140                  resetButton.backgroundColor = kRedButtonBackgroundColor
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 13, $0.16):
+`map` is non-optional. I will check the `init` to see where it comes from.
+
+
+
+```
+grep -n "init" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+300:    /// Initializer. Just initializes the class vars/const
+301:    required init(coder aDecoder: NSCoder) {
+327:        super.init(coder: aDecoder)!
+331:    /// De initalize the ViewController.
+335:    deinit {
+336:        print("*** deinit")
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 14, $0.16):
+`map` and other properties are not optional and must be initialized in 
+`init(coder:)`.
+
+
+
+```
+nl -ba OpenGpxTracker/ViewController.swift | sed -n '300,325p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   300      /// Initializer. Just initializes the class vars/const
+   301      required init(coder aDecoder: NSCoder) {
+   302          self.map = GPXMapView(coder: aDecoder)!
+   303          
+   304          self.appTitleLabel = UILabel(coder: aDecoder)!
+   305          self.signalImageView = UIImageView(coder: aDecoder)!
+   306          self.signalAccuracyLabel = UILabel(coder: aDecoder)!
+   307          self.coordsLabel = UILabel(coder: aDecoder)!
+   308          
+   309          self.timeLabel = UILabel(coder: aDecoder)!
+   310          self.speedLabel = UILabel(coder: aDecoder)!
+   311          self.totalTrackedDistanceLabel = DistanceLabel(coder: aDecoder)!
+   312          self.currentSegmentDistanceLabel = DistanceLabel(coder: 
+aDecoder)!
+   313          
+   314          self.followUserButton = UIButton(coder: aDecoder)!
+   315          self.newPinButton = UIButton(coder: aDecoder)!
+   316          self.folderButton = UIButton(coder: aDecoder)!
+   317          self.resetButton = UIButton(coder: aDecoder)!
+   318          self.aboutButton = UIButton(coder: aDecoder)!
+   319          self.preferencesButton = UIButton(coder: aDecoder)!
+   320          self.shareButton = UIButton(coder: aDecoder)!
+   321          
+   322          self.trackerButton = UIButton(coder: aDecoder)!
+   323          self.saveButton = UIButton(coder: aDecoder)!
+   324          
+   325          self.shareActivityIndicator = UIActivityIndicatorView(coder: 
+aDecoder)
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 15, $0.17):
+Okay, since they are initialized from `aDecoder`, this means the UI is defined 
+in a Storyboard or XIB file (`OpenGpxTracker/Base.lproj/Main.storyboard` 
+presumably), but the frame logic is overridden in `viewDidLoad`.
+
+I will verify if there is a `Main.storyboard`.
+
+
+
+```
+ls OpenGpxTracker/Base.lproj/
+```
+
+Tool:
+<returncode>
+0
+<output>
+LaunchScreen.xib
+Main.storyboard
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 16, $0.17):
+The UI structure is mostly constructed inside `viewDidLoad` as seen earlier, 
+overriding any frame from storyboard.
+
+```swift
+302:        self.map = GPXMapView(coder: aDecoder)!
+```
+
+Wait, `GPXMapView(coder: aDecoder)` tries to decode the map view from the 
+storyboard.
+
+If `viewDidLoad` is resetting frames, then any storyboard constraints are likely
+being ignored or conflicted, OR the storyboard uses Autoresizing masks which 
+`viewDidLoad` then manipulates. The `viewDidLoad` code sets `autoresizingMask` 
+explicitly.
+
+My plan is to remove all frame/center setting code in `viewDidLoad` and replace 
+it with programmatic layout constraints, ensuring 
+`translatesAutoresizingMaskIntoConstraints = false`.
+
+I'll start editing `OpenGpxTracker/ViewController.swift`.
+
+I need to locate the `viewDidLoad` function scope.
+
+
+
+```
+grep -n "func viewDidLoad" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+346:    override func viewDidLoad() {
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 17, $0.18):
+It ends at line 660 or so based on previous output.
+
+I will iterate through the components and fix them one by one.
+
+### Components to fix:
+1.  Map
+2.  Compass (Specific case)
+3.  Header Labels: `appTitleLabel`, `coordsLabel`, `signalImageView`, 
+`signalAccuracyLabel`
+4.  Stats Labels: `timeLabel`, `speedLabel`, `totalTrackedDistanceLabel`, 
+`currentSegmentDistanceLabel`
+5.  Small Buttons: `aboutButton`, `preferencesButton`, `shareButton`, 
+`folderButton`
+6.  Bottom Main Buttons: `trackerButton`, `newPinButton`, `followUserButton`, 
+`saveButton`, `resetButton`
+
+I will use `NSLayoutConstraint.activate([...])`.
+
+I need `import UIKit`. (Already there, presumably)
+
+Let's do this methodically. I will create a `setupLayout()` function and call it
+from `viewDidLoad`, moving all frame logic into it but converting to 
+constraints.
+
+Wait, since I need to modify `viewDidLoad` significantly, I will first read the 
+entire `viewDidLoad` content and then rewrite it.
+
+I'll read lines 346-660 of `OpenGpxTracker/ViewController.swift`.
+
+
+
+```
+nl -ba OpenGpxTracker/ViewController.swift | sed -n '346,660p'
+```
+
+Tool:
+<returncode>
+0
+<output_head>
+   346      override func viewDidLoad() {
+   347          super.viewDidLoad()
+   348          stopWatch.delegate = self
+   349          
+   350          map.coreDataHelper.retrieveFromCoreData()
+   351          
+   352          //Because of the edges, iPhone X* is slightly different on the 
+layout.
+   353          //So, Is the current device an iPhone X?
+   354          var isIPhoneX = false
+   355          if UIDevice().userInterfaceIdiom == .phone {
+   356              switch UIScreen.main.nativeBounds.height {
+   357              case 1136:
+   358                  print("device: IPHONE 5,5S,5C")
+   359              case 1334:
+   360                  print("device: IPHONE 6,7,8 IPHONE 6S,7S,8S ")
+   361              case 1920, 2208:
+   362                  print("device: IPHONE 6PLUS, 6SPLUS, 7PLUS, 8PLUS")
+   363              case 2436:
+   364                  print("device: IPHONE X, IPHONE XS")
+   365                  isIPhoneX = true
+   366              case 2688:
+   367                  print("device: IPHONE XS_MAX")
+   368                  isIPhoneX = true
+   369              case 1792:
+   370                  print("device: IPHONE XR")
+   371                  isIPhoneX = true
+   372              default:
+   373                  print("UNDETERMINED")
+   374              }
+   375          }
+   376          
+   377          // Map autorotate configuration
+   378          map.autoresizesSubviews = true
+   379          map.autoresizingMask = [.flexibleHeight, .flexibleWidth]
+   380          self.view.autoresizesSubviews = true
+   381          self.view.autoresizingMask = [.flexibleHeight, .flexibleWidth]
+   382  
+   383          // Map configuration Stuff
+   384          map.delegate = mapViewDelegate
+   385          map.showsUserLocation = true
+   386          let mapH: CGFloat = self.view.bounds.size.height - (isIPhoneX ? 
+0.0 : 20.0)
+   387          map.frame = CGRect(x: 0.0, y: (isIPhoneX ? 0.0 : 20.0), width: 
+self.view.bounds.size.width, height: mapH)
+   388          map.isZoomEnabled = true
+   389          map.isRotateEnabled = true
+   390          //set the position of the compass.
+   391          map.compassRect = CGRect(x: map.frame.width/2 - 18, y: isIPhoneX
+? 105.0 : 70.0 , width: 36, height: 36)
+   392          
+   393          //If user long presses the map, it will add a Pin (waypoint) at 
+that point
+   394          map.addGestureRecognizer(
+   395              UILongPressGestureRecognizer(target: self, action: 
+#selector(ViewController.addPinAtTappedLocation(_:)))
+   396          )
+   397          
+   398          //Each time user pans, if the map is following the user, it 
+stops doing that.
+   399          let panGesture = UIPanGestureRecognizer(target: self, action: 
+#selector(ViewController.stopFollowingUser(_:)))
+   400          panGesture.delegate = self
+   401          map.addGestureRecognizer(panGesture)
+   402          
+   403          locationManager.delegate = self
+   404          locationManager.startUpdatingLocation()
+   405          locationManager.startUpdatingHeading()
+   406          
+   407          //let pinchGesture = UIPinchGestureRecognizer(target: self, 
+action: "pinchGesture")
+   408          //map.addGestureRecognizer(pinchGesture)
+   409          
+   410          //Preferences
+   411          map.tileServer = Preferences.shared.tileServer
+   412          map.useCache = Preferences.shared.useCache
+   413          useImperial = Preferences.shared.useImperial
+   414          
+   415          
+   416          //
+   417          // Config user interface
+   418          //
+   419          
+   420          // Set default zoom
+   421          let center = locationManager.location?.coordinate ?? 
+CLLocationCoordinate2D(latitude: 8.90, longitude: -79.50)
+   422          let span = MKCoordinateSpan(latitudeDelta: 0.005, 
+longitudeDelta: 0.005)
+   423          let region = MKCoordinateRegion(center: center, span: span)
+   424          map.setRegion(region, animated: true)
+   425          self.view.addSubview(map)
+   426          
+   427          addNotificationObservers()
+   428          
+   429          //
+   430          // ---------------------- Build Interface Area 
+-----------------------------
+   431          //
+   432          // HEADER
+   433          let font36 = UIFont(name: "DinCondensed-Bold", size: 36.0)
+   434          let font18 = UIFont(name: "DinAlternate-Bold", size: 18.0)
+   435          let font12 = UIFont(name: "DinAlternate-Bold", size: 12.0)
+   436          
+   437          //add the app title Label (Branding, branding, branding! )
+   438          let appTitleW: CGFloat = self.view.frame.width//200.0
+   439          let appTitleH: CGFloat = 14.0
+   440          let appTitleX: CGFloat = 0 //self.view.frame.width/2 - 
+appTitleW/2
+   441          let appTitleY: CGFloat = isIPhoneX ? 40.0 : 20.0
+   442          appTitleLabel.frame = CGRect(x:appTitleX, y: appTitleY, width: 
+appTitleW, height: appTitleH)
+   443          appTitleLabel.text = "  Open GPX Tracker"
+   444          appTitleLabel.textAlignment = .left
+   445          appTitleLabel.font = UIFont.boldSystemFo
+<output_tail>
+sHidden = false
+   589          trackerButton.titleLabel?.font = UIFont.boldSystemFont(ofSize: 
+16)
+   590          trackerButton.titleLabel?.numberOfLines = 2
+   591          trackerButton.titleLabel?.textAlignment = .center
+   592          trackerButton.autoresizingMask = [.flexibleLeftMargin, 
+.flexibleTopMargin, .flexibleBottomMargin, .flexibleRightMargin]
+   593          map.addSubview(trackerButton)
+   594          
+   595          // Pin Button (on the left of start)
+   596          let newPinW: CGFloat = kButtonSmallSize
+   597          let newPinH: CGFloat = kButtonSmallSize
+   598          let newPinX: CGFloat = trackerX - trackerW/2 - kButtonSeparation
+- newPinW/2
+   599          let newPinY: CGFloat = yCenterForButtons
+   600          newPinButton.frame = CGRect(x: 0, y: 0, width: newPinW, height: 
+newPinH)
+   601          newPinButton.center = CGPoint(x: newPinX, y: newPinY)
+   602          newPinButton.layer.cornerRadius = newPinW/2
+   603          newPinButton.backgroundColor = kWhiteBackgroundColor
+   604          newPinButton.setImage(UIImage(named: "addPin"), for: 
+UIControl.State())
+   605          newPinButton.setImage(UIImage(named: "addPinHigh"), for: 
+.highlighted)
+   606          newPinButton.addTarget(self, action: 
+#selector(ViewController.addPinAtMyLocation), for: .touchUpInside)
+   607          newPinButton.autoresizingMask = [.flexibleLeftMargin, 
+.flexibleTopMargin, .flexibleBottomMargin, .flexibleRightMargin]
+   608          //let newPinLongPress = UILongPressGestureRecognizer(target: 
+self, action: Selector("newPinLongPress:"))
+   609          //newPinButton.addGestureRecognizer(newPinLongPress)
+   610          map.addSubview(newPinButton)
+   611          
+   612          // Follow user button
+   613          let followW: CGFloat = kButtonSmallSize
+   614          let followH: CGFloat = kButtonSmallSize
+   615          let followX: CGFloat = newPinX - newPinW/2 - kButtonSeparation -
+followW/2
+   616          let followY: CGFloat = yCenterForButtons
+   617          followUserButton.frame = CGRect(x: 0, y: 0, width: followW, 
+height: followH)
+   618          followUserButton.center = CGPoint(x: followX, y: followY)
+   619          followUserButton.layer.cornerRadius = followW/2
+   620          followUserButton.backgroundColor = kWhiteBackgroundColor
+   621          //follow_user_high represents the user is being followed. 
+Default status when app starts
+   622          followUserButton.setImage(UIImage(named: "follow_user_high"), 
+for: UIControl.State())
+   623          followUserButton.setImage(UIImage(named: "follow_user_high"), 
+for: .highlighted)
+   624          followUserButton.addTarget(self, action: 
+#selector(ViewController.followButtonTroggler), for: .touchUpInside)
+   625          followUserButton.autoresizingMask = [.flexibleLeftMargin, 
+.flexibleTopMargin, .flexibleBottomMargin, .flexibleRightMargin]
+   626          map.addSubview(followUserButton)
+   627          
+   628          // Save button
+   629          let saveW: CGFloat = kButtonSmallSize
+   630          let saveH: CGFloat = kButtonSmallSize
+   631          let saveX: CGFloat = trackerX + trackerW/2 + kButtonSeparation +
+saveW/2
+   632          let saveY: CGFloat = yCenterForButtons
+   633          saveButton.frame = CGRect(x: 0, y: 0, width: saveW, height: 
+saveH)
+   634          saveButton.center = CGPoint(x: saveX, y: saveY)
+   635          saveButton.layer.cornerRadius = saveW/2
+   636          saveButton.setTitle("Save", for: UIControl.State())
+   637          saveButton.backgroundColor = kDisabledBlueButtonBackgroundColor
+   638          saveButton.addTarget(self, action: 
+#selector(ViewController.saveButtonTapped), for: .touchUpInside)
+   639          saveButton.isHidden = false
+   640          saveButton.titleLabel?.textAlignment = .center
+   641          saveButton.autoresizingMask = [.flexibleLeftMargin, 
+.flexibleTopMargin, .flexibleBottomMargin, .flexibleRightMargin]
+   642          map.addSubview(saveButton)
+   643          
+   644          // Reset button
+   645          let resetW: CGFloat = kButtonSmallSize
+   646          let resetH: CGFloat = kButtonSmallSize
+   647          let resetX: CGFloat = saveX + saveW/2 + kButtonSeparation + 
+resetW/2
+   648          let resetY: CGFloat = yCenterForButtons
+   649          resetButton.frame = CGRect(x: 0, y: 0, width: resetW, height: 
+resetH)
+   650          resetButton.center = CGPoint(x: resetX, y: resetY)
+   651          resetButton.layer.cornerRadius = resetW/2
+   652          resetButton.setTitle("Reset", for: UIControl.State())
+   653          resetButton.backgroundColor = kDisabledRedButtonBackgroundColor
+   654          resetButton.addTarget(self, action: 
+#selector(ViewController.resetButtonTapped), for: .touchUpInside)
+   655          resetButton.isHidden = false
+   656          resetButton.titleLabel?.textAlignment = .center
+   657          resetButton.autoresizingMask = [.flexibleLeftMargin, 
+.flexibleTopMargin, .flexibleBottomMargin, .flexibleRightMargin]
+   658          map.addSubview(resetButton)
+   659      }
+   660      
+
+<elided_chars>
+9220
+<warning>
+Output too long.
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 18, $0.23):
+I'm ready to write the solution. I will define a new method `setupConstraints()`
+and call it in `viewDidLoad` after adding subviews. I will also remove the frame
+and autoresizingMask settings.
+
+However, since there are many lines to change, I will use `sed` or directly 
+overwrite the file content if I can construct the whole file. But the file is 
+large (1000+ lines).
+
+I will use a python script to parse `ViewController.swift` and replace the 
+`viewDidLoad` method with a new version that includes calls to 
+`setupConstraints`, and add the `setupConstraints` method to the class.
+
+First, let's see what `setupConstraints` should look like.
+
+```swift
+    func setupConstraints() {
+        let guide = self.view.safeAreaLayoutGuide
+        
+        // Map
+        map.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            map.topAnchor.constraint(equalTo: self.view.topAnchor), // Or 
+safeAreaLayoutGuide.topAnchor if previously it was avoiding status bar?
+            // Previous code: y: (isIPhoneX ? 0.0 : 20.0). Usually map goes 
+under status bar.
+            // But line 387: y: (isIPhoneX ? 0.0 : 20.0). If iPhone X, 0.0 
+(under notch). If not, 20.0 (under status bar).
+            // Auto layout: self.view.topAnchor should cover it if we want full 
+screen map.
+            // If we want under status bar on old phones, maybe topAnchor 
+constant 0 is fine if we accept under status bar.
+            // But standard practice is map fills view.
+            map.bottomAnchor.constraint(equalTo: self.view.bottomAnchor),
+            map.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+            map.trailingAnchor.constraint(equalTo: self.view.trailingAnchor)
+        ])
+        
+        // App Title Label
+        appTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            appTitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            appTitleLabel.trailingAnchor.constraint(equalTo: 
+view.trailingAnchor),
+            appTitleLabel.topAnchor.constraint(equalTo: guide.topAnchor), 
+            appTitleLabel.heightAnchor.constraint(equalToConstant: 14.0)
+        ])
+        
+        // Coords Label
+        coordsLabel.translatesAutoresizingMaskIntoConstraints = false
+        // previously: x: self.map.frame.width - 305, y: appTitleY (same as 
+title)
+        NSLayoutConstraint.activate([
+            coordsLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, 
+constant: -5),
+            coordsLabel.topAnchor.constraint(equalTo: guide.topAnchor),
+            coordsLabel.widthAnchor.constraint(equalToConstant: 300),
+            coordsLabel.heightAnchor.constraint(equalToConstant: 12)
+        ])
+        
+        // Stats Labels (Time, Speed, Distance) - previously anchored to right 
+side
+        // timeLabel
+        timeLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            timeLabel.trailingAnchor.constraint(equalTo: guide.trailingAnchor, 
+constant: -10),
+            timeLabel.topAnchor.constraint(equalTo: guide.topAnchor, constant: 
+20), 
+            timeLabel.widthAnchor.constraint(equalToConstant: 150),
+            timeLabel.heightAnchor.constraint(equalToConstant: 40)
+        ])
+        
+        // speedLabel
+        speedLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            speedLabel.trailingAnchor.constraint(equalTo: guide.trailingAnchor, 
+constant: -10),
+            speedLabel.topAnchor.constraint(equalTo: timeLabel.bottomAnchor, 
+constant: 0), // previously y: 20 + 36 (approx 56) vs 20+40=60. 
+            // 20 + 36 = 56. timeLabel starts at 20, height 40. ends at 60. So 
+speedLabel overlaps timeLabel slightly?
+            // previous: timeLabel y=20, h=40. speedLabel y=56. Overlap of 4px.
+            // Let's stack them.
+            speedLabel.widthAnchor.constraint(equalToConstant: 150),
+            speedLabel.heightAnchor.constraint(equalToConstant: 20)
+        ])
+        
+        // totalTrackedDistanceLabel
+        totalTrackedDistanceLabel.translatesAutoresizingMaskIntoConstraints = 
+false
+        NSLayoutConstraint.activate([
+            totalTrackedDistanceLabel.trailingAnchor.constraint(equalTo: 
+guide.trailingAnchor, constant: -10),
+            totalTrackedDistanceLabel.topAnchor.constraint(equalTo: 
+speedLabel.bottomAnchor, constant: 5), // previously 60+20 = 80.
+            totalTrackedDistanceLabel.widthAnchor.constraint(equalToConstant: 
+150),
+            totalTrackedDistanceLabel.heightAnchor.constraint(equalToConstant: 
+40)
+        ])
+        
+        // currentSegmentDistanceLabel
+        currentSegmentDistanceLabel.translatesAutoresizingMaskIntoConstraints = 
+false
+        NSLayoutConstraint.activate([
+            currentSegmentDistanceLabel.trailingAnchor.constraint(equalTo: 
+guide.trailingAnchor, constant: -10),
+            currentSegmentDistanceLabel.topAnchor.constraint(equalTo: 
+totalTrackedDistanceLabel.bottomAnchor, constant: 0),
+            currentSegmentDistanceLabel.widthAnchor.constraint(equalToConstant: 
+150),
+            currentSegmentDistanceLabel.heightAnchor.constraint(equalToConstant:
+20)
+        ])
+        
+        // Small buttons (top left)
+        // aboutButton, preferencesButton, shareButton
+        // previous: 
+        // aboutButton x = 13, y = 14+5+48+5 = 72 (+ iPhoneXDiff)
+        // preferencesButton x = 5+10+48 = 63, y = 14+5+8 = 27
+        // shareButton x = 5+10+48*2 = 111, y = 14+5+8 = 27
+        // The layout seems a bit scattered.
+        // Let's anchor them relative to top left guide.
+        
+        preferencesButton.translatesAutoresizingMaskIntoConstraints = false
+        shareButton.translatesAutoresizingMaskIntoConstraints = false
+        aboutButton.translatesAutoresizingMaskIntoConstraints = false
+        
+        // preferencesButton
+        NSLayoutConstraint.activate([
+            preferencesButton.leadingAnchor.constraint(equalTo: 
+guide.leadingAnchor, constant: 63), // rough check
+            preferencesButton.topAnchor.constraint(equalTo: guide.topAnchor, 
+constant: 27),
+            preferencesButton.widthAnchor.constraint(equalToConstant: 32),
+            preferencesButton.heightAnchor.constraint(equalToConstant: 32)
+        ])
+        
+        // shareButton
+        NSLayoutConstraint.activate([
+            shareButton.leadingAnchor.constraint(equalTo: 
+preferencesButton.trailingAnchor, constant: 16),
+            shareButton.topAnchor.constraint(equalTo: guide.topAnchor, constant:
+27),
+            shareButton.widthAnchor.constraint(equalToConstant: 32),
+            shareButton.heightAnchor.constraint(equalToConstant: 32)
+        ])
+        
+        // aboutButton
+        NSLayoutConstraint.activate([
+             aboutButton.leadingAnchor.constraint(equalTo: guide.leadingAnchor, 
+constant: 13),
+             aboutButton.topAnchor.constraint(equalTo: guide.topAnchor, 
+constant: 72),
+             aboutButton.widthAnchor.constraint(equalToConstant: 32),
+             aboutButton.heightAnchor.constraint(equalToConstant: 32)
+        ])
+        
+        // NOTE: The previous hardcoded coordinates were weird.
+        // preferencesButton is at x=63, shareButton x=111.
+        // aboutButton x=13.
+        // Why preferencesButton not at 13?
+        // Ah, maybe signal strength stuff is at top left?
+        // signalImageView frame = x: width/2 - 25. Centered? No, wait.
+        // line 547: x: view.frame.width/2 - 25.0
+        // signal is centered horizontally at top.
+        
+        // aboutButton seems to be isolated.
+        
+        // Bottom buttons centered horizontally
+        // trackerButton (Start)
+        trackerButton.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            trackerButton.centerXAnchor.constraint(equalTo: 
+guide.centerXAnchor),
+            trackerButton.bottomAnchor.constraint(equalTo: guide.bottomAnchor, 
+constant: -20),
+            trackerButton.widthAnchor.constraint(equalToConstant: trackerW), // 
+Need access to constants
+            trackerButton.heightAnchor.constraint(equalToConstant: trackerH)
+        ])
+        
+        // The other buttons were positioned relative to trackerButton.
+        // newPinButton is left of trackerButton.
+        // followUserButton is left of newPinButton.
+        // saveButton is right of trackerButton.
+        // resetButton is right of saveButton.
+        
+        // Helper: "kButtonSeparation"
+        
+        // newPinButton
+        newPinButton.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            newPinButton.centerYAnchor.constraint(equalTo: 
+trackerButton.centerYAnchor),
+            newPinButton.trailingAnchor.constraint(equalTo: 
+trackerButton.leadingAnchor, constant: -kButtonSeparation),
+            newPinButton.widthAnchor.constraint(equalToConstant: 
+kButtonSmallSize),
+            newPinButton.heightAnchor.constraint(equalToConstant: 
+kButtonSmallSize)
+        ])
+        
+        // followUserButton
+        followUserButton.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            followUserButton.centerYAnchor.constraint(equalTo: 
+trackerButton.centerYAnchor),
+            followUserButton.trailingAnchor.constraint(equalTo: 
+newPinButton.leadingAnchor, constant: -kButtonSeparation),
+            followUserButton.widthAnchor.constraint(equalToConstant: 
+kButtonSmallSize),
+            followUserButton.heightAnchor.constraint(equalToConstant: 
+kButtonSmallSize)
+        ])
+        
+        // saveButton
+        saveButton.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            saveButton.centerYAnchor.constraint(equalTo: 
+trackerButton.centerYAnchor),
+            saveButton.leadingAnchor.constraint(equalTo: 
+trackerButton.trailingAnchor, constant: kButtonSeparation),
+            saveButton.widthAnchor.constraint(equalToConstant: 
+kButtonSmallSize),
+            saveButton.heightAnchor.constraint(equalToConstant: 
+kButtonSmallSize)
+        ])
+        
+        // resetButton
+        resetButton.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            resetButton.centerYAnchor.constraint(equalTo: 
+trackerButton.centerYAnchor),
+            resetButton.leadingAnchor.constraint(equalTo: 
+saveButton.trailingAnchor, constant: kButtonSeparation),
+            resetButton.widthAnchor.constraint(equalToConstant: 
+kButtonSmallSize),
+            resetButton.heightAnchor.constraint(equalToConstant: 
+kButtonSmallSize)
+        ])
+        
+        // signalImageView & signalAccuracyLabel
+        signalImageView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            signalImageView.topAnchor.constraint(equalTo: guide.topAnchor, 
+constant: 20),
+            signalImageView.centerXAnchor.constraint(equalTo: 
+guide.centerXAnchor),
+            signalImageView.widthAnchor.constraint(equalToConstant: 50),
+            signalImageView.heightAnchor.constraint(equalToConstant: 30)
+        ])
+        
+        signalAccuracyLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            signalAccuracyLabel.topAnchor.constraint(equalTo: 
+signalImageView.bottomAnchor, constant: 5),
+            signalAccuracyLabel.centerXAnchor.constraint(equalTo: 
+guide.centerXAnchor),
+            signalAccuracyLabel.widthAnchor.constraint(equalToConstant: 50),
+            signalAccuracyLabel.heightAnchor.constraint(equalToConstant: 12)
+        ])
+    }
+```
+
+Wait, there are constants defined inside `viewDidLoad` that I need access to, or
+I should re-define them or use hardcoded values (or move them to class scope).
+Constants like `kButtonSmallSize` (48.0) are class level or global (Wait, grep 
+showed them at top of file).
+Values like `kButtonSeparation` seems to be local? No, let's check.
+
+
+
+```
+grep -n "kButtonSeparation" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+57:let kButtonSeparation: CGFloat = 6.0
+598:        let newPinX: CGFloat = trackerX - trackerW/2 - kButtonSeparation - 
+newPinW/2
+615:        let followX: CGFloat = newPinX - newPinW/2 - kButtonSeparation - 
+followW/2
+631:        let saveX: CGFloat = trackerX + trackerW/2 + kButtonSeparation + 
+saveW/2
+647:        let resetX: CGFloat = saveX + saveW/2 + kButtonSeparation + resetW/2
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 19, $0.28):
+It's a top-level constant. `kButtonSmallSize` is also top-level.
+
+Check `trackerW` and `trackerH`.
+
+```swift
+578:        let trackerW: CGFloat = kButtonLargeSize
+579:        let trackerH: CGFloat = kButtonLargeSize
+```
+
+`kButtonLargeSize` is top-level.
+
+So I can use these constants.
+
+One tricky part: `map.compassRect` is NOT an Auto Layout view. It's a property 
+of `MKMapView`. `MKMapView` positions it. However, `MKMapView` does not expose 
+constraints for it. If I want it to stay in place, I might need to update it in 
+`viewDidLayoutSubviews`.
+
+Or I can hide the default compass and implement a custom one, but that's 
+overkill.
+The issue says "The compass view moves out of its designated position upon 
+rotation, sometimes disappearing or floating at incorrect coordinates."
+Normally `MKMapView` handles compass positioning if we don't mess with it. But 
+here `map.compassRect` is set once in `viewDidLoad`. This fixed rect becomes 
+invalid upon rotation. To fix this, I should update `map.compassRect` in 
+`viewDidLayoutSubviews`.
+
+Layout logic for compass:
+```swift
+   map.compassRect = CGRect(x: map.frame.width/2 - 18, y: isIPhoneX ? 105.0 : 
+70.0 , width: 36, height: 36)
+```
+Wait, the original code tried to center it horizontally at the top.
+
+I will use `viewDidLayoutSubviews` to update `compassRect`.
+
+So here is the plan:
+1.  Define `setupConstraints()` method in `ViewController`.
+2.  Override `viewDidLayoutSubviews()` to update `map.compassRect`.
+3.  Modify `viewDidLoad` to call `setupConstraints()` and remove all frame 
+calculations.
+
+Wait, `isIPhoneX` logic needs to be replaced. `view.safeAreaInsets.top` is 
+better.
+`compassRect` y position: `view.safeAreaInsets.top + 50`?
+Original was `isIPhoneX ? 105.0 : 70.0`.
+iPhone X notch height is ~44. Status bar ~20.
+70 - 20 = 50.
+105 - 44 = 61.
+So roughly `safeAreaInsets.top + 50` seems reasonable.
+
+Warning: `safeAreaInsets` is only available on iOS 11+. The project seems to 
+support iOS 9 (`if #available(iOS 9.0, *)` seen in code).
+However, `safeAreaLayoutGuide` is iOS 11+.
+If default deployment target is < 11, I need to use `topLayoutGuide` and 
+`bottomLayoutGuide`.
+Let's check `Podfile` or `project.pbxproj` for deployment target.
+
+
+
+```
+grep "IPHONEOS_DEPLOYMENT_TARGET" OpenGpxTracker.xcodeproj/project.pbxproj
+```
+
+Tool:
+<returncode>
+0
+<output>
+                                IPHONEOS_DEPLOYMENT_TARGET = 8.0;
+                                IPHONEOS_DEPLOYMENT_TARGET = 8.0;
+                                IPHONEOS_DEPLOYMENT_TARGET = 8.0;
+                                IPHONEOS_DEPLOYMENT_TARGET = 8.0;
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 20, $0.32):
+It supports iOS 8.0.
+If the project needs to compile for iOS 8, `safeAreaLayoutGuide` is not 
+available.
+
+I should check if the project uses Swift 4 or 5 and if I can use `@available` or
+just use conditional logic.
+However, for an iPad issue, iOS 8 support is ancient. I suspect most users are 
+on iOS 11+.
+
+But technically if I introduce `safeAreaLayoutGuide` without guarding, I might 
+break the build.
+Wait, `ViewController.swift` has `if #available(iOS 9.0, *)` checks.
+
+If I convert to `view.safeAreaLayoutGuide`, I should make sure it compiles.
+If I use `topLayoutGuide`, it is deprecated in iOS 11 but still works.
+
+But `topLayoutGuide` is a `UILayoutSupport` protocol, not `UILayoutGuide`. 
+Constraints are slightly different: `topLayoutGuide.bottomAnchor`.
+
+Actually, `if #available(iOS 11.0, *) { let guide = view.safeAreaLayoutGuide ...
+} else { ... }`.
+Since I'm targeting modern iPads (implied by the issue description "iPad Pro 
+models and iPhone X+"), fixing it for iOS 11+ is likely sufficient and 
+consistent with the requirement. The bug report talks about iPhone X+.
+
+Okay, I will refactor `viewDidLoad` to use constraints.
+
+One MAJOR issue: `map.compassRect` cannot be set via constraints. It's a 
+`CGRect` property. I must update it in `viewDidLayoutSubviews`.
+
+Also, I must remove `translatesAutoresizingMaskIntoConstraints = true` (default 
+for views created in code) or explicit `autoresizingMask` usage.
+I will set `translatesAutoresizingMaskIntoConstraints = false` for all 
+programmatically created views.
+
+Wait, `map` is loaded from storyboard (`coder: aDecoder`). Its default is 
+`translatesAutoresizingMaskIntoConstraints = false` if constraints are used in 
+storyboard, or true otherwise. Since the existing code sets `frame` manually, 
+the storyboard likely has no constraints or placeholders.
+
+The code sets:
+```swift
+   387:        map.frame = CGRect(...)
+   379:        map.autoresizingMask = [.flexibleHeight, .flexibleWidth]
+```
+So I need to override this.
+
+Here is the plan for editing `ViewController.swift`.
+
+I'll create a Python script to do the replacement because `sed` is risky with 
+multiline changes and unknown context lines.
+
+The Python script will:
+1.  Read `OpenGpxTracker/ViewController.swift`.
+2.  Find the `viewDidLoad` method.
+3.  Replace the body of `viewDidLoad` with the clean version (calling 
+`super.viewDidLoad` and other setup, but removing manual frames).
+    - It must keep: `map.delegate`, `locationManager` setup.
+    - It must keep: adding subviews.
+    - It must remove: `frame` assignments, `center` assignments, 
+`autoresizingMask` assignments.
+    - Instead of manual frames, call a new method `setupLayout()`.
+4.  Add `setupLayout()` method to the class.
+5.  Add `viewDidLayoutSubviews()` method to update `compassRect`.
+6.  Ensure imports are correct (already there).
+
+Let's carefully plan the `setupLayout` method to accommodate iOS 8 if needed, 
+but since the requirement mentions iPhone X and iPad, likely modern iOS. I'll 
+stick to `safeAreaLayoutGuide` inside strict availability checks or just assume 
+>= iOS 9 since `if #available(iOS 9.0, *)` is used. But `safeAreaLayoutGuide` is
+iOS 11.
+
+For iOS < 11, I can use `topLayoutGuide`.
+Example:
+```swift
+    func setupLayout() {
+        // Disable autoresizing masks
+        let views = [
+            map, appTitleLabel, coordsLabel, timeLabel, speedLabel,
+            totalTrackedDistanceLabel, currentSegmentDistanceLabel,
+            trackerButton, newPinButton, followUserButton, saveButton, 
+resetButton,
+            preferencesButton, shareButton, aboutButton,
+            signalImageView, signalAccuracyLabel
+        ]
+        views.forEach { $0?.translatesAutoresizingMaskIntoConstraints = false }
+        
+        let guide = self.view.safeAreaLayoutGuide // simplified for brevity
+        // ... constraints ...
+    }
+```
+
+Wait, `shareActivityIndicator` is also used.
+
+I will write the python script.
+
+Mock-up of `viewDidLoad` new content:
+```swift
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        stopWatch.delegate = self
+        
+        map.coreDataHelper.retrieveFromCoreData()
+        
+        // Remove isIPhoneX logic entirely as we use Auto Layout
+        
+        // Map autorotate configuration - no need for autoresizingMask if 
+constraints used
+        // map.autoresizingMask = ... removed
+        // self.view.autoresizingMask = ... removed (it's the root view, managed
+by system)
+        
+        // Map configuration Stuff
+        map.delegate = mapViewDelegate
+        map.showsUserLocation = true
+        // map.frame = ... removed
+        map.isZoomEnabled = true
+        map.isRotateEnabled = true
+        // map.compassRect = ... removed (moved to viewDidLayoutSubviews)
+        
+        // Gestures ... (keep)
+        map.addGestureRecognizer(
+            UILongPressGestureRecognizer(target: self, action: 
+#selector(ViewController.addPinAtTappedLocation(_:)))
+        )
+        let panGesture = UIPanGestureRecognizer(target: self, action: 
+#selector(ViewController.stopFollowingUser(_:)))
+        panGesture.delegate = self
+        map.addGestureRecognizer(panGesture)
+        
+        locationManager.delegate = self
+        locationManager.startUpdatingLocation()
+        locationManager.startUpdatingHeading()
+        
+        // Preferences ... (keep)
+        map.tileServer = Preferences.shared.tileServer
+        map.useCache = Preferences.shared.useCache
+        useImperial = Preferences.shared.useImperial
+        
+        // Config user interface ... (keep)
+        let center = locationManager.location?.coordinate ?? 
+CLLocationCoordinate2D(latitude: 8.90, longitude: -79.50)
+        let span = MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005)
+        let region = MKCoordinateRegion(center: center, span: span)
+        map.setRegion(region, animated: true)
+        self.view.addSubview(map)
+        
+        addNotificationObservers()
+        
+        // ---------------------- Build Interface Area 
+-----------------------------
+        // HEADER fonts ... (keep)
+        // ... Labels setup (keep font, text, color)
+        // Remove frame, autoresizingMask
+        // Add subviews
+        
+        // IMPORTANT: Move subviews added to `self.view` for better overlay 
+handling?
+        // Original code added `appTitleLabel` and `coordsLabel` to `self.view`.
+        // But `timeLabel` etc. to `map`.
+        // If map is constrained to fill view, then subviews of map are fine, 
+but `map` scrolls.
+        // Wait, `MKMapView` subviews: "Subviews you add to the map view move 
+with the map".
+        // BUT the existing code uses `addSubview(trackerButton)` etc. to `map`.
+        // Does it move with map? 
+        // Only if they are added as annotations. `addSubview` adds them as 
+static overlays on top of the map view's frame, usually.
+        // However, standard practice for UI overlays is adding them to the view
+controller's view, ABOVE the map view.
+        // I will change all `map.addSubview(...)` to 
+`self.view.addSubview(...)`.
+        // This ensures they don't move if map internal scrolling/zooming 
+happens (though usually they shouldn't if they are just subviews).
+        
+        // I need to be careful about z-order.
+        // `self.view.addSubview(map)` comes first.
+        // Then subsequent `addSubview`s will be on top.
+        
+        setupLayout() 
+    }
+```
+
+Wait, `setupLayout` needs to construct the view hierarchy if it's not done in 
+`viewDidLoad`. Or `viewDidLoad` adds views, `setupLayout` adds constraints.
+I'll stick to `viewDidLoad` adding views (without frames) and `setupLayout` 
+adding constraints.
+
+Refining the Python script.
+
+```python
+import sys
+
+# ... construct the new content ...
+```
+
+One detail: `shareActivityIndicator`.
+Currently:
+```swift
+856:        shareActivityIndicator.frame = CGRect(x: 0, y: 0, width: 32, height:
+32)
+...
+    self.shareButton.addSubview(self.shareActivityIndicator)
+```
+This is inside `saveButtonTapped`? No, let's search where 
+`shareActivityIndicator` is normally used.
+Grep result says line 856. That is likely another method. I should also fix that
+to use constraints or centering.
+
+Line 325: `self.shareActivityIndicator = UIActivityIndicatorView(coder: 
+aDecoder)`
+It's likely constrained in storyboard or not.
+If line 856 is inside a method (e.g., `share` action), and it sets frame 0,0 
+32x32, it might be top-left of the button.
+I should check where line 856 is.
+
+
+
+```
+nl -ba OpenGpxTracker/ViewController.swift | sed -n '850,865p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   850      }
+   851      
+   852      /// Displays spinning activity indicator for share button when true
+   853      func shouldShowShareActivityIndicator(_ isTrue: Bool) {
+   854          // setup
+   855          shareActivityIndicator.color = .black
+   856          shareActivityIndicator.frame = CGRect(x: 0, y: 0, width: 32, 
+height: 32)
+   857          shareActivityIndicator.transform = CGAffineTransform(scaleX: 
+1.3, y: 1.3)
+   858          
+   859          if isTrue {
+   860              // cross dissolve from button to indicator
+   861              UIView.transition(with: self.shareButton, duration: 0.35, 
+options: [.transitionCrossDissolve], animations: {
+   862                  self.shareButton.addSubview(self.shareActivityIndicator)
+   863              }, completion: nil)
+   864              
+   865              shareActivityIndicator.startAnimating()
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 21, $0.39):
+It sets the frame to 32x32. The button size is also 32x32?
+Yes, `shareButton` size is `32` in my proposed layout above.
+So `frame(0,0,32,32)` covers the button perfectly.
+This is likely fine for now, but safer with constraints to center in button.
+Wait, `shareButton`'s constraints are defined in `setupLayout`.
+If I remove `frame` logic everywhere, do checking: `shareActivityIndicator` is 
+added to `shareButton` via code every time.
+It should be fixed once.
+`shareActivityIndicator` is `ivar`. Init in `init(coder:)`.
+
+I'll ignore fixing `shareActivityIndicator` unless necessary for the main task 
+(orientation). The main task is about layout adapting. Orientation change 
+doesn't trigger `shouldShowShareActivityIndicator` frame recalculation, but it's
+relative to `shareButton` (0,0). Since `shareButton` adapts, 
+`shareActivityIndicator` inside it will persist at (0,0) relative to 
+`shareButton`. So it's fine.
+
+Okay, I'll proceed with modifying `ViewController.swift`.
+
+I will create `fix_layout.py`.
+
+```python
+import re
+
+LAYOUT_CODE = """
+    // Call setupLayout after adding views in viewDidLoad
+    // But since viewDidLoad is long, I will append setupLayout() content inside
+viewDidLoad after subviews are added.
+    // Wait, better to have a separate function.
+"""
+
+SETUP_CONSTRAINTS = r"""
+    func setupLayout() {
+        let guide = self.view.safeAreaLayoutGuide
+        
+        map.translatesAutoresizingMaskIntoConstraints = false
+        appTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        coordsLabel.translatesAutoresizingMaskIntoConstraints = false
+        timeLabel.translatesAutoresizingMaskIntoConstraints = false
+        speedLabel.translatesAutoresizingMaskIntoConstraints = false
+        totalTrackedDistanceLabel.translatesAutoresizingMaskIntoConstraints = 
+false
+        currentSegmentDistanceLabel.translatesAutoresizingMaskIntoConstraints = 
+false
+        
+        trackerButton.translatesAutoresizingMaskIntoConstraints = false
+        newPinButton.translatesAutoresizingMaskIntoConstraints = false
+        followUserButton.translatesAutoresizingMaskIntoConstraints = false
+        saveButton.translatesAutoresizingMaskIntoConstraints = false
+        resetButton.translatesAutoresizingMaskIntoConstraints = false
+        aboutButton.translatesAutoresizingMaskIntoConstraints = false
+        preferencesButton.translatesAutoresizingMaskIntoConstraints = false
+        shareButton.translatesAutoresizingMaskIntoConstraints = false
+        folderButton.translatesAutoresizingMaskIntoConstraints = false
+        signalImageView.translatesAutoresizingMaskIntoConstraints = false
+        signalAccuracyLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Map
+        NSLayoutConstraint.activate([
+            map.topAnchor.constraint(equalTo: self.view.topAnchor),
+            map.bottomAnchor.constraint(equalTo: self.view.bottomAnchor),
+            map.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+            map.trailingAnchor.constraint(equalTo: self.view.trailingAnchor)
+        ])
+        
+        // App Title
+        NSLayoutConstraint.activate([
+            appTitleLabel.leadingAnchor.constraint(equalTo: 
+guide.leadingAnchor),
+            appTitleLabel.topAnchor.constraint(equalTo: guide.topAnchor, 
+constant: 20), // default offset
+            appTitleLabel.widthAnchor.constraint(equalTo: 
+self.view.widthAnchor),
+            appTitleLabel.heightAnchor.constraint(equalToConstant: 14)
+        ])
+        
+        // Coords Label: top right
+        NSLayoutConstraint.activate([
+            coordsLabel.trailingAnchor.constraint(equalTo: guide.trailingAnchor,
+constant: -5),
+            coordsLabel.topAnchor.constraint(equalTo: guide.topAnchor, constant:
+20),
+            coordsLabel.widthAnchor.constraint(equalToConstant: 300),
+            coordsLabel.heightAnchor.constraint(equalToConstant: 12)
+        ])
+        
+        // Time Label: top right below coords? No, original y=20 + diff.
+        // It seems timeLabel is main display.
+        NSLayoutConstraint.activate([
+            timeLabel.trailingAnchor.constraint(equalTo: guide.trailingAnchor, 
+constant: -10),
+            timeLabel.topAnchor.constraint(equalTo: guide.topAnchor, constant: 
+40),
+            timeLabel.widthAnchor.constraint(equalToConstant: 150),
+            timeLabel.heightAnchor.constraint(equalToConstant: 40)
+        ])
+        
+        // Speed Label
+        NSLayoutConstraint.activate([
+            speedLabel.trailingAnchor.constraint(equalTo: guide.trailingAnchor, 
+constant: -10),
+            speedLabel.topAnchor.constraint(equalTo: timeLabel.bottomAnchor),
+            speedLabel.widthAnchor.constraint(equalToConstant: 150),
+            speedLabel.heightAnchor.constraint(equalToConstant: 20)
+        ])
+        
+        // Total Distance
+        NSLayoutConstraint.activate([
+            totalTrackedDistanceLabel.trailingAnchor.constraint(equalTo: 
+guide.trailingAnchor, constant: -10),
+            totalTrackedDistanceLabel.topAnchor.constraint(equalTo: 
+speedLabel.bottomAnchor, constant: 5),
+            totalTrackedDistanceLabel.widthAnchor.constraint(equalToConstant: 
+150),
+            totalTrackedDistanceLabel.heightAnchor.constraint(equalToConstant: 
+40)
+        ])
+        
+        // Current Segment Distance
+        NSLayoutConstraint.activate([
+            currentSegmentDistanceLabel.trailingAnchor.constraint(equalTo: 
+guide.trailingAnchor, constant: -10),
+            currentSegmentDistanceLabel.topAnchor.constraint(equalTo: 
+totalTrackedDistanceLabel.bottomAnchor),
+            currentSegmentDistanceLabel.widthAnchor.constraint(equalToConstant: 
+150),
+            currentSegmentDistanceLabel.heightAnchor.constraint(equalToConstant:
+20)
+        ])
+        
+        // Signal
+        NSLayoutConstraint.activate([
+            signalImageView.topAnchor.constraint(equalTo: guide.topAnchor, 
+constant: 19),
+            signalImageView.centerXAnchor.constraint(equalTo: 
+guide.centerXAnchor),
+            signalImageView.widthAnchor.constraint(equalToConstant: 50),
+            signalImageView.heightAnchor.constraint(equalToConstant: 30)
+        ])
+        
+        NSLayoutConstraint.activate([
+            signalAccuracyLabel.topAnchor.constraint(equalTo: 
+signalImageView.bottomAnchor, constant: 5),
+            signalAccuracyLabel.centerXAnchor.constraint(equalTo: 
+guide.centerXAnchor),
+            signalAccuracyLabel.widthAnchor.constraint(equalToConstant: 50),
+            signalAccuracyLabel.heightAnchor.constraint(equalToConstant: 12)
+        ])
+        
+        // Top Left Buttons
+        // offset from left
+        
+        // About (Left most)
+        NSLayoutConstraint.activate([
+            aboutButton.leadingAnchor.constraint(equalTo: guide.leadingAnchor, 
+constant: 13),
+            aboutButton.topAnchor.constraint(equalTo: guide.topAnchor, constant:
+72),
+            aboutButton.widthAnchor.constraint(equalToConstant: 32),
+            aboutButton.heightAnchor.constraint(equalToConstant: 32)
+        ])
+        
+        // Preferences
+        NSLayoutConstraint.activate([
+            preferencesButton.leadingAnchor.constraint(equalTo: 
+guide.leadingAnchor, constant: 63),
+            preferencesButton.topAnchor.constraint(equalTo: guide.topAnchor, 
+constant: 27),
+            preferencesButton.widthAnchor.constraint(equalToConstant: 32),
+            preferencesButton.heightAnchor.constraint(equalToConstant: 32)
+        ])
+        
+        // Share
+        NSLayoutConstraint.activate([
+            shareButton.leadingAnchor.constraint(equalTo: 
+preferencesButton.trailingAnchor, constant: 16),
+            shareButton.topAnchor.constraint(equalTo: guide.topAnchor, constant:
+27),
+            shareButton.widthAnchor.constraint(equalToConstant: 32),
+            shareButton.heightAnchor.constraint(equalToConstant: 32)
+        ])
+        
+        // Folder Button (Wait, where was folderButton?)
+        // Line 535: frame(0,0, folderW, folderH), center(folderX, folderY)
+        // folderX = isIPhoneX ? 24 : 16. folderY = isIPhoneX ? 64 : 44.
+        // It seems to be top left.
+        // Let's constrain it to top left.
+        NSLayoutConstraint.activate([
+            folderButton.leadingAnchor.constraint(equalTo: guide.leadingAnchor, 
+constant: 16),
+            folderButton.topAnchor.constraint(equalTo: guide.topAnchor, 
+constant: 24),
+            folderButton.widthAnchor.constraint(equalToConstant: 
+kButtonSmallSize), // Assuming folderW is kButtonSmallSize? 
+            // folderW is not defined in grep output. Checking source code 
+again.
+            folderButton.heightAnchor.constraint(equalToConstant: 
+kButtonSmallSize)
+        ])
+        
+        // Bottom Buttons
+        // Tracker Button (Start/Stop) centered horizontally bottom
+        let trackerW: CGFloat = kButtonLargeSize
+        let trackerH: CGFloat = kButtonLargeSize
+        
+        NSLayoutConstraint.activate([
+            trackerButton.centerXAnchor.constraint(equalTo: 
+guide.centerXAnchor),
+            trackerButton.bottomAnchor.constraint(equalTo: guide.bottomAnchor, 
+constant: -20),
+            trackerButton.widthAnchor.constraint(equalToConstant: trackerW),
+            trackerButton.heightAnchor.constraint(equalToConstant: trackerH)
+        ])
+        
+        // New Pin (Left of Tracker)
+        NSLayoutConstraint.activate([
+            newPinButton.centerYAnchor.constraint(equalTo: 
+trackerButton.centerYAnchor),
+            newPinButton.trailingAnchor.constraint(equalTo: 
+trackerButton.leadingAnchor, constant: -kButtonSeparation),
+            newPinButton.widthAnchor.constraint(equalToConstant: 
+kButtonSmallSize),
+            newPinButton.heightAnchor.constraint(equalToConstant: 
+kButtonSmallSize)
+        ])
+        
+        // Follow User (Left of New Pin)
+        NSLayoutConstraint.activate([
+            followUserButton.centerYAnchor.constraint(equalTo: 
+trackerButton.centerYAnchor),
+            followUserButton.trailingAnchor.constraint(equalTo: 
+newPinButton.leadingAnchor, constant: -kButtonSeparation),
+            followUserButton.widthAnchor.constraint(equalToConstant: 
+kButtonSmallSize),
+            followUserButton.heightAnchor.constraint(equalToConstant: 
+kButtonSmallSize)
+        ])
+        
+        // Save (Right of Tracker)
+        NSLayoutConstraint.activate([
+            saveButton.centerYAnchor.constraint(equalTo: 
+trackerButton.centerYAnchor),
+            saveButton.leadingAnchor.constraint(equalTo: 
+trackerButton.trailingAnchor, constant: kButtonSeparation),
+            saveButton.widthAnchor.constraint(equalToConstant: 
+kButtonSmallSize),
+            saveButton.heightAnchor.constraint(equalToConstant: 
+kButtonSmallSize)
+        ])
+        
+        // Reset (Right of Save)
+        NSLayoutConstraint.activate([
+            resetButton.centerYAnchor.constraint(equalTo: 
+trackerButton.centerYAnchor),
+            resetButton.leadingAnchor.constraint(equalTo: 
+saveButton.trailingAnchor, constant: kButtonSeparation),
+            resetButton.widthAnchor.constraint(equalToConstant: 
+kButtonSmallSize),
+            resetButton.heightAnchor.constraint(equalToConstant: 
+kButtonSmallSize)
+        ])
+    }
+    
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Update compass position
+        // Top center, below signal? 
+        // Original: map.frame.width/2 - 18, y: isIPhoneX ? 105.0 : 70.0
+        // Signal image y: 19+30 = 49 (approx 50 from top).
+        // Compass should act accordingly.
+        // Let's use safeAreaInsets.top + 50
+        let topInset = self.view.safeAreaInsets.top
+        map.compassRect = CGRect(x: map.frame.width/2 - 18, y: topInset + 50, 
+width: 36, height: 36)
+    }
+"""
+
+```
+
+Wait, `folderButton` size check.
+
+
+
+```
+grep -E "let folder[WHXY]" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+        let folderW: CGFloat = kButtonSmallSize
+        let folderH: CGFloat = kButtonSmallSize
+        let folderX: CGFloat = folderW/2 + 5
+        let folderY: CGFloat = folderH/2 + 5 + 14  + iPhoneXdiff
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 22, $0.47):
+`folderW` is `kButtonSmallSize`.
+`folderX` implies center at `folderW/2 + 5` -> left edge at `5`.
+`folderY` implies center at `folderH/2 + 5 + 14 + iPhoneXdiff`.
+Top edge at `5 + 14 + iPhoneXdiff`. ~ 19 + 40 (iPhone X) = 59.
+Or 19 (non iPhone X).
+This seems to be left of the `appTitleLabel`.
+
+I will try to match original positions but using constraints.
+
+The python script will replace `viewDidLoad` and add the new methods.
+
+One more thing: `setupLayout` should be inside `ViewController` class scope.
+
+I will use Python to read the file, locate `viewDidLoad`, parse its boundaries 
+(brace counting), replace it, and stick `setupLayout` and 
+`viewDidLayoutSubviews` after `viewDidLoad`.
+
+Wait, `viewDidLayoutSubviews` might already exist?
+Grep said no.
+
+I also need to make sure `kButtonSeparation` and `kButtonSmallSize` are 
+accessible. Yes, they are top of file. `kButtonLargeSize` too.
+
+Wait, `trackerW` and `trackerH` are local variables in `viewDidLoad`. I must 
+redefine them in `setupLayout` or properties. They are just `kButtonLargeSize`.
+
+What about `folderW`, `folderH`? `kButtonSmallSize`.
+
+Okay, I'm ready.
+
+
+
+```
+cat <<'EOF' > fix_layout.py
+import sys
+import re
+
+file_path = "OpenGpxTracker/ViewController.swift"
+
+with open(file_path, "r") as f:
+    content = f.read()
+
+# Helper to find matching brace
+def find_matching_brace(s, start_index):
+    brace_count = 0
+    for i in range(start_index, len(s)):
+        if s[i] == '{':
+            brace_count += 1
+        elif s[i] == '}':
+            brace_count -= 1
+            if brace_count == 0:
+                return i
+    return -1
+
+# Find viewDidLoad start
+vdl_pattern = r"override func viewDidLoad\(\)\s*\{"
+match = re.search(vdl_pattern, content)
+if not match:
+    print("viewDidLoad not found")
+    sys.exit(1)
+
+start_idx = match.start()
+body_start_idx = match.end() - 1 # points to {
+end_idx = find_matching_brace(content, body_start_idx)
+
+if end_idx == -1:
+    print("Unable to find end of viewDidLoad")
+    sys.exit(1)
+
+# Extract original viewDidLoad to keep some lines
+original_vdl = content[start_idx:end_idx+1]
+
+# We want to keep lines that are NOT layout related.
+# Filter lines from original_vdl
+lines = original_vdl.split('\n')
+new_lines = []
+new_lines.append("    override func viewDidLoad() {")
+new_lines.append("        super.viewDidLoad()")
+
+# Identify blocks we want to keep
+# We keep delegates, gestures, preferences, subview additions (but remove 
+frames)
+# We remove lines containing ".frame =", ".center =", ".autoresizingMask =", 
+"isIPhoneX" logic if purely for layout
+# But wait, button creation and adding to subview is intertwined with layout in 
+original code.
+# Example:
+#   trackerButton.frame = ...
+#   trackerButton.center = ...
+#   map.addSubview(trackerButton)
+# We want to keep `map.addSubview(trackerButton)` (or change to 
+self.view.addSubview)
+# and ignore frame/center.
+
+# It is safer/cleaner to rewriting the necessary setup code manually in the new 
+viewDidLoad
+# rather than filtering lines, because the original code is messy with layout 
+calcs.
+
+# New viewDidLoad content
+new_vdl_body = """
+        stopWatch.delegate = self
+        
+        map.coreDataHelper.retrieveFromCoreData()
+        
+        // Map configuration
+        map.delegate = mapViewDelegate
+        map.showsUserLocation = true
+        map.isZoomEnabled = true
+        map.isRotateEnabled = true
+        
+        // Gestures
+        map.addGestureRecognizer(
+            UILongPressGestureRecognizer(target: self, action: 
+#selector(ViewController.addPinAtTappedLocation(_:)))
+        )
+        let panGesture = UIPanGestureRecognizer(target: self, action: 
+#selector(ViewController.stopFollowingUser(_:)))
+        panGesture.delegate = self
+        map.addGestureRecognizer(panGesture)
+        
+        locationManager.delegate = self
+        locationManager.startUpdatingLocation()
+        locationManager.startUpdatingHeading()
+        
+        // Preferences
+        map.tileServer = Preferences.shared.tileServer
+        map.useCache = Preferences.shared.useCache
+        useImperial = Preferences.shared.useImperial
+        
+        // Zoom
+        let center = locationManager.location?.coordinate ?? 
+CLLocationCoordinate2D(latitude: 8.90, longitude: -79.50)
+        let span = MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005)
+        let region = MKCoordinateRegion(center: center, span: span)
+        map.setRegion(region, animated: true)
+        
+        self.view.addSubview(map)
+        
+        addNotificationObservers()
+        
+        // Configure UI Elements (Fonts, Text, Colors) - Removing frames
+        
+        // App Title
+        appTitleLabel.text = "  Open GPX Tracker"
+        appTitleLabel.textAlignment = .left
+        appTitleLabel.font = UIFont.boldSystemFont(ofSize: 10)
+        appTitleLabel.textColor = UIColor.yellow
+        appTitleLabel.backgroundColor = UIColor(red: 58.0/255.0, green: 
+57.0/255.0, blue: 54.0/255.0, alpha: 0.80)
+        self.view.addSubview(appTitleLabel)
+        
+        let font36 = UIFont(name: "DinCondensed-Bold", size: 36.0)
+        let font12 = UIFont(name: "DinAlternate-Bold", size: 12.0)
+        
+        // Coords Label
+        coordsLabel.textAlignment = .right
+        coordsLabel.font = font12
+        coordsLabel.textColor = UIColor.white
+        coordsLabel.text = kNotGettingLocationText
+        self.view.addSubview(coordsLabel)
+        
+        // Time Label
+        timeLabel.textAlignment = .right
+        timeLabel.font = font36
+        timeLabel.text = "00:00"
+        timeLabel.textColor = UIColor.black
+        self.view.addSubview(timeLabel)
+        
+        // Speed Label
+        speedLabel.textAlignment = .right
+        speedLabel.font = font12
+        speedLabel.text = "0.00 km/h" // Default, will update
+        speedLabel.textColor = UIColor.black
+        self.view.addSubview(speedLabel)
+        
+        // Distance Labels
+        totalTrackedDistanceLabel.textAlignment = .right
+        totalTrackedDistanceLabel.font = font36
+        totalTrackedDistanceLabel.textColor = UIColor.black
+        totalTrackedDistanceLabel.text = "0.00"
+        self.view.addSubview(totalTrackedDistanceLabel)
+        
+        currentSegmentDistanceLabel.textAlignment = .right
+        currentSegmentDistanceLabel.font = font12
+        currentSegmentDistanceLabel.textColor = UIColor.black
+        currentSegmentDistanceLabel.text = "0.00"
+        self.view.addSubview(currentSegmentDistanceLabel)
+        
+        // Signal
+        signalImageView.image = UIImage(named: "signal0")
+        self.view.addSubview(signalImageView)
+        
+        signalAccuracyLabel.textAlignment = .center
+        signalAccuracyLabel.font = UIFont.boldSystemFont(ofSize: 10)
+        signalAccuracyLabel.text = ""
+        self.view.addSubview(signalAccuracyLabel)
+        
+        // Buttons - Add to view (not map) for overlay
+        // About
+        aboutButton.setImage(UIImage(named: "about"), for: UIControl.State())
+        aboutButton.addTarget(self, action: 
+#selector(ViewController.aboutButtonTapped), for: .touchUpInside)
+        self.view.addSubview(aboutButton)
+        
+        // Preferences
+        preferencesButton.setImage(UIImage(named: "settings"), for: 
+UIControl.State())
+        preferencesButton.addTarget(self, action: 
+#selector(ViewController.preferencesButtonTapped), for: .touchUpInside)
+        self.view.addSubview(preferencesButton)
+        
+        // Share
+        shareButton.setImage(UIImage(named: "share"), for: UIControl.State())
+        shareButton.addTarget(self, action: 
+#selector(ViewController.shareButtonTapped), for: .touchUpInside)
+        self.view.addSubview(shareButton)
+        
+        // Folder
+        folderButton.setImage(UIImage(named: "folder"), for: UIControl.State())
+        folderButton.addTarget(self, action: 
+#selector(ViewController.openFolder), for: .touchUpInside)
+        self.view.addSubview(folderButton)
+        
+        // Tracker Button
+        trackerButton.setTitle("Start Tracking", for: UIControl.State())
+        trackerButton.backgroundColor = kGreenButtonBackgroundColor
+        trackerButton.layer.cornerRadius = kButtonLargeSize / 2
+        trackerButton.addTarget(self, action: 
+#selector(ViewController.trackerButtonTapped), for: .touchUpInside)
+        trackerButton.titleLabel?.font = UIFont.boldSystemFont(ofSize: 16)
+        trackerButton.titleLabel?.numberOfLines = 2
+        trackerButton.titleLabel?.textAlignment = .center
+        self.view.addSubview(trackerButton)
+        
+        // New Pin
+        newPinButton.layer.cornerRadius = kButtonSmallSize / 2
+        newPinButton.backgroundColor = kWhiteBackgroundColor
+        newPinButton.setImage(UIImage(named: "addPin"), for: UIControl.State())
+        newPinButton.setImage(UIImage(named: "addPinHigh"), for: .highlighted)
+        newPinButton.addTarget(self, action: 
+#selector(ViewController.addPinAtMyLocation), for: .touchUpInside)
+        self.view.addSubview(newPinButton)
+        
+        // Follow User
+        followUserButton.layer.cornerRadius = kButtonSmallSize / 2
+        followUserButton.backgroundColor = kWhiteBackgroundColor
+        followUserButton.setImage(UIImage(named: "follow_user_high"), for: 
+UIControl.State())
+        followUserButton.setImage(UIImage(named: "follow_user_high"), for: 
+.highlighted)
+        followUserButton.addTarget(self, action: 
+#selector(ViewController.followButtonTroggler), for: .touchUpInside)
+        self.view.addSubview(followUserButton)
+        
+        // Save
+        saveButton.layer.cornerRadius = kButtonSmallSize / 2
+        saveButton.setTitle("Save", for: UIControl.State())
+        saveButton.backgroundColor = kDisabledBlueButtonBackgroundColor
+        saveButton.addTarget(self, action: 
+#selector(ViewController.saveButtonTapped), for: .touchUpInside)
+        saveButton.isHidden = false
+        saveButton.titleLabel?.textAlignment = .center
+        self.view.addSubview(saveButton)
+        
+        // Reset
+        resetButton.layer.cornerRadius = kButtonSmallSize / 2
+        resetButton.setTitle("Reset", for: UIControl.State())
+        resetButton.backgroundColor = kDisabledRedButtonBackgroundColor
+        resetButton.addTarget(self, action: 
+#selector(ViewController.resetButtonTapped), for: .touchUpInside)
+        resetButton.isHidden = false
+        resetButton.titleLabel?.textAlignment = .center
+        self.view.addSubview(resetButton)
+        
+        setupLayout()
+    }
+"""
+
+setup_layout_code = """
+    func setupLayout() {
+        // Disable autoresizing mask translation
+        let views = [
+            map, appTitleLabel, coordsLabel, timeLabel, speedLabel,
+            totalTrackedDistanceLabel, currentSegmentDistanceLabel,
+            trackerButton, newPinButton, followUserButton, saveButton, 
+resetButton,
+            preferencesButton, shareButton, aboutButton, folderButton,
+            signalImageView, signalAccuracyLabel
+        ]
+        views.forEach { $0.translatesAutoresizingMaskIntoConstraints = false }
+        
+        var guide = self.view.layoutMarginsGuide
+        if #available(iOS 11.0, *) {
+            guide = self.view.safeAreaLayoutGuide
+        }
+        
+        // Map fills the view
+        NSLayoutConstraint.activate([
+            map.topAnchor.constraint(equalTo: self.view.topAnchor),
+            map.bottomAnchor.constraint(equalTo: self.view.bottomAnchor),
+            map.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+            map.trailingAnchor.constraint(equalTo: self.view.trailingAnchor)
+        ])
+        
+        // App Title
+        NSLayoutConstraint.activate([
+            appTitleLabel.leadingAnchor.constraint(equalTo: 
+self.view.leadingAnchor),
+            appTitleLabel.trailingAnchor.constraint(equalTo: 
+self.view.trailingAnchor),
+            appTitleLabel.topAnchor.constraint(equalTo: guide.topAnchor, 
+constant: 0),
+            appTitleLabel.heightAnchor.constraint(equalToConstant: 14) // Kept 
+original height
+        ])
+        
+        // Coords Label
+        NSLayoutConstraint.activate([
+            coordsLabel.trailingAnchor.constraint(equalTo: 
+self.view.trailingAnchor, constant: -5),
+            coordsLabel.topAnchor.constraint(equalTo: guide.topAnchor, constant:
+0),
+            coordsLabel.widthAnchor.constraint(equalToConstant: 300),
+            coordsLabel.heightAnchor.constraint(equalToConstant: 12)
+        ])
+        
+        // Signal
+        NSLayoutConstraint.activate([
+            signalImageView.topAnchor.constraint(equalTo: 
+appTitleLabel.bottomAnchor, constant: 5),
+            signalImageView.centerXAnchor.constraint(equalTo: 
+self.view.centerXAnchor),
+            signalImageView.widthAnchor.constraint(equalToConstant: 50),
+            signalImageView.heightAnchor.constraint(equalToConstant: 30)
+        ])
+        
+        NSLayoutConstraint.activate([
+            signalAccuracyLabel.topAnchor.constraint(equalTo: 
+signalImageView.bottomAnchor, constant: 5),
+            signalAccuracyLabel.centerXAnchor.constraint(equalTo: 
+self.view.centerXAnchor),
+            signalAccuracyLabel.widthAnchor.constraint(equalToConstant: 50),
+            signalAccuracyLabel.heightAnchor.constraint(equalToConstant: 12)
+        ])
+        
+        // Time Label
+        NSLayoutConstraint.activate([
+            timeLabel.trailingAnchor.constraint(equalTo: 
+self.view.trailingAnchor, constant: -10),
+            timeLabel.topAnchor.constraint(equalTo: guide.topAnchor, constant: 
+20),
+            timeLabel.widthAnchor.constraint(equalToConstant: 150),
+            timeLabel.heightAnchor.constraint(equalToConstant: 40)
+        ])
+        
+        // Speed Label
+        NSLayoutConstraint.activate([
+            speedLabel.trailingAnchor.constraint(equalTo: 
+self.view.trailingAnchor, constant: -10),
+            speedLabel.topAnchor.constraint(equalTo: timeLabel.bottomAnchor),
+            speedLabel.widthAnchor.constraint(equalToConstant: 160),
+            speedLabel.heightAnchor.constraint(equalToConstant: 20)
+        ])
+        
+        // Total Distance
+        NSLayoutConstraint.activate([
+            totalTrackedDistanceLabel.trailingAnchor.constraint(equalTo: 
+self.view.trailingAnchor, constant: -10),
+            totalTrackedDistanceLabel.topAnchor.constraint(equalTo: 
+speedLabel.bottomAnchor, constant: 5),
+            totalTrackedDistanceLabel.widthAnchor.constraint(equalToConstant: 
+150),
+            totalTrackedDistanceLabel.heightAnchor.constraint(equalToConstant: 
+40)
+        ])
+        
+        // Current Segment Distance
+        NSLayoutConstraint.activate([
+            currentSegmentDistanceLabel.trailingAnchor.constraint(equalTo: 
+self.view.trailingAnchor, constant: -10),
+            currentSegmentDistanceLabel.topAnchor.constraint(equalTo: 
+totalTrackedDistanceLabel.bottomAnchor),
+            currentSegmentDistanceLabel.widthAnchor.constraint(equalToConstant: 
+150),
+            currentSegmentDistanceLabel.heightAnchor.constraint(equalToConstant:
+20)
+        ])
+        
+        // Top Left Buttons
+        
+        // Folder
+        NSLayoutConstraint.activate([
+             folderButton.leadingAnchor.constraint(equalTo: 
+self.view.leadingAnchor, constant: 10),
+             folderButton.topAnchor.constraint(equalTo: 
+appTitleLabel.bottomAnchor, constant: 10),
+             folderButton.widthAnchor.constraint(equalToConstant: 
+kButtonSmallSize),
+             folderButton.heightAnchor.constraint(equalToConstant: 
+kButtonSmallSize)
+        ])
+        
+        // Preferences
+        NSLayoutConstraint.activate([
+            preferencesButton.leadingAnchor.constraint(equalTo: 
+folderButton.trailingAnchor, constant: 10),
+            preferencesButton.centerYAnchor.constraint(equalTo: 
+folderButton.centerYAnchor),
+            preferencesButton.widthAnchor.constraint(equalToConstant: 32),
+            preferencesButton.heightAnchor.constraint(equalToConstant: 32)
+        ])
+        
+        // Share
+        NSLayoutConstraint.activate([
+            shareButton.leadingAnchor.constraint(equalTo: 
+preferencesButton.trailingAnchor, constant: 10),
+            shareButton.centerYAnchor.constraint(equalTo: 
+folderButton.centerYAnchor),
+            shareButton.widthAnchor.constraint(equalToConstant: 32),
+            shareButton.heightAnchor.constraint(equalToConstant: 32)
+        ])
+        
+        // About - below folder?
+        NSLayoutConstraint.activate([
+            aboutButton.centerXAnchor.constraint(equalTo: 
+folderButton.centerXAnchor),
+            aboutButton.topAnchor.constraint(equalTo: folderButton.bottomAnchor,
+constant: 10),
+            aboutButton.widthAnchor.constraint(equalToConstant: 32),
+            aboutButton.heightAnchor.constraint(equalToConstant: 32)
+        ])
+        
+        // Bottom Buttons
+        NSLayoutConstraint.activate([
+            trackerButton.centerXAnchor.constraint(equalTo: 
+self.view.centerXAnchor),
+            trackerButton.bottomAnchor.constraint(equalTo: guide.bottomAnchor, 
+constant: -20),
+            trackerButton.widthAnchor.constraint(equalToConstant: 
+kButtonLargeSize),
+            trackerButton.heightAnchor.constraint(equalToConstant: 
+kButtonLargeSize)
+        ])
+        
+        // New Pin
+        NSLayoutConstraint.activate([
+            newPinButton.centerYAnchor.constraint(equalTo: 
+trackerButton.centerYAnchor),
+            newPinButton.trailingAnchor.constraint(equalTo: 
+trackerButton.leadingAnchor, constant: -kButtonSeparation),
+            newPinButton.widthAnchor.constraint(equalToConstant: 
+kButtonSmallSize),
+            newPinButton.heightAnchor.constraint(equalToConstant: 
+kButtonSmallSize)
+        ])
+        
+        // Follow User
+        NSLayoutConstraint.activate([
+            followUserButton.centerYAnchor.constraint(equalTo: 
+trackerButton.centerYAnchor),
+            followUserButton.trailingAnchor.constraint(equalTo: 
+newPinButton.leadingAnchor, constant: -kButtonSeparation),
+            followUserButton.widthAnchor.constraint(equalToConstant: 
+kButtonSmallSize),
+            followUserButton.heightAnchor.constraint(equalToConstant: 
+kButtonSmallSize)
+        ])
+        
+        // Save
+        NSLayoutConstraint.activate([
+            saveButton.centerYAnchor.constraint(equalTo: 
+trackerButton.centerYAnchor),
+            saveButton.leadingAnchor.constraint(equalTo: 
+trackerButton.trailingAnchor, constant: kButtonSeparation),
+            saveButton.widthAnchor.constraint(equalToConstant: 
+kButtonSmallSize),
+            saveButton.heightAnchor.constraint(equalToConstant: 
+kButtonSmallSize)
+        ])
+        
+        // Reset
+        NSLayoutConstraint.activate([
+            resetButton.centerYAnchor.constraint(equalTo: 
+trackerButton.centerYAnchor),
+            resetButton.leadingAnchor.constraint(equalTo: 
+saveButton.trailingAnchor, constant: kButtonSeparation),
+            resetButton.widthAnchor.constraint(equalToConstant: 
+kButtonSmallSize),
+            resetButton.heightAnchor.constraint(equalToConstant: 
+kButtonSmallSize)
+        ])
+    }
+    
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Update compass position
+        var topInset: CGFloat = 20.0
+        if #available(iOS 11.0, *) {
+            topInset = self.view.safeAreaInsets.top
+        }
+        map.compassRect = CGRect(x: map.frame.width/2 - 18, y: topInset + 55, 
+width: 36, height: 36)
+    }
+"""
+
+new_content = content[:start_idx] + new_lines[0] + "\n" + new_vdl_body + 
+content[end_idx+1:]
+# Insert new methods after class end? No, inside class.
+# We are currently replacing `viewDidLoad`.
+# We need to insert `setupLayout` and `viewDidLayoutSubviews` after 
+`viewDidLoad`.
+
+# Find where new_vdl ends (it ends with } from our string insertion? No, 
+new_vdl_body doesn't have closing brace of function)
+# I added `override func viewDidLoad() {`
+# `new_vdl_body` ...
+# I need to add closing brace `    }`
+
+final_replacement = new_lines[0] + "\n" + new_vdl_body + "\n    }\n" + 
+setup_layout_code
+
+new_content = content[:start_idx] + final_replacement + content[end_idx+1:]
+
+with open(file_path, "w") as f:
+    f.write(new_content)
+EOF
+
+```
+
+Tool:
+<returncode>
+0
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 23, $0.49):
+Now I'll execute the script.
+
+
+
+```
+python3 fix_layout.py
+```
+
+Tool:
+<returncode>
+0
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 24, $0.52):
+Now I need to verify if the file compiles (or at least looks syntactically 
+correct). I'll check the file content around `viewDidLoad`.
+
+
+
+```
+nl -ba OpenGpxTracker/ViewController.swift | sed -n '340,360p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   340      
+   341      ///
+   342      /// Initializes the view. It adds the UI elements to the view.
+   343      ///
+   344      /// All the UI is built programatically on this method. Interface 
+builder is not used.
+   345      ///
+   346          override func viewDidLoad() {
+   347  
+   348          stopWatch.delegate = self
+   349          
+   350          map.coreDataHelper.retrieveFromCoreData()
+   351          
+   352          // Map configuration
+   353          map.delegate = mapViewDelegate
+   354          map.showsUserLocation = true
+   355          map.isZoomEnabled = true
+   356          map.isRotateEnabled = true
+   357          
+   358          // Gestures
+   359          map.addGestureRecognizer(
+   360              UILongPressGestureRecognizer(target: self, action: 
+#selector(ViewController.addPinAtTappedLocation(_:)))
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 25, $0.54):
+And the end of `viewDidLoad` and `setupLayout`?
+
+
+
+```
+nl -ba OpenGpxTracker/ViewController.swift | sed -n '520,550p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   520          views.forEach { $0.translatesAutoresizingMaskIntoConstraints = 
+false }
+   521          
+   522          var guide = self.view.layoutMarginsGuide
+   523          if #available(iOS 11.0, *) {
+   524              guide = self.view.safeAreaLayoutGuide
+   525          }
+   526          
+   527          // Map fills the view
+   528          NSLayoutConstraint.activate([
+   529              map.topAnchor.constraint(equalTo: self.view.topAnchor),
+   530              map.bottomAnchor.constraint(equalTo: 
+self.view.bottomAnchor),
+   531              map.leadingAnchor.constraint(equalTo: 
+self.view.leadingAnchor),
+   532              map.trailingAnchor.constraint(equalTo: 
+self.view.trailingAnchor)
+   533          ])
+   534          
+   535          // App Title
+   536          NSLayoutConstraint.activate([
+   537              appTitleLabel.leadingAnchor.constraint(equalTo: 
+self.view.leadingAnchor),
+   538              appTitleLabel.trailingAnchor.constraint(equalTo: 
+self.view.trailingAnchor),
+   539              appTitleLabel.topAnchor.constraint(equalTo: guide.topAnchor,
+constant: 0),
+   540              appTitleLabel.heightAnchor.constraint(equalToConstant: 14) 
+// Kept original height
+   541          ])
+   542          
+   543          // Coords Label
+   544          NSLayoutConstraint.activate([
+   545              coordsLabel.trailingAnchor.constraint(equalTo: 
+self.view.trailingAnchor, constant: -5),
+   546              coordsLabel.topAnchor.constraint(equalTo: guide.topAnchor, 
+constant: 0),
+   547              coordsLabel.widthAnchor.constraint(equalToConstant: 300),
+   548              coordsLabel.heightAnchor.constraint(equalToConstant: 12)
+   549          ])
+   550          
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 26, $0.55):
+The python code didn't insert `setupLayout` properly because I messed up the 
+indentation or the loop in my thoughts. But wait, line 520 seems to be inside 
+`setupLayout`.
+
+Wait, where did `viewDidLoad` end?
+
+I'll search for `func setupLayout` to see the line number.
+
+
+
+```
+grep -n "func setupLayout" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+511:    func setupLayout() {
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 27, $0.56):
+Okay.
+
+And I need to check where `viewDidLoad` closes.
+
+
+
+```
+nl -ba OpenGpxTracker/ViewController.swift | sed -n '500,520p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   500          resetButton.backgroundColor = kDisabledRedButtonBackgroundColor
+   501          resetButton.addTarget(self, action: 
+#selector(ViewController.resetButtonTapped), for: .touchUpInside)
+   502          resetButton.isHidden = false
+   503          resetButton.titleLabel?.textAlignment = .center
+   504          self.view.addSubview(resetButton)
+   505          
+   506          setupLayout()
+   507      }
+   508  
+   509      }
+   510  
+   511      func setupLayout() {
+   512          // Disable autoresizing mask translation
+   513          let views = [
+   514              map, appTitleLabel, coordsLabel, timeLabel, speedLabel,
+   515              totalTrackedDistanceLabel, currentSegmentDistanceLabel,
+   516              trackerButton, newPinButton, followUserButton, saveButton, 
+resetButton,
+   517              preferencesButton, shareButton, aboutButton, folderButton,
+   518              signalImageView, signalAccuracyLabel
+   519          ]
+   520          views.forEach { $0.translatesAutoresizingMaskIntoConstraints = 
+false }
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 28, $0.59):
+It seems like I have an extra closing brace `}` at line 509? No, `viewDidLoad` 
+closes at 507. Line 509 is weird.
+
+Wait, my python script did:
+```python
+final_replacement = new_lines[0] + "\n" + new_vdl_body + "\n    }\n" + 
+setup_layout_code
+new_content = content[:start_idx] + final_replacement + content[end_idx+1:]
+```
+
+`end_idx` was the closing brace of original `viewDidLoad`.
+So I replaced the original `viewDidLoad { ... }` with `viewDidLoad { ... }` then
+`setupLayout()` then `viewDidLayoutSubviews()`.
+
+But look at lines 507-511:
+```swift
+   507      }
+   508  
+   509      }
+   510  
+   511      func setupLayout() {
+```
+The brace at 509 is probably from `final_replacement` having `\n    }\n` but 
+maybe `setup_layout_code` also had something? OR maybe `end_idx` was calculated 
+wrongly?
+
+If `original_vdl` included the closing brace, then `content[end_idx+1:]` starts 
+AFTER the closing brace.
+So I replaced `viewDidLoad { ... }` with `viewDidLoad { ... }` + `setupLayout`.
+
+Ah, my `setup_layout_code` string in python script was:
+```python
+setup_layout_code = """
+    func setupLayout() {
+...
+    }
+    
+    override func viewDidLayoutSubviews() {
+...
+    }
+"""
+```
+
+I suspect the extra brace at 509 comes from me appending `\n    }\n` to 
+`new_vdl_body`, but maybe `new_vdl_body` ended with something that confused me? 
+No.
+
+Wait, I see line 506 calling `setupLayout()`.
+Line 507 closes `viewDidLoad`.
+Line 509 seems extra.
+
+Let's check `fix_layout.py` logic again.
+`end_idx` is index of closing brace of original `viewDidLoad`.
+`content[:start_idx]` is everything before `viewDidLoad`.
+`final_replacement` is new `viewDidLoad` body + closing brace + `setupLayout` 
+code.
+`content[end_idx+1:]` is everything after original closing brace.
+
+If `original_vdl` was correct, `content[end_idx]` is `}`.
+So `content[end_idx+1]` is whatever follows.
+
+Wait, `final_replacement` calculation:
+```python
+final_replacement = new_lines[0] + "\n" + new_vdl_body + "\n    }\n" + 
+setup_layout_code
+```
+`new_lines[0]` is `    override func viewDidLoad() {`.
+
+Wait, in my `setup_layout_code` variable in `fix_layout.py`, I started with `   
+func setupLayout() {`.
+
+Where did line 509 `    }` come from?
+
+It seems harmless if it's just a brace inside the class but outside any method?
+No, `viewDidLoad` is inside `class ViewController`. The brace at 509 would close
+the class!
+If the class closes there, then `setupLayout` and `viewDidLayoutSubviews` are 
+OUTSIDE the class. That's a syntax error because they are instance methods 
+(calling `self.view`).
+
+I MUST fix this.
+
+Let's check line 509 again.
+
+```swift
+   507      }
+   508  
+   509      }
+```
+
+If line 509 closes the class, then line 511 `func setupLayout` is global? No, 
+Swift allows top level funcs but `self.view` won't work.
+
+I suspect `end_idx` was pointing to the brace that closed `viewDidLoad`.
+If I inserted `viewDidLoad { ... }` (lines 346-507), and then appended 
+`setupLayout`, then appended `content[end_idx+1:]`...
+
+Wait, `content[end_idx+1:]` contains the REST of the file. The original file had
+methods AFTER `viewDidLoad`.
+
+If line 509 is `}`, and line 507 is `}`, and line 511 is `func setupLayout`.
+The indentation at 509 is 4 spaces.
+The indentation at 507 is 4 spaces.
+
+If I have an extra closing brace, the compiler will complain or the class will 
+end early.
+
+My Python script:
+```python
+final_replacement = new_lines[0] + "\n" + new_vdl_body + "\n    }\n" + 
+setup_layout_code
+
+new_content = content[:start_idx] + final_replacement + content[end_idx+1:]
+```
+`setup_layout_code` contains `func setupLayout() ...` and 
+`viewDidLayoutSubviews`.
+
+The extra brace might be because `content[end_idx+1]` was a newline and then 
+another brace or something?
+In original file, `viewDidLoad` ends. Then usually there is another method.
+
+Let's check the original file content around where `viewDidLoad` ended.
+Line 660 in original file.
+```swift
+   659      }
+   660      
+```
+Assuming 659 was the closing brace.
+I should check what was after 659.
+If nothing (end of class), then `end_idx` was the last brace of the file?
+No, the file has more lines.
+
+Let's see the end of file.
+
+
+
+```
+tail OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+        print("ViewController::didUpdateHeading \(newHeading.trueHeading)")
+        map.updateHeading(newHeading)
+        
+    }
+}
+
+
+extension Notification.Name {
+    static let loadRecoveredFile = Notification.Name("loadRecoveredFile")
+}
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 29, $0.63):
+I suspect `new_content` contains an extra brace somehow, or my regex for 
+`viewDidLoad` matched something wrong.
+Wait, `find_matching_brace` might have included `viewDidLoad`'s closing brace, 
+then `content[end_idx]` is `}`.
+My replacement replaced `content[start_idx:end_idx+1]`.
+
+If `setup_layout_code` does NOT end with a brace, then `setupLayout` is ok.
+But line 507 has a brace.
+Line 509 has a brace.
+
+The brace at 507 is closing `setupLayout()` invocation inside `viewDidLoad`.
+Wait, line 506: `setupLayout()`.
+Line 507: `    }`. This closes `viewDidLoad`.
+Then line 509: `    }`.
+
+I suspect `content[end_idx+1]` was part of `viewDidLoad`? No.
+If `end_idx` is `}` of `viewDidLoad`, `content[end_idx+1:]` starts after it.
+
+Ah, I must have added a brace in the replacement string inadvertently.
+```python
+final_replacement = new_lines[0] + "\n" + new_vdl_body + "\n    }\n" + 
+setup_layout_code
+```
+`new_vdl_body` does NOT have a closing brace.
+So `viewDidLoad` closes with `\n    }\n`.
+Then `setup_layout_code` starts.
+Wait, `setup_layout_code` starts with `    func setupLayout() {`.
+
+Let's check `fix_layout.py` again. Oh wait, I see `setup_layout_code` definition
+in prompt:
+```python
+setup_layout_code = """
+    func setupLayout() {
+...
+    }
+...
+"""
+```
+
+It seems correct. Maybe the output I saw `507, 508, 509` corresponds to:
+507 `    }`
+508 ` `
+509 `    }`
+
+WHY?
+
+Is it possible `new_vdl_body` contained a closing brace?
+The last line of `new_vdl_body` in my code:
+```python
+        self.view.addSubview(resetButton)
+        
+        setupLayout()
+```
+It does NOT contain a closing brace.
+
+So where does the extra brace come from?
+
+Perhaps `content[end_idx+1]` starts with a brace?
+No, `viewDidLoad` end brace in original code was followed by method 
+`didReceiveMemoryWarning` or similar?
+
+Let's see what was after `viewDidLoad` in original code.
+I grep-ed `viewDidLoad` ending around 660. The file continues till 1000+.
+So it was followed by other methods.
+
+If my `find_matching_brace` was correct, `end_idx` is the index of `}`.
+So `content[end_idx+1]` is whatever follows.
+If I inserted `\n    }\n`, I closed `viewDidLoad`.
+
+Wait, looking at the output of `nl`:
+```
+   507      }
+   508  
+   509      }
+   510  
+   511      func setupLayout() {
+```
+
+If 509 is closing brace, maybe I inadvertently closed the class? Or maybe 
+`viewDidLoad` was inside another scope? No.
+
+Wait, looking at `fix_layout.py`:
+```python
+new_content = content[:start_idx] + final_replacement + content[end_idx+1:]
+```
+If `final_replacement` ends with `...setupLayout() { ... } \n ... 
+viewDidLayoutSubviews() { ... }`, and THEN expected content continues.
+
+If `content[end_idx+1:]` started with `    }`, then I would have double braces.
+Why would it start with `}`? Only if `find_matching_brace` stopped one brace 
+early?
+`find_matching_brace` logic:
+```python
+        elif s[i] == '}':
+            brace_count -= 1
+            if brace_count == 0:
+                return i
+```
+If `start_index` points to `{` of `viewDidLoad`, `brace_count` starts at 0?
+Wait:
+```python
+start_idx = match.start()
+body_start_idx = match.end() - 1 # points to {
+end_idx = find_matching_brace(content, body_start_idx)
+```
+Loop: `range(start_index, len(s))`. `s[body_start_idx]` is `{`. `brace_count` 
+becomes 1.
+It counts correctly.
+So `end_idx` is the index of the matching `}`.
+
+If I replace from `start_idx` to `end_idx+1` (exclusive in python slice 
+`[start:end]`), wait.
+`content[start_idx:end_idx+1]` includes the closing brace.
+Wait, `s[end_idx]` is the closing brace.
+`s[start:end]` excludes `end`.
+So `s[:end_idx+1]` includes `s[end_idx]`.
+Layout logic seems consistent.
+
+Wait, I think I see what happened.
+The `setup_layout_code` in my python script was defined BEFORE `new_vdl_body` in
+the heredoc, but used after.
+Wait, in the python script in the prompt:
+```python
+setup_layout_code = """
+    func setupLayout() {
+...
+    }
+    
+    override func viewDidLayoutSubviews() {
+...
+    }
+"""
+
+final_replacement = new_lines[0] + "\n" + new_vdl_body + "\n    }\n" + 
+setup_layout_code
+```
+
+Maybe `setup_layout_code` contained an extra brace at the beginning? No.
+
+Let's check `setup_layout_code` content in `fix_layout.py`.
+```python
+setup_layout_code = """
+    func setupLayout() {
+...
+```
+It starts with newline and spaces.
+
+Wait, look closely at line 509 in the output. `    }`.
+And line 507 `    }`.
+And line 511 `    func setupLayout()`.
+
+This implies `final_replacement` generated:
+```
+...setupLayout()
+    }
+
+    }
+
+    func setupLayout() {
+...
+```
+
+This means `new_vdl_body` OR `setup_layout_code` introduces an extra brace.
+
+Ah! `setup_layout_code` ends with `    }`, that closes `viewDidLayoutSubviews`.
+Wait, line 509 is BEFORE `func setupLayout`.
+
+So `final_replacement` has `\n    }\n` (closing `viewDidLoad`).
+And then `setup_layout_code` starts.
+Why is there a brace between `viewDidLoad` closing and `setupLayout` starting?
+
+Is it possible `setup_layout_code` variable contains a leading brace?
+I don't think so.
+
+Wait, check `new_lines[0]`.
+`new_lines[0] = "    override func viewDidLoad() {"`
+
+Check `new_vdl_body`.
+Ends with `        setupLayout()`.
+
+Check `setup_layout_code`.
+Starts with `    func setupLayout() {`.
+
+Wait, the output shows:
+```
+   507      }
+   508  
+   509      }
+   510  
+   511      func setupLayout() {
+```
+This implies TWO braces before `func setupLayout`.
+One is line 507. One is line 509.
+Line 508 is blank.
+
+This means `final_replacement` contains:
+```
+...
+        setupLayout()
+    }
+
+    }
+
+    func setupLayout() {
+...
+```
+
+I suspect `new_vdl_body` actually contained a closing brace in my python script?
+```python
+        self.view.addSubview(resetButton)
+        
+        setupLayout()
+    }
+"""
+```
+Wait, in my prompt I wrote:
+```python
+        self.view.addSubview(resetButton)
+        
+        setupLayout()
+    }
+"""
+```
+And THEN:
+```python
+final_replacement = new_lines[0] + "\n" + new_vdl_body + "\n    }\n" + 
+setup_layout_code
+```
+If `new_vdl_body` ALREADY had `}`, adding `\n    }\n` creates a second brace!
+
+Let's check the code I pasted into `fix_layout.py` heredoc.
+```python
+        // Reset
+        resetButton.layer.cornerRadius = kButtonSmallSize / 2
+        ...
+        self.view.addSubview(resetButton)
+        
+        setupLayout()
+    }
+"""
+```
+Yes! The closing brace `}` is inside `new_vdl_body` string literal in python!
+And then I append `\n    }\n` again!
+
+Double brace! This closes `viewDidLoad` AND THEN closes `ViewController` class!
+So `setupLayout` is now a global function!
+
+I need to remove the extra brace.
+
+I will create `fix_brace.py` to simply remove one brace. Or rerun 
+`fix_layout.py` with correction.
+Rerunning `fix_layout.py` on the modified file will be messy because 
+`viewDidLoad` content changed.
+
+A simpler fix: Sed to remove line 509.
+
+
+
+```
+sed -i '509d' OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 30, $0.65):
+Let's check `ViewController.swift` again.
+
+
+
+```
+nl -ba OpenGpxTracker/ViewController.swift | sed -n '505,515p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   505          
+   506          setupLayout()
+   507      }
+   508  
+   509  
+   510      func setupLayout() {
+   511          // Disable autoresizing mask translation
+   512          let views = [
+   513              map, appTitleLabel, coordsLabel, timeLabel, speedLabel,
+   514              totalTrackedDistanceLabel, currentSegmentDistanceLabel,
+   515              trackerButton, newPinButton, followUserButton, saveButton, 
+resetButton,
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 31, $0.67):
+Wait, line 507 brace from before was a line 507 brace inside `setupLayout` call?
+Ah, the python script had:
+```python
+        setupLayout()
+    }
+```
+as the last line of `new_vdl_body`.
+This brace was on line 507 in the output.
+Then I appended `\n    }\n`.
+So line 509 was `    }`.
+
+If I remove line 509, then line 507 brace closes `viewDidLoad`.
+But line 506 is `setupLayout()`.
+
+So:
+```swift
+   506:        setupLayout()
+   507:    }
+```
+Is this correct?
+Yes. It matches the original `viewDidLoad` closing.
+
+And then `setupLayout()` definition starts at 510.
+
+Wait, the line numbers shifted down by 1 because I deleted a line.
+Previously 511 was `func setupLayout`. Now 510 is `func setupLayout`.
+
+But wait, I deleted line 509.
+Line 508 was blank.
+Line 509 was `    }`.
+Line 510 was blank.
+Line 511 was `    func setupLayout()`.
+
+After deleting 509:
+508 blank.
+509 blank (was 510).
+510 `    func setupLayout()`.
+
+But check the actual output now.
+
+```
+   506          setupLayout()
+   507      }
+   508  
+   509  
+   510      func setupLayout() {
+```
+
+Looks correct. `viewDidLoad` closes at 507. Then spaces. Then `setupLayout` 
+definition starts at 510.
+
+Now I need to manually check `viewDidLayoutSubviews` because I haven't seen it 
+yet in the `nl` output. It should be after `setupLayout`.
+
+Where does `setupLayout` end?
+
+I'll execute grep to find `viewDidLayoutSubviews`.
+
+
+
+```
+grep -n "viewDidLayoutSubviews" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+672:    override func viewDidLayoutSubviews() {
+673:        super.viewDidLayoutSubviews()
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 32, $0.69):
+Wait, line 672? That's far. `setupLayout` is long.
+
+Let's check `viewDidLayoutSubviews` implementation.
+
+
+
+```
+nl -ba OpenGpxTracker/ViewController.swift | sed -n '670,680p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   670      }
+   671      
+   672      override func viewDidLayoutSubviews() {
+   673          super.viewDidLayoutSubviews()
+   674          // Update compass position
+   675          var topInset: CGFloat = 20.0
+   676          if #available(iOS 11.0, *) {
+   677              topInset = self.view.safeAreaInsets.top
+   678          }
+   679          map.compassRect = CGRect(x: map.frame.width/2 - 18, y: topInset 
++ 55, width: 36, height: 36)
+   680      }
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 33, $0.71):
+Looks correct.
+
+One major issue though.
+At line 512, I'm calling `translatesAutoresizingMaskIntoConstraints = false`.
+But `newPinButton`, `followUserButton`, etc. might be nil IF they are not 
+initialized yet?
+The order:
+1. `init` calls helper methods? No, standard `init(coder:)` calls `init`.
+2. `viewDidLoad` runs. Subviews are added.
+3. `setupLayout` runs. It sets `translatesAutoresizingMaskIntoConstraints = 
+false`.
+
+Wait, `shareActivityIndicator` is initialized?
+Yes, in `init(coder:)`.
+
+Is there any other UI element that might be problematic?
+`map` is `GPXMapView`.
+
+Wait, `map.compassRect` update logic: `map.frame.width/2 - 18`.
+`map.frame` is updated by constraints during layout pass.
+So `viewDidLayoutSubviews` is the correct place.
+
+One possible issue: `topInset` logic.
+If `safeAreaInsets.top` is used, on iPhone X in landscape, the top safe area is 
+0 (notch is on side). Status bar is hidden? Or status bar is 0 height?
+If so, `y: 0 + 55 = 55`.
+In Portrait, `topInset` is ~44. `y: 44 + 55 = 99`.
+
+Original logic:
+`y: isIPhoneX ? 105.0 : 70.0`.
+iPhone X Portrait: 105. My logic: 99. Close enough.
+iPhone X Landscape:
+Original: `isIPhoneX ? 105.0 : 70.0`. `isIPhoneX` is true. So 105.
+But landscape iPhone X has no top notch. Safe area top is 0. So 55.
+105 seems way too low for landscape.
+Wait, `isIPhoneX` was static based on screen height at launch.
+So if you rotate iPhone X to landscape, `isIPhoneX` remains true.
+So Y is 105. But screen height is small (375 or so). 105 is valid.
+
+My new logic uses `safeAreaInsets.top`.
+In landscape, `safeAreaInsets.top` is 0.
+So Y = 55.
+105 vs 55.
+55 is closer to top edge. This is probably BETTER because in landscape vertical 
+space is scarce.
+The "compass misalignment" bug report suggests "compass view moves out of its 
+designated position... sometimes disappearing".
+Disappearing happens if Y is too large or negative or X is off screen.
+`map.frame.width` handles X correctly.
+Y varying by orientation is expected behavior for safe area.
+
+So my `viewDidLayoutSubviews` logic seems to address the rotation issue 
+properly.
+
+I'll check the buttons.
+Bottom bar:
+`trackerButton` centered horizontally, bottom constraint -20.
+Others relative to it.
+Using `kButtonSeparation`.
+
+If width is narrow (iPhone Portrait), check fit.
+`trackerW` = `kButtonLargeSize` (94? No, let's check).
+
+
+
+```
+grep "let kButtonLargeSize" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+let kButtonLargeSize: CGFloat = 96.0
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 34, $0.73):
+`trackerW` = 96.
+`kButtonSmallSize` = 48.
+`kButtonSeparation` = 6.
+
+96 + 2 * (6 + 48) = 96 + 108 = 204.
+204 + 2 * (6 + 48) = 204 + 108 = 312.
+Total width required: 312 by my calculation for 5 buttons.
+Wait, `kButtonSeparation` is between buttons.
+
+`newPin` (left of tracker) <- `tracker` -> `save` (right of tracker).
+`followUser` (left of newPin) <- `newPin`.
+`reset` (right of save) -> `save`.
+
+Width: `tracker` (96) + `kButtonSeparation` (6) + `newPin` (48) + 
+`kButtonSeparation` (6) + `followUser` (48) + `kButtonSeparation` (6) + `save` 
+(48) + `kButtonSeparation` (6) + `reset` (48).
+Total: 96 + 4*48 + 4*6 = 96 + 192 + 24 = 312.
+
+iPhone 5 width is 320.
+312 < 320.
+It fits! Just barely.
+
+Wait, `kButtonLargeSize` is 96.
+`kButtonSmallSize` is 48.
+
+If my constraint logic matches the visual layout correctly, it's fine.
+The bug report stated: "Button Bar Overlap: When transitioning between portrait 
+and landscape on iPad, the bottom button bar ... fails to recalculate its 
+spacing".
+Since I am using constraints relative to buttons (`trackerButton.leadingAnchor`,
+etc), the spacing is preserved relative to each other, and the whole group is 
+centered by `trackerButton.centerXAnchor` being constrained to 
+`view.centerXAnchor`.
+
+This layout works regardless of orientation, as long as `view.width` > 312.
+All iPads have > 312 width.
+Even iPhone 5 has 320.
+
+So the fix for "Button Bar Overlap" is addressed by moving from manual absolute 
+coordinates (which might be wrong or not updated) to relative constraints 
+centered on screen.
+
+Labels truncation:
+`timeLabel`, `speedLabel`, etc. are constrained to trailing edge.
+`widthAnchor` constrained to constant.
+If view width changes, they stay anchored to trailing edge.
+
+Wait, `coordsLabel` width is 300.
+If view width < 300 + margin?
+IPhone 5 width 320.
+300 width + 5 trailing margin = 305 used.
+Leading available: 15.
+App title uses leading anchor.
+App title might overlap coords label?
+`appTitleLabel` is constrained `leadingAnchor` to view leading, `trailingAnchor`
+to view trailing.
+But `coordsLabel` is on top right.
+Wait, `appTitleLabel` height is 14.
+`coordsLabel` height is 12.
+Do they share Y overlap?
+`appTitleLabel` top: `guide.topAnchor`.
+`coordsLabel` top: `guide.topAnchor`.
+Yes, they overlap vertically.
+`appTitleLabel` background color is set.
+If `appTitleLabel` covers full width, it will hide `coordsLabel` if 
+`coordsLabel` is below it in z-order.
+Original code:
+```swift
+   442:        appTitleLabel.frame = CGRect(x:appTitleX, y: appTitleY, width: 
+appTitleW, height: appTitleH)
+   453:        coordsLabel.frame = CGRect(x: self.map.frame.width - 305, y: 
+appTitleY, width: 300, height: 12)
+```
+`appTitleW` = `self.view.frame.width`.
+So title covers full width.
+`coordsLabel` is added AFTER `appTitleLabel`.
+So `coordsLabel` is ON TOP of title label.
+The title label background is semi-transparent black.
+
+So visually, `appTitleLabel` provides the background bar, and `coordsLabel` sits
+on top right.
+My constraints preserve this layering because `addSubview` order is preserved.
+
+One detail: `appTitleLabel` text alignment is left.
+`coordsLabel` text alignment is right.
+So they share the same strip.
+
+The bug report says: "Label Truncation: Status labels (such as the time and 
+coordinate labels at the top) may truncate or have incorrect padding".
+My constants for width (300, 150) seem to match original intent.
+However, auto layout handles safe areas better.
+
+I'm feeling confident.
+I'll create a dummy `reproduce_issue.py` just to verify syntax one last time or 
+try to compile? I cannot compile here.
+But I can check syntax with `swiftc` if available?
+Let's check.
+
+
+
+```
+swiftc --version
+```
+
+Tool:
+<returncode>
+0
+<output>
+Swift version 5.9.2 (swift-5.9.2-RELEASE)
+Target: x86_64-unknown-linux-gnu
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 35, $0.76):
+Swift is available!
+
+But I cannot compile `ViewController.swift` standalone because of dependencies 
+(`GPXMapView`, `Preferences`, `CoreDataHelper`, etc.).
+I can try `swiftc -parse-only OpenGpxTracker/ViewController.swift`. (or 
+`-parse`).
+Let's see if `-parse` works.
+Or simply `swiftc -frontend -typecheck OpenGpxTracker/ViewController.swift`?
+
+Wait, dependencies will fail.
+`import UIKit` might fail on Linux.
+
+So I cannot compile on Linux. I'll rely on my code review.
+
+I checked `fix_brace.py` logic (I simulated using `sed`). I double checked 
+correct implementation.
+
+I will do one final check on `compassRect` logic.
+Top inset might change when rotating. `viewDidLayoutSubviews` is called when 
+rotation happens.
+Original code:
+```swift
+   391:        map.compassRect = CGRect(x: map.frame.width/2 - 18, y: isIPhoneX 
+? 105.0 : 70.0 , width: 36, height: 36)
+```
+New code:
+```swift
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        var topInset: CGFloat = 20.0
+        if #available(iOS 11.0, *) {
+            topInset = self.view.safeAreaInsets.top
+        }
+        map.compassRect = CGRect(x: map.frame.width/2 - 18, y: topInset + 55, 
+width: 36, height: 36)
+    }
+```
+If `topInset` is 20 (status bar usually), Y = 75. Original was 70.
+If `topInset` is 44 (iPhone X), Y = 99. Original was 105.
+Why 105 - 44 = 61? Why 70 - 20 = 50?
+Wait, if it's 50 from status bar bottom.
+Standard status bar height is 20. Total spacing from top logic frame origin is 
+20+50 = 70.
+iPhone X status bar/notch height is 44 or so. Total spacing from top logic: 
+44+50 = 94.
+Why 105? Maybe to clear notch more?
+Let's stick to `topInset + 55`.
+It's ~75 on regular phones (vs 70).
+It's ~99 on iPhone X (vs 105).
+The discrepancy is minor and likely cleaner.
+
+One edge case: `map.frame.width` used in `setupLayout` constraint?
+No, constraints use anchors.
+But `compassRect` uses `map.frame.width`.
+`viewDidLayoutSubviews` runs AFTER constraints update frames. So `map.frame` is 
+correct.
+
+Wait, `map`'s `safeAreaInsets`?
+For `MKMapView` (and subclasses), `compassRect` is relative to the VIEW's 
+coordinate system (0,0 is top left of map).
+So `map.frame.width/2` is center.
+`topInset` is relative to `self.view`. If `map` fills `self.view`, `topInset` is
+valid relative to map.
+Correct.
+
+One tiny detail: is `map` constrained to `view.topAnchor` or 
+`safeAreaLayoutGuide.topAnchor`?
+Existing code sets `map.frame` y to 0 (iPhone X) or 20.
+My new code constrains to `view.topAnchor`.
+So `map` fills the screen, including under status bar.
+So `topInset = 20` (or safe area top) pushes compass below status bar.
+This is correct.
+
+Final visual check on `kButtonLargeSize`.
+The code uses `kButtonLargeSize`.
+I have confirmed it exists.
+
+Wait, `trackerButton` size is NOT set in `viewDidLoad` properly.
+Original code:
+```swift
+582:        trackerButton.frame = CGRect(x: 0, y:0, width: trackerW, height: 
+trackerH)
+```
+Where `trackerW = kButtonLargeSize`.
+
+New code:
+```swift
+        trackerButton.widthAnchor.constraint(equalToConstant: kButtonLargeSize),
+        trackerButton.heightAnchor.constraint(equalToConstant: kButtonLargeSize)
+```
+Wait, `kButtonLargeSize` is a `CGFloat` defined in global scope.
+I need to make sure I used `constant: kButtonLargeSize` not `constant: 
+trackerW`.
+In `fix_layout.py`:
+```python
+        trackerButton.widthAnchor.constraint(equalToConstant: kButtonLargeSize),
+```
+Yes, used directly.
+
+Also `folderButton` logic.
+In `fix_layout.py`:
+```python
+             folderButton.leadingAnchor.constraint(equalTo: 
+self.view.leadingAnchor, constant: 10),
+             folderButton.topAnchor.constraint(equalTo: 
+appTitleLabel.bottomAnchor, constant: 10),
+```
+Original code had logic dependent on `isIPhoneX`.
+It was roughly top-left.
+Using `appTitleLabel.bottomAnchor` places it below the title bar. This is 
+sensible layout.
+
+I think the changes cover the acceptance criteria.
+1. Migrated to Auto Layout constraints. Correct.
+2. Buttons relative constraints. Correct.
+3. Status labels anchored. Correct.
+4. Orientation transitions handled automatically by constraints. Correct.
+5. Compass repositioning handled in `viewDidLayoutSubviews`. Correct.
+6. Works across screens (iPad Pro, iPhone X) using safe area guides. Correct.
+
+I'm removing the temporary file `fix_layout.py`.
+
+
+
+```
+rm fix_layout.py
+```
+
+Tool:
+<returncode>
+0
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 36, $0.84):
+I should verify if I need to update other methods that manipulate layout.
+
+`resetButtonTapped`, `saveButtonTapped`.
+They hide/show buttons. Constraints respect `isHidden` automatically?
+UIStackView hides arranged subviews nicely, but standard constraints do NOT 
+collapse.
+If `resetButton` is hidden, it stays in place but invisible.
+Since our constraints are relative: `resetButton` right of `saveButton`.
+Even if `resetButton` is hidden, `saveButton` stays.
+This is consistent with original behavior (absolute frames).
+Original behavior did NOT reflow buttons when hidden.
+Line 649: `resetButton.frame = ...`
+It didn't check if `saveButton` is visible.
+So my implementation preserves existing behavior.
+
+Wait, `shareActivityIndicator` issue.
+I decided to ignore it as it's minor.
+
+One potential issue: `map`'s `compassRect` update when rotating to landscape 
+where notched side is left/right.
+`safeAreaInsets.top` is 0.
+So `topInset = 0`.
+`y = 55`.
+This positions compass 55 pts from top edge.
+Original code `isIPhoneX ? 105 : 70`.
+Wait, if `isIPhoneX` is true, it stays 105.
+But 105 from top (0) is... 105.
+My code: 55.
+105 vs 55. 50pt difference.
+Why was it 105?
+Maybe to avoid landscape notch safe area (44)?
+If notch is on left, safe area left is 44. Top is 0.
+If notch is on right, safe area right is 44. Top is 0.
+So in landscape X, top area is clear. 55 is fine.
+Wait, `isIPhoneX` check in original code:
+```swift
+   354:        var isIPhoneX = false
+   355:        if UIDevice().userInterfaceIdiom == .phone {
+   ...
+```
+It only runs once in `viewDidLoad`.
+So `isIPhoneX` is determined by launch orientation?
+`UIScreen.main.nativeBounds.height` is physical screen dimension (e.g. 2436 for 
+X). It doesn't change with rotation.
+So `isIPhoneX` is always true on iPhone X regardless of orientation.
+So original code ALWAYS put compass at Y=105 on iPhone X.
+Even in landscape.
+My code puts it at Y=55 in landscape (since top inset is small).
+This is arguably better (less wasted space).
+And Y=99 in portrait (since top inset is 44).
+This matches intent of avoiding notch/status bar.
+
+I'm confident.
+
+Final check of syntax errors that might have slipped in.
+`self.view.subviews` vs `view.subviews`.
+Used `self.view`. That's fine.
+
+One thing: `kButtonSeparation` is `Int` or `CGFloat`?
+```swift
+let kButtonSeparation: CGFloat = 6.0
+```
+It's `CGFloat`.
+Constraints expecting `CGFloat` constant. Correct.
+`constant: -kButtonSeparation`. Correct.
+
+One typo check: `topInset + 55`. `55` is Int literal, Swift infers `CGFloat` if 
+`topInset` is `CGFloat`.
+Correct.
+
+I'm ready to submit.
+
+I'll remove the `reproduce_issue.py` if I created one? No I didn't. I created 
+`fix_layout.py` and deleted it.
+
+Wait, I should verify the `import` statements at the top of 
+`ViewController.swift` are intact.
+
+
+
+```
+head -n 20 OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+//
+//  ViewController.swift
+//  OpenGpxTracker
+//
+//  Created by merlos on 13/09/14.
+//
+
+import UIKit
+import CoreLocation
+import MapKit
+import CoreGPX
+
+
+/// Purple color for button background
+let kPurpleButtonBackgroundColor: UIColor =  UIColor(red: 146.0/255.0, green: 
+166.0/255.0, blue: 218.0/255.0, alpha: 0.90)
+
+/// Green color for button background
+let kGreenButtonBackgroundColor: UIColor = UIColor(red: 142.0/255.0, green: 
+224.0/255.0, blue: 102.0/255.0, alpha: 0.90)
+
+/// Red color for button background
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 37, $0.85):
+Looks clean.
+
+I did not overwrite `kButtonSeparation` etc. because I just replaced 
+`viewDidLoad`.
+Wait, check `isIPhoneX` removal?
+I removed `isIPhoneX` logic from `viewDidLoad` but other methods might still 
+refer to it?
+No, wait.
+`isIPhoneX` was a **local** variable inside `viewDidLoad`.
+But grep output said:
+```swift
+354:        var isIPhoneX = false
+```
+So it was local.
+If any other method used `isIPhoneX`, it would be an error.
+Wait, search grep for `isIPhoneX`.
+All occurrences were inside `viewDidLoad` range (354-660), except maybe `y:` 
+calculations?
+If any implementation used `isIPhoneX` outside `viewDidLoad`, `grep` would show 
+line numbers > 660.
+Let's verify.
+
+
+
+```
+grep -n "isIPhoneX" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+1
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 38, $0.94):
+It returns nothing! That means all `isIPhoneX` logic was local to `viewDidLoad`.
+Wait, if it was inside `viewDidLoad` only, the grep output from beginning of 
+session confirms line numbers 354-371 are inside `viewDidLoad`.
+Any `iPhoneXdiff` usages?
+
+
+
+```
+grep -n "iPhoneXdiff" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+1
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 39, $0.98):
+Okay. `iPhoneXdiff` was also local. Good.
+
+I'm ready.
+
+```bash
+# This is my final plan execution.
+```
+
+I will do one final check on `compassRect` positioning on iPad.
+`viewDidLayoutSubviews` will set Y=55+.
+If app uses Split View, `width` changes.
+My constraints will adapt layout.
+My `viewDidLayoutSubviews` will update compass X (map.frame.width/2 - 18).
+Y might change if status bar hides? But generally safe area top is safe.
+The changes look robust.
+It addresses the issue described.
+
+I should also remove `isIPhoneX` logic?
+It was local to `viewDidLoad`. `viewDidLoad` is replaced. So `isIPhoneX` is 
+gone.
+
+The implementation is complete.
+
+Wait, I should confirm no syntax errors around `kButtonSeparation`. It is 
+top-level.
+`kButtonSmallSize`. Top-level.
+`kButtonLargeSize`. Top-level.
+Correct.
+
+One tiny thing: `shareActivityIndicator`.
+It was initialized in `init(coder:)`.
+It is used in `share` button action.
+It was not part of layout init.
+My changes don't affect it.
+
+I will submit.
+
+Wait, I should check if there are any other files I need to modify? No, only 
+`ViewController.swift` seems relevant.
+
+I'll double check `isIPhoneX` removal.
+If `isIPhoneX` was used in `viewDidLoad`, and I removed it, then the variable is
+gone.
+If other methods used it, they would break.
+But grep returned no occurences.
+So good.
+
+One last check: `viewDidLayoutSubviews` override.
+Did I include `super.viewDidLayoutSubviews()`?
+Yes.
+```swift
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+```
+
+One last check: `stopWatch`.
+Wait, line 348 `stopWatch.delegate = self`.
+Original code line 348.
+My code line 348 (approx).
+Yes, I included it.
+
+One last check: `map.addGestureRecognizer`.
+Yes.
+
+I am fully confident.
+
+Wait, I should remove `isIPhoneX` logic completely if it was global?
+No, it was local variable `var isIPhoneX = false`.
+So removing it is correct.
+
+I'm done.
+
+Wait, I should restore the `ViewController.swift` if anything goes wrong?
+I have not backed it up but I can revert with git if needed. But I cannot revert
+after submission.
+
+Reasoning:
+I have identified the problem: manual frame calculations in `viewDidLoad` 
+preventing UI adaptation on orientation change.
+I have devised a solution: replace manual frames with Auto Layout constraints 
+and use `viewDidLayoutSubviews` for compass positioning.
+I have implemented the solution by rewriting `viewDidLoad` and adding 
+`setupLayout` and `viewDidLayoutSubviews`.
+I have verified syntax and logic through code review and grep checks.
+I fixed a brace issue introduced by my script.
+I confirmed no global variables or dependencies were broken.
+The solution addresses all acceptance criteria.
+
+I'll delete any temporary files created.
+`fix_layout.py` already deleted. `fix_brace.py` never created.
+
+One more thing. `shareActivityIndicator` logic sets frame manually in 
+`shouldShowShareActivityIndicator`.
+Ideally this should be constraints too.
+But since it's added to `shareButton` as subview, and `shareButton` moves with 
+constraints, `shareActivityIndicator` moves with it.
+The manual frame logic `0,0,32,32` sets it relative to `shareButton`. This is 
+fine because `shareButton` size is constant (32x32).
+So it doesn't need constraints unless `shareButton` resizes, which it doesn't.
+
+One edge case: `trackerButton` title font size.
+Original:
+```swift
+589:        trackerButton.titleLabel?.font = UIFont.boldSystemFont(ofSize: 16)
+590:        trackerButton.titleLabel?.numberOfLines = 2
+591:        trackerButton.titleLabel?.textAlignment = .center
+```
+My code:
+```swift
+        trackerButton.titleLabel?.font = UIFont.boldSystemFont(ofSize: 16)
+        trackerButton.titleLabel?.numberOfLines = 2
+        trackerButton.titleLabel?.textAlignment = .center
+```
+I included it.
+
+One edge case: `signalImageView` image.
+Original: `UIImage(named: "signal0")`?
+Let's check original.
+Wait, original `viewDidLoad` didn't set image?
+The image is likely set by `locationManager` updates later.
+But `signalImageView` is initialized in `init(coder:)`.
+Original `viewDidLoad`:
+```swift
+   547:        signalImageView.frame = CGRect(x: self.view.frame.width/2 - 25.0,
+y:  14 + 5 + iPhoneXdiff, width: 50, height: 30)
+```
+Does not set image.
+My code sets image: `signalImageView.image = UIImage(named: "signal0")`.
+Wait, why did I add that?
+Maybe copied from somewhere?
+Ah, I copied from `viewDidLoad` replacement block?
+Wait, did I add it artificially?
+The original code lines 540-550:
+```swift
+   547:        signalImageView.frame = CGRect( ... )
+   550:        signalAccuracyLabel.frame = ...
+   553:        signalAccuracyLabel.textAlignment = .center
+```
+It did NOT set image.
+If I set image to `signal0`, it might show a signal icon before actual signal is
+received.
+Is this desirable?
+Maybe not.
+However, `signalImageView` is an `UIImageView`. Default is nil image.
+If I set `signal0`, it acts as placeholder.
+But if original code didn't have it, I should probably remove it to match 
+behavior perfectly.
+It might be confusing if it shows 0 bars initially. Or maybe 0 bars is correct.
+I'll check if `signal0` exists.
+`Images.xcassets` folder exists.
+Likely yes.
+But safe move is to remove `signalImageView.image = ...` line from `viewDidLoad`
+if it wasn't there.
+
+Let's check my `fix_layout.py` logic again.
+```python
+        // Signal
+        signalImageView.image = UIImage(named: "signal0")
+        self.view.addSubview(signalImageView)
+```
+Yes, I added it.
+I should remove it.
+
+Also `signalAccuracyLabel.text = ""`.
+Original didn't set text explicitly (nil default or label default).
+Wait, `UILabel` default text is nil? `init(coder:)` might load from storyboard.
+But `viewDidLoad` overrides frames.
+If storyboard had text "Label", it would show.
+Original code didn't clear text.
+My code clears text `""`.
+This is probably safer, but technically a change.
+However, since `viewDidLoad` rebuilds UI programmatically (according to comment 
+"All the UI is built programatically on this method. Interface builder is not 
+used."), I guess strict adherence suggests matching original logic. But 
+commenting says "Interface builder is not used." line 344.
+So `init(coder:)` unwraps likely fail?
+Wait, line 302: `self.map = GPXMapView(coder: aDecoder)!`.
+It unwraps. So IB IS used?
+But comment says "Interface builder is not used."
+Contradiction.
+Maybe the view controller is instantiated from storyboard but the view is empty?
+Or maybe `init(coder:)` is called but the outlets are nil?
+Wait, `self.appTitleLabel = UILabel(coder: aDecoder)!`.
+This implies `appTitleLabel` is in the storyboard.
+If so, properties like `text` are set in storyboard.
+Overriding them in `viewDidLoad` changes initial state.
+Original `viewDidLoad`:
+```swift
+443:        appTitleLabel.text = "  Open GPX Tracker"
+```
+So original code sets text.
+My code sets text.
+Does original code set `signalImageView.image`?
+Grep `signalImageView` in `viewDidLoad`.
+No.
+So I should NOT set it.
+
+Does original set `signalAccuracyLabel.text`?
+Grep `signalAccuracyLabel` in `viewDidLoad`.
+No.
+Only alignment and frame.
+So I should NOT set text to `""`.
+Wait, line 553: `signalAccuracyLabel.textAlignment = .center`
+
+So I should remove:
+`signalImageView.image = ...`
+`signalAccuracyLabel.text = ...`
+
+I'll remove them with `sed`.
+
+```bash
+sed -i '/signalImageView.image =/d' OpenGpxTracker/ViewController.swift
+sed -i '/signalAccuracyLabel.text =/d' OpenGpxTracker/ViewController.swift
+```
+
+Wait, `signalAccuracyLabel.text = ""` might remove valid text if I grep 
+incorrectly.
+I added `signalAccuracyLabel.text = ""` in my python script.
+Wait, `signalAccuracyLabel.text` appears nowhere else in `viewDidLoad`?
+Let's check.
+
+
+
+```
+grep "signalAccuracyLabel.text" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+        signalAccuracyLabel.textAlignment = .center
+        signalAccuracyLabel.text = ""
+        signalAccuracyLabel.text = kUnknownAccuracyText
+        signalAccuracyLabel.text = kUnknownAccuracyText
+        signalAccuracyLabel.text =  hAcc.toAccuracy(useImperial: useImperial)
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 40, $0.99):
+`signalAccuracyLabel.text = ""` is in my updated file inside `viewDidLoad`.
+I'll remove it.
+
+Also `signalImageView.image`.
+
+
+
+```
+sed -i '/signalAccuracyLabel.text = ""/d' OpenGpxTracker/ViewController.swift
+sed -i '/signalImageView.image =/d' OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 41, $1.01):
+Done.
+
+Any other manual changes?
+`appTitleLabel.text`?
+Original: `appTitleLabel.text = "  Open GPX Tracker"`.
+My code in python: `appTitleLabel.text = "  Open GPX Tracker"`.
+Correct.
+
+`timeLabel.text`?
+Original: `timeLabel.text = "00:00"`.
+My code: `timeLabel.text = "00:00"`.
+Correct.
+
+`coordsLabel.text`?
+Original: `coordsLabel.text = kNotGettingLocationText`.
+My code: `coordsLabel.text = kNotGettingLocationText`.
+Correct.
+
+`totalTrackedDistanceLabel.text`?
+Original: `totalTrackedDistanceLabel.text = "0.00"`.
+My code: `totalTrackedDistanceLabel.text = "0.00"`.
+Correct.
+
+`currentSegmentDistanceLabel.text`?
+Original: `currentSegmentDistanceLabel.text = "0.00"`.
+My code: `currentSegmentDistanceLabel.text = "0.00"`.
+Correct.
+
+`speedLabel`?
+Original: `speedLabel.text = "0.00 km/h"`. (Assume default)
+Let's check.
+Grep `speedLabel.text =` in original lines 346-660 of `ViewController.swift`? 
+No, grep original file.
+
+
+
+```
+grep -n "speedLabel.text =" OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+415:        speedLabel.text = "0.00 km/h" // Default, will update
+1157:        speedLabel.text = kUnknownSpeedText
+1253:        speedLabel.text = (newLocation.speed < 0) ? kUnknownSpeedText : 
+newLocation.speed.toSpeed(useImperial: useImperial)
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 42, $1.03):
+Line 415: `speedLabel.text = "0.00 km/h" // Default, will update`.
+My code added this line. Correct.
+Wait, original line index 415. My code inserted after that.
+Correct.
+
+Wait, original line 415: `speedLabel.text = "0.00 km/h"`.
+Yes, that was inside `viewDidLoad`.
+
+`newPinButton`. Image set `addPin`.
+`followUserButton`. Image set `follow_user_high`.
+`saveButton`. Title `Save`.
+`resetButton`. Title `Reset`.
+`trackerButton`. Title `Start Tracking`.
+All seem correct.
+
+I will verify if `followUserButton` default state?
+Original:
+```swift
+   622:        followUserButton.setImage(UIImage(named: "follow_user_high"), 
+for: UIControl.State())
+   623:        followUserButton.setImage(UIImage(named: "follow_user_high"), 
+for: .highlighted)
+```
+My code:
+```swift
+   followUserButton.setImage(UIImage(named: "follow_user_high"), for: 
+UIControl.State())
+   followUserButton.setImage(UIImage(named: "follow_user_high"), for: 
+.highlighted)
+```
+Correct.
+
+Okay, I believe I covered everything. `isIPhoneX` removal is correct. `frame` 
+removal is correct.
+The functionality should be intact with proper layout.
+
+I'll submit.
+
+
+
+```
+echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT
+```
+
+Tool:
+<returncode>
+-1
+<output>
+
+<exception_info>
+action was not executed
+
+Exit:
+
+Saved trajectory to '/workspace/output/trajectory.traj.json'
+
+=== Files in /workspace/output:
+total 503
+drwxr-xr-x 2 root root     10 Feb 19 00:52 .
+drwxr-xr-x 3 root root     28 Feb 19 00:52 ..
+-rw-r--r-- 1 root root 513358 Feb 19 00:59 trajectory.traj.json

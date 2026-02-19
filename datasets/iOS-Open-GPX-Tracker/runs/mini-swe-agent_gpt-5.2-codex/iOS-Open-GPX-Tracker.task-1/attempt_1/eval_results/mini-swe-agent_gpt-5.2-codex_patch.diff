@@ -1,0 +1,177 @@
+diff --git a/OpenGpxTracker/GPXScaleBar.swift b/OpenGpxTracker/GPXScaleBar.swift
+index 169518a..5758081 100644
+--- a/OpenGpxTracker/GPXScaleBar.swift
++++ b/OpenGpxTracker/GPXScaleBar.swift
+@@ -54,6 +54,16 @@ class GPXScaleBar: UIView {
+     
+     /// Array of labels for the scale divisions.
+     private var labels: [UILabel] = []
++
++    /// Overrides the default system-adaptive foreground color when set.
++    ///
++    /// Use this when the map imagery is light or dark regardless of system appearance, to keep the
++    /// scale bar visible. Set to `nil` to fall back to system-adaptive colors.
++    public var foregroundColorOverride: UIColor? {
++        didSet {
++            applyForegroundColor()
++        }
++    }
+     
+     /// The height of the horizontal scale bar.
+     private let barHeight: CGFloat = 4
+@@ -156,22 +166,12 @@ class GPXScaleBar: UIView {
+         backgroundColor = .clear
+         
+         // Configure scale bar
+-        if #available(iOS 13.0, *) {
+-            scaleBar.backgroundColor = .label
+-        } else {
+-            scaleBar.backgroundColor = .black
+-        }
+         scaleBar.layer.cornerRadius = barHeight / 2
+         addSubview(scaleBar)
+         
+         // Create ticks (numberOfSegments + 1 for start and end)
+         for _ in 0...numberOfSegments {
+             let tick = UIView()
+-            if #available(iOS 13.0, *) {
+-                tick.backgroundColor = .label
+-            } else {
+-                tick.backgroundColor = .black
+-            }
+             tick.layer.cornerRadius = tickWidth / 2
+             addSubview(tick)
+             ticks.append(tick)
+@@ -181,20 +181,44 @@ class GPXScaleBar: UIView {
+         for _ in 0...numberOfSegments {
+             let label = UILabel()
+             label.font = .systemFont(ofSize: 11, weight: .medium)
+-            if #available(iOS 13.0, *) {
+-                label.textColor = .label
+-            } else {
+-                label.textColor = .black
+-            }
+             label.textAlignment = .center
+             addSubview(label)
+             labels.append(label)
+         }
++
++        applyForegroundColor()
+         
+         // Set intrinsic size
+         translatesAutoresizingMaskIntoConstraints = false
+     }
++
++    /// Applies the current foreground color to the bar, ticks, and labels.
++    private func applyForegroundColor() {
++        let color = resolvedForegroundColor()
++        scaleBar.backgroundColor = color
++        ticks.forEach { $0.backgroundColor = color }
++        labels.forEach { $0.textColor = color }
++    }
++
++    /// Resolves the foreground color based on the override or system appearance.
++    private func resolvedForegroundColor() -> UIColor {
++        if let override = foregroundColorOverride {
++            return override
++        }
++        if #available(iOS 13.0, *) {
++            return .label
++        }
++        return .black
++    }
+     
++
++    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
++        super.traitCollectionDidChange(previousTraitCollection)
++        if foregroundColorOverride == nil {
++            applyForegroundColor()
++        }
++    }
++
+     /// Sets up notification observer for map region changes.
+     ///
+     /// Listens for `MKMapViewRegionDidChangeNotification` to automatically update the scale display.
+@@ -511,6 +535,7 @@ class GPXScaleBar: UIView {
+         self.useImperial = useImperial
+         setupObserver()
+         updateScale()
++        applyForegroundColor()
+     }
+     
+     /// Manually triggers an update of the scale display.
+diff --git a/OpenGpxTracker/GPXTileServer.swift b/OpenGpxTracker/GPXTileServer.swift
+index 247bf14..163e1eb 100644
+--- a/OpenGpxTracker/GPXTileServer.swift
++++ b/OpenGpxTracker/GPXTileServer.swift
+@@ -7,6 +7,7 @@
+ // Shared file: this file is also included in the OpenGpxTracker-Watch Extension target.
+ 
+ import Foundation
++import UIKit
+ 
+ ///
+ /// Configuration for supported tile servers.
+@@ -163,6 +164,20 @@ enum GPXTileServer: Int {
+         return self == .appleSatellite
+     }
+ 
++    /// Provides a foreground color override for overlay elements (scale bar, labels) when needed.
++    ///
++    /// Returns nil to use system-adaptive colors.
++    var overlayForegroundColorOverride: UIColor? {
++        switch self {
++        case .apple:
++            return nil
++        case .appleSatellite:
++            return .white
++        case .openStreetMap, .cartoDB, .cartoDBRetina, .openTopoMap, .openSeaMap:
++            return .black
++        }
++    }
++
+     /// Returns the number of tile servers currently defined
+     static var count: Int { return GPXTileServer.openSeaMap.rawValue + 1}
+ }
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index fe592ce..34d04d8 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -790,6 +790,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+ 	
+ 	private func addScaleBarOnTopOfTrackButton() {
+         scaleBar = GPXScaleBar(mapView: map, useImperial: Preferences.shared.useImperial)
++        scaleBar.foregroundColorOverride = map.tileServer.overlayForegroundColorOverride
+         view.addSubview(scaleBar)
+         
+         map.scaleBar = scaleBar
+@@ -1304,11 +1305,15 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+     /// force dark mode (i.e. white text, if map content is known to be dark)
+     func textColorAdaptations() {
+         let needForceDarkMode = self.map.tileServer.needForceDarkMode
++        let overlayColorOverride = self.map.tileServer.overlayForegroundColorOverride
++
+         self.signalAccuracyLabel.textColor = needForceDarkMode ? .white : nil
+         self.timeLabel.textColor = needForceDarkMode ? .white : nil
+         self.speedLabel.textColor = needForceDarkMode ? .white : nil
+         self.totalTrackedDistanceLabel.textColor = needForceDarkMode ? .white : nil
+         self.currentSegmentDistanceLabel.textColor = needForceDarkMode ? .white : nil
++
++        self.scaleBar?.foregroundColorOverride = overlayColorOverride
+     }
+ 
+ }
+diff --git a/scripts/repro_overlay_colors.sh b/scripts/repro_overlay_colors.sh
+new file mode 100755
+index 0000000..63ecdac
+--- /dev/null
++++ b/scripts/repro_overlay_colors.sh
+@@ -0,0 +1,8 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++printf "Scalebar foreground override references:\n"
++grep -n "foregroundColorOverride" OpenGpxTracker/GPXScaleBar.swift OpenGpxTracker/ViewController.swift | sed 's/^/  /'
++
++printf "\nTile server overlay overrides:\n"
++grep -n "overlayForegroundColorOverride" OpenGpxTracker/GPXTileServer.swift | sed 's/^/  /'

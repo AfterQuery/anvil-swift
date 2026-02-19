@@ -1,0 +1,112 @@
+diff --git a/OpenGpxTracker/GPXScaleBar.swift b/OpenGpxTracker/GPXScaleBar.swift
+index 169518a..62d9efa 100644
+--- a/OpenGpxTracker/GPXScaleBar.swift
++++ b/OpenGpxTracker/GPXScaleBar.swift
+@@ -195,6 +195,19 @@ class GPXScaleBar: UIView {
+         translatesAutoresizingMaskIntoConstraints = false
+     }
+     
++    /// Updates the color of the scale bar elements (bar, ticks, labels).
++    ///
++    /// - Parameter color: The color to use for all elements of the scale bar.
++    public func updateLabelColor(_ color: UIColor) {
++        scaleBar.backgroundColor = color
++        for tick in ticks {
++            tick.backgroundColor = color
++        }
++        for label in labels {
++            label.textColor = color
++        }
++    }
++    
+     /// Sets up notification observer for map region changes.
+     ///
+     /// Listens for `MKMapViewRegionDidChangeNotification` to automatically update the scale display.
+diff --git a/OpenGpxTracker/GPXTileServer.swift b/OpenGpxTracker/GPXTileServer.swift
+index 247bf14..2b80e40 100644
+--- a/OpenGpxTracker/GPXTileServer.swift
++++ b/OpenGpxTracker/GPXTileServer.swift
+@@ -159,10 +159,16 @@ enum GPXTileServer: Int {
+         }
+     }
+     
+-    var needForceDarkMode: Bool {
++    var hasDarkImagery: Bool {
+         return self == .appleSatellite
+     }
+ 
++    /// Returns true if the tile server imagery is light and requires dark text (Light Mode UI).
++    /// Most raster tile servers (OSM, CartoDB, etc.) provide light maps.
++    var hasLightImagery: Bool {
++        return self != .apple && self != .appleSatellite
++    }
++
+     /// Returns the number of tile servers currently defined
+     static var count: Int { return GPXTileServer.openSeaMap.rawValue + 1}
+ }
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index fe592ce..c03117e 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -1301,14 +1301,54 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         isDisplayingLocationServicesDenied = false
+     }
+     
+-    /// force dark mode (i.e. white text, if map content is known to be dark)
++    /// Adapt text color based on tile server background
+     func textColorAdaptations() {
+-        let needForceDarkMode = self.map.tileServer.needForceDarkMode
+-        self.signalAccuracyLabel.textColor = needForceDarkMode ? .white : nil
+-        self.timeLabel.textColor = needForceDarkMode ? .white : nil
+-        self.speedLabel.textColor = needForceDarkMode ? .white : nil
+-        self.totalTrackedDistanceLabel.textColor = needForceDarkMode ? .white : nil
+-        self.currentSegmentDistanceLabel.textColor = needForceDarkMode ? .white : nil
++        // Ensure map and tileServer are available
++        guard let map = self.map else { return }
++        let tileServer = map.tileServer
++        
++        if #available(iOS 13.0, *) {
++            var style: UIUserInterfaceStyle = .unspecified
++            if tileServer.hasDarkImagery {
++                style = .dark
++            } else if tileServer.hasLightImagery {
++                style = .light
++            }
++            
++            // Override User Interface Style for labels
++            self.signalAccuracyLabel.overrideUserInterfaceStyle = style
++            self.timeLabel.overrideUserInterfaceStyle = style
++            self.speedLabel.overrideUserInterfaceStyle = style
++            self.totalTrackedDistanceLabel.overrideUserInterfaceStyle = style
++            self.currentSegmentDistanceLabel.overrideUserInterfaceStyle = style
++            
++            // ScaleBar style
++            self.scaleBar.overrideUserInterfaceStyle = style
++            map.scaleBar?.overrideUserInterfaceStyle = style
++            
++            // Reset textColor to label color so it adapts to the style override
++            let labelColor = UIColor.label
++            self.signalAccuracyLabel.textColor = labelColor
++            self.timeLabel.textColor = labelColor
++            self.speedLabel.textColor = labelColor
++            self.totalTrackedDistanceLabel.textColor = labelColor
++            self.currentSegmentDistanceLabel.textColor = labelColor
++            
++        } else {
++            // Fallback for older iOS
++            let useWhiteText = tileServer.hasDarkImagery
++            let color: UIColor = useWhiteText ? .white : .black
++            
++            self.signalAccuracyLabel.textColor = color
++            self.timeLabel.textColor = color
++            self.speedLabel.textColor = color
++            self.totalTrackedDistanceLabel.textColor = color
++            self.currentSegmentDistanceLabel.textColor = color
++            
++            // Update scaleBar explicitly for older iOS
++            self.scaleBar.updateLabelColor(color)
++            map.scaleBar?.updateLabelColor(color)
++        }
+     }
+ 
+ }

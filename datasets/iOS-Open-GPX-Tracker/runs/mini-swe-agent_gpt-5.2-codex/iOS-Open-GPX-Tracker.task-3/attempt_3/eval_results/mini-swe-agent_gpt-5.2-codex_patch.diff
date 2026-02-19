@@ -1,0 +1,164 @@
+diff --git a/OpenGpxTracker/AboutViewController.swift b/OpenGpxTracker/AboutViewController.swift
+index e72bb6f..fcc4713 100644
+--- a/OpenGpxTracker/AboutViewController.swift
++++ b/OpenGpxTracker/AboutViewController.swift
+@@ -80,11 +80,7 @@ extension AboutViewController: WKNavigationDelegate {
+         print("AboutViewController: decidePolicyForNavigationAction")
+         
+         if navigationAction.navigationType == .linkActivated {
+-            if #available(iOS 10, *) {
+-                UIApplication.shared.open(navigationAction.request.url!)
+-            } else {
+-                UIApplication.shared.openURL(navigationAction.request.url!)
+-            }
++            UIApplication.shared.open(navigationAction.request.url!)
+             print("AboutViewController: external link sent to Safari")
+             
+             decisionHandler(.cancel)
+diff --git a/OpenGpxTracker/CoreDataHelper+BatchDelete.swift b/OpenGpxTracker/CoreDataHelper+BatchDelete.swift
+index 7157db8..a7df4c9 100644
+--- a/OpenGpxTracker/CoreDataHelper+BatchDelete.swift
++++ b/OpenGpxTracker/CoreDataHelper+BatchDelete.swift
+@@ -9,8 +9,7 @@ import CoreData
+ 
+ extension CoreDataHelper {
+     
+-    @available(iOS 10.0, *)
+-    func modernBatchDelete<T: NSManagedObject>(of type: T.Type) {
++        func modernBatchDelete<T: NSManagedObject>(of type: T.Type) {
+         let privateManagedObjectContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+         privateManagedObjectContext.parent = appDelegate.managedObjectContext
+         
+diff --git a/OpenGpxTracker/CoreDataHelper.swift b/OpenGpxTracker/CoreDataHelper.swift
+index e85e92a..da08c03 100644
+--- a/OpenGpxTracker/CoreDataHelper.swift
++++ b/OpenGpxTracker/CoreDataHelper.swift
+@@ -331,11 +331,7 @@ class CoreDataHelper {
+     func coreDataDeleteAll<T: NSManagedObject>(of type: T.Type) {
+         print("Core Data Helper: Batch Delete \(T.self) from Core Data")
+ 
+-        if #available(iOS 10.0, *) {
+-            modernBatchDelete(of: T.self)
+-        } else { // for pre iOS 9 (less efficient, load in memory before removal)
+-            legacyBatchDelete(of: T.self)
+-        }
++        modernBatchDelete(of: T.self)
+     }
+     
+     // MARK: Handles recovered data
+diff --git a/OpenGpxTracker/MapViewDelegate.swift b/OpenGpxTracker/MapViewDelegate.swift
+index 01c1026..9dbdd18 100644
+--- a/OpenGpxTracker/MapViewDelegate.swift
++++ b/OpenGpxTracker/MapViewDelegate.swift
+@@ -180,7 +180,7 @@ class MapViewDelegate: NSObject, MKMapViewDelegate, UIAlertViewDelegate {
+                                 UIView.animate(withDuration: 0.1, animations: { () -> Void in
+                                     annotationView.transform = CGAffineTransform.identity
+                                 })
+-                                if #available(iOS 10.0, *), !hasImpacted {
++                                if !hasImpacted {
+                                     hasImpacted = true
+                                     UIImpactFeedbackGenerator(style: i > 2 ? .heavy : .medium).impactOccurred()
+                                 }
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index 4935395..6fc4ddd 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -121,6 +121,9 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+     
+     /// Map View
+     var map: GPXMapView
++
++    /// Map scale view
++    var scaleView: MKScaleView
+     
+     /// Map View delegate 
+     let mapViewDelegate = MapViewDelegate()
+@@ -323,6 +326,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+     /// Initializer. Just initializes the class vars/const
+     required init(coder aDecoder: NSCoder) {
+         self.map = GPXMapView(coder: aDecoder)!
++        self.scaleView = MKScaleView(mapView: self.map)
+         
+         self.appTitleLabel = UILabel(coder: aDecoder)!
+         self.signalImageView = UIImageView(coder: aDecoder)!
+@@ -446,6 +450,11 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         let region = MKCoordinateRegion(center: center, span: span)
+         map.setRegion(region, animated: true)
+         self.view.addSubview(map)
++
++        scaleView.mapView = map
++        scaleView.legendAlignment = .trailing
++        scaleView.translatesAutoresizingMaskIntoConstraints = false
++        map.addSubview(scaleView)
+         
+         addNotificationObservers()
+         
+@@ -643,6 +652,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+     func addConstraints(_ isIPhoneX: Bool) {
+         addConstraintsToAppTitleBar()
+         addConstraintsToTopInteractableElements()
++        addConstraintsToScaleView()
+         addConstraintsToButtonBar(isIPhoneX)
+     }
+     
+@@ -667,6 +677,15 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+     }
+     
+     /// Adds constraints to subviews forming the informational labels (top right side; i.e. speed, elapse time labels)
++
++    func addConstraintsToScaleView() {
++        let safeAreaGuide = self.view.safeAreaLayoutGuide
++
++        scaleView.translatesAutoresizingMaskIntoConstraints = false
++        NSLayoutConstraint(item: scaleView, attribute: .trailing, relatedBy: .equal, toItem: safeAreaGuide, attribute: .trailing, multiplier: 1, constant: -8).isActive = true
++        NSLayoutConstraint(item: scaleView, attribute: .bottom, relatedBy: .equal, toItem: safeAreaGuide, attribute: .bottom, multiplier: 1, constant: -8).isActive = true
++    }
++
+     func addConstraintsToTopInteractableElements() {
+         // MARK: Information Labels (on right)
+         
+@@ -738,8 +757,8 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         NSLayoutConstraint(item: aboutButton, attribute: .height, relatedBy: .equal, toItem: nil, attribute: .height, multiplier: 1, constant: 32).isActive = true
+ 
+     }
++
+     
+-    /// Adds constraints to subviews forming the button bar (bottom session controls bar)
+     func addConstraintsToButtonBar(_ isIPhoneX: Bool) {
+         // MARK: Button Bar
+         
+@@ -1209,7 +1228,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+     /// - Seealso: displayLocationServicesDisabledAlert, displayLocationServicesDeniedAlert
+     ///
+     func checkLocationServicesStatus() {
+-        let authorizationStatus = CLLocationManager.authorizationStatus()
++        let authorizationStatus = locationManager.authorizationStatus
+         
+         // Has the user already made a permission choice?
+         guard authorizationStatus != .notDetermined else {
+@@ -1240,11 +1259,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         let alertController = UIAlertController(title: NSLocalizedString("LOCATION_SERVICES_DISABLED", comment: "no comment"), message: NSLocalizedString("ENABLE_LOCATION_SERVICES", comment: "no comment"), preferredStyle: .alert)
+         let settingsAction = UIAlertAction(title: NSLocalizedString("SETTINGS", comment: "no comment"), style: .default) { _ in
+             if let url = URL(string: UIApplication.openSettingsURLString) {
+-                if #available(iOS 10, *) {
+-                    UIApplication.shared.open(url)
+-                } else {
+-                    UIApplication.shared.openURL(url)
+-                }
++                UIApplication.shared.open(url)
+             }
+         }
+         let cancelAction = UIAlertAction(title: NSLocalizedString("CANCEL", comment: "no comment"), style: .cancel) { _ in }
+@@ -1270,11 +1285,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         let settingsAction = UIAlertAction(title: NSLocalizedString("SETTINGS", comment: "no comment"),
+                                            style: .default) { _ in
+             if let url = URL(string: UIApplication.openSettingsURLString) {
+-                if #available(iOS 10, *) {
+-                    UIApplication.shared.open(url)
+-                } else {
+-                    UIApplication.shared.openURL(url)
+-                }
++                UIApplication.shared.open(url)
+             }
+         }
+         let cancelAction = UIAlertAction(title: NSLocalizedString("CANCEL",

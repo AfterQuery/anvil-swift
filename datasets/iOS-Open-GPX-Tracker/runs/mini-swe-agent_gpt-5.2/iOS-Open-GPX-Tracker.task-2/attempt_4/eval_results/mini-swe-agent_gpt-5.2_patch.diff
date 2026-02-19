@@ -1,0 +1,431 @@
+diff --git a/OpenGpxTracker/MapViewDelegate.swift b/OpenGpxTracker/MapViewDelegate.swift
+index b4ba03a..bbac6d0 100644
+--- a/OpenGpxTracker/MapViewDelegate.swift
++++ b/OpenGpxTracker/MapViewDelegate.swift
+@@ -1,12 +1,14 @@
++import UIKit
+ import MapKit
+ import CoreGPX
+ 
+-class MapViewDelegate: NSObject, MKMapViewDelegate, UIAlertViewDelegate {
++class MapViewDelegate: NSObject, MKMapViewDelegate {
++
++    /// Presenter used to show alerts.
++    ///
++    /// `MKMapViewDelegate` is not a view controller, so we need the owning controller to present UI.
++    weak var presentingViewController: UIViewController?
+ 
+-    /// The Waypoint is being edited (if there is any)
+-    var waypointBeingEdited: GPXWaypoint = GPXWaypoint()
+-    
+-    
+     func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+         if annotation.isKind(of: MKUserLocation.self) {
+             return nil
+@@ -14,29 +16,28 @@ class MapViewDelegate: NSObject, MKMapViewDelegate, UIAlertViewDelegate {
+         let annotationView: MKPinAnnotationView = MKPinAnnotationView(annotation: annotation, reuseIdentifier: "PinView")
+         annotationView.canShowCallout = true
+         annotationView.isDraggable = true
+-        //let detailButton: UIButton = UIButton.buttonWithType(UIButtonType.DetailDisclosure) as UIButton
+-        
++
+         let deleteButton: UIButton = UIButton(frame: CGRect(x: 0, y: 0, width: 40, height: 40))
+         deleteButton.setImage(UIImage(named: "delete"), for: UIControl.State())
+         deleteButton.setImage(UIImage(named: "deleteHigh"), for: .highlighted)
+         deleteButton.tag = kDeleteWaypointAccesoryButtonTag
+         annotationView.rightCalloutAccessoryView = deleteButton
+-        
++
+         let editButton: UIButton = UIButton(frame: CGRect(x: 0, y: 0, width: 40, height: 40))
+         editButton.setImage(UIImage(named: "edit"), for: UIControl.State())
+         editButton.setImage(UIImage(named: "editHigh"), for: .highlighted)
+         editButton.tag = kEditWaypointAccesoryButtonTag
+         annotationView.leftCalloutAccessoryView = editButton
+-        
++
+         return annotationView
+     }
+-    
+-    
++
++
+     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+         if overlay.isKind(of: MKTileOverlay.self) {
+             return MKTileOverlayRenderer(overlay: overlay)
+         }
+-        
++
+         if overlay is MKPolyline {
+             let pr = MKPolylineRenderer(overlay: overlay)
+             pr.strokeColor = UIColor.blue.withAlphaComponent(0.5)
+@@ -45,58 +46,79 @@ class MapViewDelegate: NSObject, MKMapViewDelegate, UIAlertViewDelegate {
+         }
+         return MKOverlayRenderer()
+     }
+-    
+-    
++
++
+     func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
+         print("calloutAccesoryControlTapped ")
+         guard let waypoint = view.annotation as? GPXWaypoint else {
+             return
+         }
+-        
++
+         guard let button = control as? UIButton else {
+             return
+         }
+-        
++
+         guard let map = mapView as? GPXMapView else {
+             return
+         }
+-        
++
+         switch button.tag {
+         case kDeleteWaypointAccesoryButtonTag:
+             print("[calloutAccesoryControlTapped: DELETE button] deleting waypoint with name \(waypoint.name ?? "''")")
+             map.removeWaypoint(waypoint)
++
+         case kEditWaypointAccesoryButtonTag:
+             print("[calloutAccesoryControlTapped: EDIT] editing waypoint with name \(waypoint.name ?? "''")")
+-            let alert = UIAlertView(title: "Edit Waypoint",
++            guard let presenter = presentingViewController else {
++                print("[calloutAccesoryControlTapped ERROR] no presentingViewController set")
++                return
++            }
++
++            let alertController = UIAlertController(
++                title: "Edit Waypoint",
+                 message: "Hint: To change the waypoint location drag and drop the pin",
+-                delegate: self, cancelButtonTitle: "Cancel")
+-            alert.addButton(withTitle: "Save")
+-            alert.tag = kEditWaypointAlertViewTag
+-            alert.alertViewStyle = .plainTextInput
+-            alert.textField(at: 0)?.text = waypoint.title
+-            alert.show()
+-            self.waypointBeingEdited = waypoint
+-            alert.textField(at: 0)?.selectAll(self) //display text selected <-- TODO Not working WTF!
+-            
++                preferredStyle: .alert
++            )
++
++            alertController.addTextField { textField in
++                textField.text = waypoint.title
++            }
++
++            let cancelAction = UIAlertAction(title: "Cancel", style: .cancel, handler: nil)
++            let saveAction = UIAlertAction(title: "Save", style: .default) { _ in
++                waypoint.title = alertController.textFields?.first?.text
++            }
++
++            alertController.addAction(cancelAction)
++            alertController.addAction(saveAction)
++
++            presenter.present(alertController, animated: true) {
++                // Best-effort: mimic the old behaviour that attempted to select all text.
++                alertController.textFields?.first?.selectAll(nil)
++            }
++
+         default:
+             print("[calloutAccesoryControlTapped ERROR] unknown control")
+         }
+     }
+-    
+-    
+-    
+-    func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView,
+-        didChange newState: MKAnnotationView.DragState, fromOldState oldState: MKAnnotationView.DragState) {
+-            
+-            if newState == MKAnnotationView.DragState.ending {
+-                if let point = view.annotation as? GPXWaypoint {
+-                    print("Annotation name: \(String(describing: point.title)) lat:\(String(describing:point.latitude)) lon \(String(describing:point.longitude))")
+-                }
++
++
++
++    func mapView(
++        _ mapView: MKMapView,
++        annotationView view: MKAnnotationView,
++        didChange newState: MKAnnotationView.DragState,
++        fromOldState oldState: MKAnnotationView.DragState
++    ) {
++        if newState == MKAnnotationView.DragState.ending {
++            if let point = view.annotation as? GPXWaypoint {
++                print("Annotation name: \(String(describing: point.title)) lat:\(String(describing:point.latitude)) lon \(String(describing:point.longitude))")
+             }
++        }
+     }
+-    
+-    
+-    
++
++
++
+     func mapView(_ mapView: MKMapView, didAdd views: [MKAnnotationView]) {
+         var i = 0
+         let gpxMapView = mapView as! GPXMapView
+@@ -117,47 +139,36 @@ class MapViewDelegate: NSObject, MKMapViewDelegate, UIAlertViewDelegate {
+             }
+             let point: MKMapPoint = MKMapPoint.init(annotationView.annotation!.coordinate)
+             if !mapView.visibleMapRect.contains(point) { continue }
+-            
++
+             let endFrame: CGRect = annotationView.frame
+-            annotationView.frame = CGRect(x: annotationView.frame.origin.x, y: annotationView.frame.origin.y - mapView.superview!.frame.size.height,
+-                width: annotationView.frame.size.width, height:annotationView.frame.size.height)
++            annotationView.frame = CGRect(
++                x: annotationView.frame.origin.x,
++                y: annotationView.frame.origin.y - mapView.superview!.frame.size.height,
++                width: annotationView.frame.size.width,
++                height: annotationView.frame.size.height
++            )
+             let interval: TimeInterval = 0.04 * 1.1
+             UIView.animate(withDuration: 0.5, delay: interval, options: UIView.AnimationOptions.curveLinear, animations: { () -> Void in
+                 annotationView.frame = endFrame
+-                }, completion: { (finished) -> Void in
+-                    if finished {
+-                        UIView.animate(withDuration: 0.05, animations: { () -> Void in
+-                            //aV.transform = CGAffineTransformMakeScale(1.0, 0.8)
+-                            annotationView.transform = CGAffineTransform(a: 1.0, b: 0, c: 0, d: 0.8, tx: 0, ty: annotationView.frame.size.height*0.1)
+-                            
+-                            }, completion: { (finished: Bool) -> Void in
+-                                UIView.animate(withDuration: 0.1, animations: { () -> Void in
+-                                    annotationView.transform = CGAffineTransform.identity
+-                                })
++            }, completion: { (finished) -> Void in
++                if finished {
++                    UIView.animate(withDuration: 0.05, animations: { () -> Void in
++                        annotationView.transform = CGAffineTransform(a: 1.0, b: 0, c: 0, d: 0.8, tx: 0, ty: annotationView.frame.size.height*0.1)
++
++                    }, completion: { (finished: Bool) -> Void in
++                        UIView.animate(withDuration: 0.1, animations: { () -> Void in
++                            annotationView.transform = CGAffineTransform.identity
+                         })
+-                    }
++                    })
++                }
+             })
+         }
+     }
+-    
++
+     ///
+     /// Adds a small arrow image to the annotationView.
+     /// This annotationView should be the MKUserLocation
+     ///
+     func addHeadingView(toAnnotationView annotationView: MKAnnotationView) {
+-           }
+-    
+-    
+-    func alertView(_ alertView: UIAlertView, clickedButtonAt buttonIndex: Int) {
+-        
+-        switch alertView.tag {
+-        case kEditWaypointAlertViewTag:
+-            print("Edit waypoint alert view")
+-            self.waypointBeingEdited.title = alertView.textField(at: 0)?.text
+-            
+-        default:
+-            print("[ERROR] it seems that the AlertView is not handled properly." )
+-            
+-        }
+     }
+ }
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index d6f9743..f9962ed 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -28,10 +28,6 @@ let kNotGettingLocationText = "Not getting location"
+ let kUnknownAccuracyText = "±···m"
+ let kUnknownSpeedText = "·.··"
+ 
+-let kEditWaypointAlertViewTag = 33
+-let kSaveSessionAlertViewTag = 88
+-let kLocationServicesDeniedAlertViewTag = 69
+-let kLocationServicesDisabledAlertViewTag = 70
+ 
+ /// Size for small buttons
+ let  kButtonSmallSize: CGFloat = 48.0
+@@ -321,6 +317,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate  {
+ 
+         // Map configuration Stuff
+         map.delegate = mapViewDelegate
++        mapViewDelegate.presentingViewController = self
+         map.showsUserLocation = true
+         let mapH: CGFloat = self.view.bounds.size.height - (isIPhoneX ? 0.0 : 20.0)
+         map.frame = CGRect(x: 0.0, y: (isIPhoneX ? 0.0 : 20.0), width: self.view.bounds.size.width, height: mapH)
+@@ -836,16 +833,32 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate  {
+         if (gpxTrackingStatus == .notStarted) && !self.hasWaypoints {
+             return
+         }
+-        
+-        let alert = UIAlertView(title: "Save as", message: "Enter GPX session name", delegate: self, cancelButtonTitle: "Cancel")
+-        
+-        alert.addButton(withTitle: "Save")
+-        alert.alertViewStyle = .plainTextInput
+-        alert.tag = kSaveSessionAlertViewTag
+-        alert.textField(at: 0)?.clearButtonMode = .always
+-        alert.textField(at: 0)?.text = lastGpxFilename.isEmpty ? defaultFilename() : lastGpxFilename
+-        alert.show()
+-        //alert.textFieldAtIndex(0)?.selectAll(self)
++
++        let alertController = UIAlertController(title: "Save as", message: "Enter GPX session name", preferredStyle: .alert)
++
++        alertController.addTextField { textField in
++            textField.clearButtonMode = .always
++            textField.text = self.lastGpxFilename.isEmpty ? self.defaultFilename() : self.lastGpxFilename
++        }
++
++        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { _ in
++            print("Save canceled")
++        }
++
++        let saveAction = UIAlertAction(title: "Save", style: .default) { _ in
++            let enteredText = alertController.textFields?.first?.text ?? ""
++            let filename = enteredText.utf16.count == 0 ? self.defaultFilename() : enteredText
++            print("Save File \(filename)")
++            // export to a file
++            let gpxString = self.map.exportToGPXString()
++            GPXFileManager.save(filename, gpxContents: gpxString)
++            self.lastGpxFilename = filename
++        }
++
++        alertController.addAction(cancelAction)
++        alertController.addAction(saveAction)
++
++        present(alertController, animated: true, completion: nil)
+     }
+     
+     ///
+@@ -882,10 +895,29 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate  {
+     /// When location services are disabled is for all applications, not only this one.
+     ///
+     func displayLocationServicesDisabledAlert() {
+-        let alert = UIAlertView(title: "Location services disabled", message: "Go to settings and enable location.", delegate: self, cancelButtonTitle: "Settings")
+-        alert.addButton(withTitle: "Cancel")
+-        alert.tag = kLocationServicesDisabledAlertViewTag
+-        alert.show()
++        let alertController = UIAlertController(
++            title: "Location services disabled",
++            message: "Go to settings and enable location.",
++            preferredStyle: .alert
++        )
++
++        let settingsAction = UIAlertAction(title: "Settings", style: .default) { _ in
++            print("Settings button")
++            if let url = URL(string: UIApplication.openSettingsURLString) {
++                if #available(iOS 10.0, *) {
++                    UIApplication.shared.open(url)
++                } else {
++                    UIApplication.shared.openURL(url)
++                }
++            }
++        }
++        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { _ in
++            print("Cancel button")
++        }
++        alertController.addAction(settingsAction)
++        alertController.addAction(cancelAction)
++
++        present(alertController, animated: true, completion: nil)
+     }
+ 
+     
+@@ -897,73 +929,36 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate  {
+         if isDisplayingLocationServicesDenied {
+             return // display it only once.
+         }
+-        let alert = UIAlertView(title: "Access to location denied", message: "On Location settings, allow always access to location for GPX Tracker ", delegate: self, cancelButtonTitle: "Settings")
+-        alert.addButton(withTitle: "Cancel")
+-        alert.tag = kLocationServicesDeniedAlertViewTag
+-        alert.show()
+-    }
++        isDisplayingLocationServicesDenied = true
+ 
+-}
+-
+-// MARK: UIAlertViewDelegate
+-
+-///
+-/// AlertView delegate to manage the selected option when user clicks the Save button in the main View Controller.
+-///
+-///
+-/// The alertview displays two text field with the name of the file to be saved and two buttons (0) Cancel and (1) Save.
++        let alertController = UIAlertController(
++            title: "Access to location denied",
++            message: "On Location settings, allow always access to location for GPX Tracker ",
++            preferredStyle: .alert
++        )
+ 
+-extension ViewController: UIAlertViewDelegate {
+-    func alertView(_ alertView: UIAlertView, clickedButtonAt buttonIndex: Int) {
+-        
+-        switch alertView.tag {
+-        case kSaveSessionAlertViewTag:
+-            print("alertViewDelegate for Save Session")
+-            switch buttonIndex {
+-            case 0: //cancel
+-                print("Save canceled")
+-                
+-            case 1: //Save
+-                let filename = (alertView.textField(at: 0)?.text!.utf16.count == 0) ? defaultFilename() : alertView.textField(at: 0)?.text
+-                print("Save File \(String(describing: filename))")
+-                //export to a file
+-                let gpxString = self.map.exportToGPXString()
+-                GPXFileManager.save(filename!, gpxContents: gpxString)
+-                self.lastGpxFilename = filename!
+-                
+-            default:
+-                print("[ERROR] it seems there are more than two buttons on the alertview.")
+-                
+-            }
+-        case kLocationServicesDeniedAlertViewTag:
+-            isDisplayingLocationServicesDenied = false
+-            switch buttonIndex {
+-                case 0:
+-                    print("Settings button")
+-                    if let url = NSURL(string: UIApplication.openSettingsURLString) as URL? {
+-                        UIApplication.shared.openURL(url)
+-                    }
+-                case 1:
+-                    print("Cancel button")
+-                default:
+-                    print("[ERROR] it seems there are more than two buttons on the alertview.")
+-            }
+-        case kLocationServicesDisabledAlertViewTag:
+-            switch buttonIndex {
+-            case 0:
+-                print("Settings button")
+-                if let url = NSURL(string: UIApplication.openSettingsURLString) as URL? {
++        let settingsAction = UIAlertAction(title: "Settings", style: .default) { _ in
++            self.isDisplayingLocationServicesDenied = false
++            print("Settings button")
++            if let url = URL(string: UIApplication.openSettingsURLString) {
++                if #available(iOS 10.0, *) {
++                    UIApplication.shared.open(url)
++                } else {
+                     UIApplication.shared.openURL(url)
+                 }
+-            case 1:
+-                print("Cancel button")
+-            default:
+-                print("[ERROR] it seems there are more than two buttons on the alertview.")
+             }
+-        default:
+-            print("[ERROR] it seems that the AlertView is not handled properly." )
+         }
++        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { _ in
++            self.isDisplayingLocationServicesDenied = false
++            print("Cancel button")
++        }
++
++        alertController.addAction(settingsAction)
++        alertController.addAction(cancelAction)
++
++        present(alertController, animated: true, completion: nil)
+     }
++
+ }
+ 
+ // MARK: StopWatchDelegate
