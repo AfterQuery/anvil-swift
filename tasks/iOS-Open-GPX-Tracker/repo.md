@@ -48,43 +48,43 @@ anvil add-task -d datasets/iOS-Open-GPX-Tracker -n 3 --base-commit 72c1e361d4ab2
 anvil add-task -d datasets/iOS-Open-GPX-Tracker -n 4 --base-commit fa320f1cc5cfe1e58ac538c22e5165a08dc34b8a
 
 # 4. Convert to Anvil evaluation format
-anvil convert-dataset -d datasets/iOS-Open-GPX-Tracker -u marvindeng
+anvil convert-dataset -d datasets/iOS-Open-GPX-Tracker
 
 # Remove cached builds
 docker builder prune -f
 
 # 5. Publish images
-anvil publish-images --dataset datasets/iOS-Open-GPX-Tracker -u marvindeng --repo anvil-images
+anvil publish-images --dataset datasets/iOS-Open-GPX-Tracker
 
 # 6. Verify base (all fail_to_pass tests should fail)
-anvil verify-base -d datasets/iOS-Open-GPX-Tracker -u marvindeng --dockerhub-repo anvil-images
+anvil verify-base -d datasets/iOS-Open-GPX-Tracker
 
 # 7. Run oracle (all tests should pass with gold patch)
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent oracle --dockerhub-username marvindeng --dockerhub-repo anvil-images --no-continue
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent oracle --no-continue
 
 # 8. Run against models
 
 # Claude Sonnet 4.5
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --dockerhub-username marvindeng --dockerhub-repo anvil-images --model openrouter/anthropic/claude-sonnet-4.5 --no-continue --n-attempts 4
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --no-continue --n-attempts 4
 
 # Claude Opus 4.6
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --dockerhub-username marvindeng --dockerhub-repo anvil-images --model openrouter/anthropic/claude-opus-4.6 --no-continue --n-attempts 4
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/anthropic/claude-opus-4.6 --no-continue --n-attempts 4
 
 # GPT 5.2
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --dockerhub-username marvindeng --dockerhub-repo anvil-images --model openrouter/openai/gpt-5.2 --no-continue --n-attempts 4
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/openai/gpt-5.2 --no-continue --n-attempts 4
 
 # GPT 5.2 Codex
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --dockerhub-username marvindeng --dockerhub-repo anvil-images --model openrouter/openai/gpt-5.2-codex --no-continue --n-attempts 4
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --no-continue --n-attempts 4
 
 # Gemini 3 Pro
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --dockerhub-username marvindeng --dockerhub-repo anvil-images --model openrouter/google/gemini-3-pro-preview --no-continue --n-attempts 4
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --no-continue --n-attempts 4
 
 # Llama 4 Maverick
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --dockerhub-username marvindeng --dockerhub-repo anvil-images --model openrouter/meta-llama/llama-4-maverick --no-continue --n-attempts 4
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/meta-llama/llama-4-maverick --no-continue --n-attempts 4
 
 # Qwen 3 Coder Next
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --dockerhub-username marvindeng --dockerhub-repo anvil-images --model openrouter/qwen/qwen3-coder-next --no-continue --n-attempts 4
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/qwen/qwen3-coder-next --no-continue --n-attempts 4
 
 # Deepseek V3.2
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --dockerhub-username marvindeng --dockerhub-repo anvil-images --model openrouter/deepseek/deepseek-v3.2 --no-continue --n-attempts 4
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --no-continue --n-attempts 4
 ```

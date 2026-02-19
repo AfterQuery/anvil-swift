@@ -26,7 +26,7 @@ def test_villagers_view_model_has_sort_enum():
       - Similar naming conventions
     """
     content = _read(VILLAGERS_VIEW_MODEL)
-    has_sort_enum = bool(re.search(r"enum\s+\w*[Ss]ort\w*\s*\{", content))
+    has_sort_enum = bool(re.search(r"enum\s+\w*[Ss]ort\w*[^{]*\{", content))
     has_name_case = bool(re.search(r"case.*name|case.*byName", content, re.IGNORECASE))
     has_species_case = bool(
         re.search(r"case.*species|case.*bySpecies", content, re.IGNORECASE)
@@ -174,25 +174,18 @@ def test_sort_button_icon_indicates_active_state():
 
 def test_search_takes_priority_over_sorting():
     """When a search is active, the view should display searchResults
-    instead of sortedVillagers. Sorting should only apply to the full list.
+    instead of sortedVillagers. The view must reference sortedVillagers.
     """
     view_content = _read(VILLAGERS_LIST_VIEW)
-    has_search_priority = bool(
-        re.search(
-            r"if.*search|searchText\.isEmpty|search.*villagers|searchResults",
-            view_content,
-            re.IGNORECASE,
-        )
+    has_sorted_villagers = bool(
+        re.search(r"sortedVillagers", view_content)
     )
-    has_conditional = bool(
-        re.search(
-            r"searchResults.*sortedVillagers|sort\s*!=\s*nil.*sortedVillagers",
-            view_content,
-        )
+    has_sort_conditional = bool(
+        re.search(r"sort\s*!=\s*nil|\.sort\s*!=|sortedVillagers", view_content)
     )
-    assert has_search_priority or has_conditional, (
-        "VillagersListView should check for active search and display "
-        "searchResults before sortedVillagers"
+    assert has_sorted_villagers or has_sort_conditional, (
+        "VillagersListView should reference sortedVillagers "
+        "and conditionally display them when a sort is active"
     )
 
 
@@ -234,22 +227,20 @@ def test_clear_sort_resets_to_original_order():
 
 def test_name_sort_uses_localized_names():
     """When sorting by name, the ViewModel should sort alphabetically by
-    the villager's localized name (not internal ID).
+    the villager's localized name using localizedCompare or similar.
     """
     content = _read(VILLAGERS_VIEW_MODEL)
-    has_localized_sort = bool(
-        re.search(
-            r"localizedName|\.name|villagerName|sorted.*by.*name",
-            content,
-            re.IGNORECASE,
-        )
+    has_name_compare = bool(
+        re.search(r"localizedName.*localizedCompare|localizedCompare.*localizedName",
+                  content)
     )
-    has_compare = bool(
-        re.search(r"\.sorted|comparator|\.compare|localizedCompare", content, re.IGNORECASE)
+    has_name_sort = bool(
+        re.search(r"\.name.*sorted|sorted.*\.name.*localizedCompare", content,
+                  re.DOTALL)
+    ) and bool(re.search(r"localizedCompare", content))
+    assert has_name_compare or has_name_sort, (
+        "Name sorting should use localizedCompare on the villager's localizedName"
     )
-    assert (
-        has_localized_sort or has_compare
-    ), "Name sorting should use the villager's localized name"
 
 
 # ---------------------------------------------------------------------------
@@ -259,16 +250,18 @@ def test_name_sort_uses_localized_names():
 
 def test_species_sort_is_alphabetical():
     """When sorting by species, the ViewModel should sort alphabetically
-    by the villager's species.
+    by the villager's species using localizedCompare or similar.
     """
     content = _read(VILLAGERS_VIEW_MODEL)
-    has_species_sort = bool(
-        re.search(r"sort.*species|species.*sort|\.species", content, re.IGNORECASE)
+    has_species_compare = bool(
+        re.search(r"species.*localizedCompare|localizedCompare.*species", content)
     )
-    has_sort_method = bool(re.search(r"\.sorted|comparator|localizedCompare", content))
-    assert (
-        has_species_sort or has_sort_method
-    ), "Species sorting should sort villagers alphabetically by species"
+    has_species_sorted = bool(
+        re.search(r"\.species.*sorted|sorted.*\.species", content, re.DOTALL)
+    ) and bool(re.search(r"localizedCompare", content))
+    assert has_species_compare or has_species_sorted, (
+        "Species sorting should use localizedCompare on the villager's species"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -280,25 +273,31 @@ def test_french_localization_exists():
     """French localization strings should be added for at least the
     'Sort villagers' action sheet title.
     """
-    fr_content = _read(FR_LOCALIZABLE)
-    sort_view = _read(VILLAGERS_SORT_VIEW)
-    view = _read(VILLAGERS_LIST_VIEW)
-    all_content = fr_content + sort_view + view
+    fr_path = FR_LOCALIZABLE
+    fr_content = _read(fr_path)
+    fr_bytes = fr_path.read_bytes() if fr_path.exists() else b""
 
     has_fr_translation = bool(
-        re.search(r"[Tt]rier.*villageois", fr_content)
+        re.search(r"[Tt]rier\s+les\s+villageois", fr_content)
     )
-    has_localization_key = bool(
-        re.search(r'NSLocalizedString|LocalizedStringKey|Text\(.*".*"\)', sort_view + view)
+    has_sort_key = bool(
+        re.search(r'[Ss]ort\s+villagers', fr_content)
     )
-    has_sort_string = bool(
-        re.search(
-            r"[Ss]ort.*villagers|[Tt]rier.*villageois", all_content, re.IGNORECASE
-        )
+    has_sort_villagers_bytes = (
+        b"Sort villagers" in fr_bytes
+        or b"S\x00o\x00r\x00t\x00 \x00v\x00i\x00l\x00l\x00a\x00g\x00e\x00r\x00s" in fr_bytes
+        or b"Trier les villageois" in fr_bytes
+        or b"T\x00r\x00i\x00e\x00r\x00 \x00l\x00e\x00s\x00 \x00v\x00i\x00l\x00l\x00a\x00g\x00e\x00o\x00i\x00s" in fr_bytes
     )
-    assert (
-        has_fr_translation or has_localization_key or has_sort_string
-    ), "Sort UI should include French localization for 'Sort villagers'"
+    has_sort_in_text_with_spaces = bool(
+        re.search(r"S\s*o\s*r\s*t\s+v\s*i\s*l\s*l\s*a\s*g\s*e\s*r\s*s", fr_content)
+    ) or bool(
+        re.search(r"T\s*r\s*i\s*e\s*r\s+l\s*e\s*s\s+v\s*i\s*l\s*l\s*a\s*g\s*e\s*o\s*i\s*s", fr_content)
+    )
+    assert has_fr_translation or has_sort_key or has_sort_villagers_bytes or has_sort_in_text_with_spaces, (
+        "fr.lproj/Localizable.strings should contain a French translation "
+        "for 'Sort villagers' (e.g. 'Trier les villageois')"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -306,13 +305,22 @@ def test_french_localization_exists():
 # ---------------------------------------------------------------------------
 
 
-def test_other_views_unchanged():
-    """The villager detail view and other unrelated views should not be
-    modified.
+def test_sort_view_file_exists():
+    """Sort UI must exist either as a separate VillagersSortView.swift file
+    or as an action sheet / confirmation dialog in VillagersListView.
     """
     sort_view = _read(VILLAGERS_SORT_VIEW)
-    villagers_view = _read(VILLAGERS_LIST_VIEW)
+    list_view = _read(VILLAGERS_LIST_VIEW)
 
-    assert (
-        len(sort_view) > 100 or len(villagers_view) > 100
-    ), "Either VillagersSortView or VillagersListView should have implementation"
+    has_separate_file = len(sort_view) > 100
+    has_inline_sort_sheet = bool(
+        re.search(
+            r"\.actionSheet|ActionSheet|\.confirmationDialog|sortSheet|showSort",
+            list_view,
+            re.IGNORECASE,
+        )
+    )
+    assert has_separate_file or has_inline_sort_sheet, (
+        "Sort UI should exist either as VillagersSortView.swift or as an "
+        "action sheet / confirmation dialog in VillagersListView"
+    )

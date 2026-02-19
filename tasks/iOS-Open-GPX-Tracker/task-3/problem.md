@@ -1,20 +1,15 @@
-## Title: Add MapKit scale bar and fix location status check warning
+## Feature: Add a map scale indicator and fix deprecated location authorization check
 
 ### Problem Description
 
-The map view currently has no scale indicator, making it difficult for users to judge distances on the map. MapKit provides `MKScaleView`, a built-in scale bar that automatically updates as the user zooms in and out.
+The **iOS-Open-GPX-Tracker** map view currently has no scale indicator, making it difficult for users to judge distances on the map. Users need a visual reference that updates as they zoom in and out.
 
-Additionally, the location authorization check in the ViewController uses the deprecated `CLLocationManager.locationServicesEnabled()` class method inside a `guard` statement, which produces a compiler warning on modern iOS versions. The check should use the instance-level `authorizationStatus` property instead.
+Additionally, the location authorization check uses the deprecated `CLLocationManager.authorizationStatus()` class method. Since iOS 14, the preferred approach is to use the instance-level `locationManager.authorizationStatus` property instead.
 
-### Expected Behavior
+### Acceptance Criteria
 
-1. **Scale bar**: An `MKScaleView` should be added to the map view, positioned above the tracker button, and connected to the map so it reflects the current zoom level.
-
-2. **Location status check**: Replace the deprecated `CLLocationManager.locationServicesEnabled()` guard with an explicit `authorizationStatus == .denied` check that shows the location-services-disabled alert. This eliminates the compiler warning while preserving the same user-facing behavior.
-
-### Constraints
-
-- Use MapKit's built-in `MKScaleView` for the scale bar — do not implement a custom one.
-- The scale bar must be linked to the existing map view.
-- Do not change user-facing alert behavior.
-- Remove any unnecessary iOS version availability checks that are no longer needed (the app's minimum deployment target has moved past them).
+1. A scale bar using MapKit's built-in `MKScaleView` must be added to the map view and displayed on screen.
+2. The scale bar must be linked to the existing map so it automatically updates as the user zooms in and out.
+3. All calls to the deprecated `CLLocationManager.authorizationStatus()` class method must be replaced with the instance-level `locationManager.authorizationStatus` property.
+4. Obsolete `#available(iOS 10, *)` checks that are no longer needed given the app's current minimum deployment target must be removed.
+5. The user-facing alert behavior must remain the same.

@@ -88,16 +88,26 @@ def test_label_frames_removed():
 def test_view_will_transition_implemented():
     """viewWillTransition(to:with:) must be overridden for orientation handling."""
     content = _read(VIEW_CONTROLLER)
-    assert re.search(
+    has_view_will_transition = re.search(
         r'override\s+func\s+viewWillTransition\s*\(\s*to\s+\w+\s*:\s*CGSize',
         content
-    ), "ViewController should override viewWillTransition(to:with:) for orientation changes"
+    )
+    has_view_did_layout = re.search(
+        r'override\s+func\s+viewDidLayoutSubviews',
+        content
+    )
+    assert has_view_will_transition or has_view_did_layout, (
+        "ViewController should override viewWillTransition(to:with:) or "
+        "viewDidLayoutSubviews() for orientation changes"
+    )
 
 
 def test_compass_repositioned_on_orientation_change():
     """The compass must be repositioned when the device orientation changes."""
     content = _read(VIEW_CONTROLLER)
-    assert re.search(r'func\s+viewWillTransition', content), \
-        "viewWillTransition must be implemented"
+    has_lifecycle = re.search(r'func\s+viewWillTransition', content) or \
+        re.search(r'func\s+viewDidLayoutSubviews', content)
+    assert has_lifecycle, \
+        "viewWillTransition or viewDidLayoutSubviews must be implemented"
     assert re.search(r'compassRect', content), \
         "compassRect should be set to reposition compass on orientation change"

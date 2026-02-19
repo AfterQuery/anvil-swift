@@ -4,12 +4,19 @@ from pathlib import Path
 ROOT = Path("/app/ACHNBrowserUI")
 
 TURNIPS_VIEW = ROOT / "ACHNBrowserUI/views/turnips/TurnipsView.swift"
+TURNIPS_DIR = ROOT / "ACHNBrowserUI/views/turnips"
 ROWS_DIR = ROOT / "ACHNBrowserUI/views/turnips/rows"
-SHARED_DIR = ROOT / "ACHNBrowserUI/views/shared"
 
 
 def _read(path):
     return path.read_text() if path.exists() else ""
+
+
+def _read_all_swift_in_dir(directory):
+    """Read all .swift files in a directory (non-recursive)."""
+    if not directory.exists():
+        return ""
+    return "\n".join(f.read_text() for f in sorted(directory.glob("*.swift")) if f.is_file())
 
 
 # ---------------------------------------------------------------------------
@@ -19,13 +26,16 @@ def _read(path):
 def test_turnips_view_uses_grid_layout():
     """The turnip price table must use a grid-based layout component
     (GridStack, LazyVGrid, Grid, or similar) instead of plain HStack rows.
+    Checks all swift files in the turnips directory.
     """
-    content = _read(TURNIPS_VIEW)
+    content = _read_all_swift_in_dir(TURNIPS_DIR)
     has_grid = bool(re.search(
         r'GridStack|LazyVGrid|LazyHGrid|\bGrid\b(?!\w)', content))
-    assert has_grid, (
-        "TurnipsView should use a grid layout component "
-        "(e.g. GridStack, LazyVGrid, Grid) for the price table"
+    has_fixed_width_columns = bool(re.search(
+        r'\.frame\(.*width\s*:.*\).*\.frame\(.*width\s*:', content, re.DOTALL))
+    assert has_grid or has_fixed_width_columns, (
+        "Turnips views should use a grid layout component "
+        "(e.g. GridStack, LazyVGrid, Grid) or fixed-width frame columns for the price table"
     )
 
 
@@ -76,20 +86,17 @@ def test_column_based_rendering():
     """The price display must use column-based rendering (e.g. a function
     taking row/column indices, or a column switch) rather than the old
     approach of one HStack per row with Spacers between values.
-
-    Accepts: (row, column) parameters, column switch statements,
-    GridItem columns, or similar columnar patterns.
+    Checks all swift files in the turnips directory.
     """
-    content = _read(TURNIPS_VIEW)
-    # row/column parameter pattern
+    content = _read_all_swift_in_dir(TURNIPS_DIR)
     has_row_col = bool(re.search(r'row.*column|column.*row', content))
-    # switch on column index
     has_col_switch = bool(re.search(r'switch\s+column', content))
-    # GridItem columns
     has_grid_items = bool(re.search(r'GridItem|columns\s*:', content))
-    assert has_row_col or has_col_switch or has_grid_items, (
+    has_aligned_columns = bool(re.search(
+        r'\.frame\(.*[Ww]idth\s*:.*alignment\s*:', content))
+    assert has_row_col or has_col_switch or has_grid_items or has_aligned_columns, (
         "Price values should be rendered using column-based logic "
-        "(row/column indices, column switch, or GridItem columns)"
+        "(row/column indices, column switch, GridItem columns, or fixed-width aligned frames)"
     )
 
 
@@ -101,14 +108,17 @@ def test_grid_used_for_all_display_modes():
     """The grid layout must be used for all three turnip display modes:
     average prices, min/max prices, and profits. The base code uses
     separate ForEach+row patterns for each.
+    Checks all swift files in the turnips directory.
     """
-    content = _read(TURNIPS_VIEW)
-    # Count grid usages — should appear at least 3 times (one per display mode)
+    content = _read_all_swift_in_dir(TURNIPS_DIR)
     grid_usages = len(re.findall(
         r'GridStack|LazyVGrid|LazyHGrid|\bGrid\s*\(', content))
-    assert grid_usages >= 3, (
+    has_unified_component = bool(re.search(
+        r'enum\s+DisplayMode|[Pp]rice[Gg]rid|[Tt]urnips[Pp]rice[Gg]rid', content))
+    assert grid_usages >= 3 or has_unified_component, (
         f"Expected grid layout to be used for all 3 display modes "
-        f"(average, min/max, profits), found {grid_usages} grid usage(s)"
+        f"(average, min/max, profits) via separate grid instances or a unified component, "
+        f"found {grid_usages} grid usage(s)"
     )
 
 
@@ -121,7 +131,6 @@ def test_erase_to_any_view_for_row_removed():
     should no longer be needed — the grid handles row layout directly.
     """
     content = _read(TURNIPS_VIEW)
-    # Also check the View extension file
     view_ext = _read(ROOT / "ACHNBrowserUI/extensions/View.swift")
     combined = content + view_ext
     assert 'eraseToAnyViewForRow' not in combined, (

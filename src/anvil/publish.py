@@ -110,6 +110,24 @@ def _patch_dockerfile_if_needed(dockerfile: Path, username: str, repo: str) -> s
     return content
 
 
+def _push_with_retry(tag: str, max_retries: int = 3) -> tuple[bool, str]:
+    """Push a Docker image with retries for transient network errors."""
+    import time
+
+    for attempt in range(1, max_retries + 1):
+        result = subprocess.run(["docker", "push", tag], capture_output=True, text=True)
+        if result.returncode == 0:
+            return True, ""
+        full_err = (result.stderr or result.stdout or "").strip()
+        retryable = any(s in full_err for s in ["broken pipe", "connection reset", "timeout", "EOF", "TLS handshake"])
+        if not retryable or attempt == max_retries:
+            return False, full_err
+        wait = 5 * attempt
+        print(f"  Push attempt {attempt}/{max_retries} failed (retrying in {wait}s): {full_err.split(chr(10))[-1]}")
+        time.sleep(wait)
+    return False, "max retries exceeded"
+
+
 def _build_and_push(task: BuildTask, username: str, repo: str, platform: str) -> tuple[str | None, str | None]:
     """Build and push a Docker image. Returns (tag, None) on success, (None, error) on failure."""
     tag = task.tag(username, repo)
@@ -118,17 +136,22 @@ def _build_and_push(task: BuildTask, username: str, repo: str, platform: str) ->
     build_cmd = [
         "docker", "build",
         "--platform", platform,
+        "--provenance=false",
         "-f", "-",
         "-t", tag,
         str(task.context),
     ]
     result = subprocess.run(build_cmd, input=patched_content, capture_output=True, text=True)
     if result.returncode != 0:
-        return None, result.stderr.strip().split("\n")[-1] or "build failed"
+        stderr_lines = result.stderr.strip().split("\n")
+        err_detail = stderr_lines[-1] if stderr_lines else "build failed"
+        return None, f"[build] {err_detail}"
 
-    result = subprocess.run(["docker", "push", tag], capture_output=True, text=True)
-    if result.returncode != 0:
-        return None, result.stderr.strip().split("\n")[-1] or "push failed"
+    ok, err = _push_with_retry(tag)
+    if not ok:
+        print(f"  Push failed for {tag}:\n{err}")
+        err_detail = err.split("\n")[-1] if err else "push failed"
+        return None, f"[push] {err_detail}"
 
     return tag, None
 

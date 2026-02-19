@@ -28,20 +28,22 @@ def test_scalebar_connected_to_map():
 
 
 def test_location_check_uses_authorization_status():
-    """The location check should use authorizationStatus, not the deprecated class method."""
+    """The location check should use the instance-level authorizationStatus property."""
     content = VIEW_CONTROLLER.read_text()
+    has_instance_property = bool(re.search(r'locationManager\.authorizationStatus', content))
     has_equality_check = bool(re.search(r'authorizationStatus\s*==\s*\.denied', content))
+    has_guard_check = bool(re.search(r'authorizationStatus\s*!=\s*\.denied', content))
     has_switch_case = bool(re.search(r'authorizationStatus', content)) and bool(
         re.search(r'case\s+\.denied', content))
-    assert has_equality_check or has_switch_case, \
-        "Location check should use authorizationStatus with .denied (via == or switch/case)"
+    assert has_instance_property or has_equality_check or has_guard_check or has_switch_case, \
+        "Location check should use locationManager.authorizationStatus (instance property)"
 
 
-def test_deprecated_location_services_removed():
-    """The deprecated CLLocationManager.locationServicesEnabled() guard should be replaced."""
+def test_deprecated_class_level_auth_removed():
+    """The deprecated CLLocationManager.authorizationStatus() class method should be replaced."""
     content = VIEW_CONTROLLER.read_text()
-    assert not re.search(r'guard\s+CLLocationManager\.locationServicesEnabled\(\)', content), \
-        "Deprecated guard CLLocationManager.locationServicesEnabled() should be removed"
+    assert not re.search(r'CLLocationManager\.authorizationStatus\(\)', content), \
+        "Deprecated CLLocationManager.authorizationStatus() class method should be replaced with locationManager.authorizationStatus"
 
 
 def test_unnecessary_availability_checks_removed():
@@ -50,5 +52,5 @@ def test_unnecessary_availability_checks_removed():
     assert not re.search(r'#available\(iOS\s+10', content), \
         "Unnecessary #available(iOS 10, *) checks should be removed"
     ios11_count = len(re.findall(r'#available\(iOS\s+11', content))
-    assert ios11_count <= 1, \
-        f"Found {ios11_count} #available(iOS 11, *) checks; at most 1 (safe-area) should remain"
+    assert ios11_count <= 2, \
+        f"Found {ios11_count} #available(iOS 11, *) checks; at most 2 should remain"

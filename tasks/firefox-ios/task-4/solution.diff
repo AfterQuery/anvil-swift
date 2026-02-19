@@ -1,0 +1,420 @@
+diff --git a/firefox-ios/Client/Coordinators/Browser/BrowserCoordinator.swift b/firefox-ios/Client/Coordinators/Browser/BrowserCoordinator.swift
+index 949f0c588c080..88fd67241aa89 100644
+--- a/firefox-ios/Client/Coordinators/Browser/BrowserCoordinator.swift
++++ b/firefox-ios/Client/Coordinators/Browser/BrowserCoordinator.swift
+@@ -138,6 +138,7 @@ class BrowserCoordinator: BaseCoordinator,
+     ) {
+         let homepageController = self.homepageViewController ?? HomepageViewController(
+             windowUUID: windowUUID,
++            tabManager: tabManager,
+             overlayManager: overlayManager,
+             statusBarScrollDelegate: statusBarScrollDelegate,
+             toastContainer: toastContainer
+@@ -146,14 +147,17 @@ class BrowserCoordinator: BaseCoordinator,
+         homepageController.termsOfUseDelegate = self
+         homepageController.view.accessibilityElementsHidden = false
+         dispatchActionForEmbeddingHomepage(with: isZeroSearch)
+-        guard browserViewController.embedContent(homepageController) else {
++        let didEmbed = browserViewController.embedContent(homepageController)
++        if !didEmbed {
+             logger.log("Unable to embed new homepage", level: .debug, category: .coordinator)
+-            return
+         }
+         self.homepageViewController = homepageController
+-        homepageController.scrollToTop()
+-        // [FXIOS-13651] Fix for WKWebView memory leak. (See comments on related PR.)
+-        webviewController?.update(webView: nil)
++        homepageController.restoreVerticalScrollOffset()
++
++        if didEmbed {
++            // [FXIOS-13651] Fix for WKWebView memory leak. (See comments on related PR.)
++            webviewController?.update(webView: nil)
++        }
+     }
+ 
+     private func dispatchActionForEmbeddingHomepage(with isZeroSearch: Bool) {
+diff --git a/firefox-ios/Client/Frontend/Home/Homepage/HomepageViewController.swift b/firefox-ios/Client/Frontend/Home/Homepage/HomepageViewController.swift
+index c731dcbde824b..23e5763cf2f0a 100644
+--- a/firefox-ios/Client/Frontend/Home/Homepage/HomepageViewController.swift
++++ b/firefox-ios/Client/Frontend/Home/Homepage/HomepageViewController.swift
+@@ -45,6 +45,8 @@ final class HomepageViewController: UIViewController,
+     private typealias a11y = AccessibilityIdentifiers.FirefoxHomepage
+     private var collectionView: UICollectionView?
+     private var dataSource: HomepageDiffableDataSource?
++    // Tracks which tab the shared homepage instance is currently representing.
++    private var activeTabUUID: TabUUID?
+ 
+     private lazy var wallpaperView: WallpaperBackgroundView = .build { _ in }
+ 
+@@ -63,6 +65,7 @@ final class HomepageViewController: UIViewController,
+     }
+ 
+     // MARK: - Private constants
++    private let tabManager: TabManager
+     private let overlayManager: OverlayModeManager
+     private let logger: Logger
+     private let toastContainer: UIView
+@@ -76,6 +79,7 @@ final class HomepageViewController: UIViewController,
+     init(windowUUID: WindowUUID,
+          profile: Profile = AppContainer.shared.resolve(),
+          themeManager: ThemeManager = AppContainer.shared.resolve(),
++         tabManager: TabManager,
+          overlayManager: OverlayModeManager,
+          statusBarScrollDelegate: StatusBarScrollDelegate? = nil,
+          toastContainer: UIView,
+@@ -86,6 +90,7 @@ final class HomepageViewController: UIViewController,
+         self.windowUUID = windowUUID
+         self.themeManager = themeManager
+         self.notificationCenter = notificationCenter
++        self.tabManager = tabManager
+         self.overlayManager = overlayManager
+         self.statusBarScrollDelegate = statusBarScrollDelegate
+         self.toastContainer = toastContainer
+@@ -155,6 +160,7 @@ final class HomepageViewController: UIViewController,
+     override func viewWillAppear(_ animated: Bool) {
+         super.viewWillAppear(animated)
+ 
++        activeTabUUID = tabManager.selectedTab?.tabUUID
+         /// Used as a trigger for showing a microsurvey based on viewing the homepage
+         Experiments.events.recordEvent(BehavioralTargetingEvent.homepageViewed)
+         store.dispatch(
+@@ -181,6 +187,7 @@ final class HomepageViewController: UIViewController,
+         super.viewWillDisappear(animated)
+ 
+         stopCFRsTimer()
++        saveVerticalScrollOffset()
+     }
+ 
+     override func viewDidDisappear(_ animated: Bool) {
+@@ -230,7 +237,19 @@ final class HomepageViewController: UIViewController,
+         )
+     }
+ 
+-    // called when the homepage is displayed to make sure it's scrolled to top while considering content offset
++    // Called when the homepage is displayed to make sure it's vertical scroll position is persisted.
++    // If no scroll position exists for tab, scroll the homepage to the top
++    func restoreVerticalScrollOffset() {
++        activeTabUUID = tabManager.selectedTab?.tabUUID
++        guard let activeTabUUID, isHomepageStoriesScrollDirectionCustomized,
++              let homepageScrollOffset = tabManager.getTabForUUID(uuid: activeTabUUID)?.homepageScrollOffset
++        else {
++            scrollToTop()
++            return
++        }
++        collectionView?.contentOffset.y = homepageScrollOffset
++    }
++
+     func scrollToTop(animated: Bool = false) {
+         if let collectionView = collectionView {
+             collectionView.setContentOffset(CGPoint(x: 0, y: -collectionView.adjustedContentInset.top), animated: animated)
+@@ -248,9 +267,20 @@ final class HomepageViewController: UIViewController,
+     }
+ 
+     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
++        saveVerticalScrollOffset()
+         trackVisibleItemImpressions()
+     }
+ 
++    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
++        saveVerticalScrollOffset()
++        trackVisibleItemImpressions()
++    }
++
++    private func saveVerticalScrollOffset() {
++        guard let activeTabUUID, let tab = tabManager.getTabForUUID(uuid: activeTabUUID) else { return }
++        tab.homepageScrollOffset = collectionView?.contentOffset.y
++    }
++
+     private func handleScroll(_ scrollView: UIScrollView, isUserInteraction: Bool) {
+         // We only handle status bar overlay alpha if there's a wallpaper applied on the homepage
+         if homepageState.wallpaperState.wallpaperConfiguration.hasImage {
+@@ -343,7 +373,6 @@ final class HomepageViewController: UIViewController,
+ 
+         // FXIOS-11523 - Trigger impression when user opens homepage view new tab + scroll to top
+         if state.shouldTriggerImpression {
+-            scrollToTop()
+             resetTrackedObjects()
+             trackVisibleItemImpressions()
+         }
+diff --git a/firefox-ios/Client/TabManagement/Tab.swift b/firefox-ios/Client/TabManagement/Tab.swift
+index c837fca7f67f9..17b48648ddf3f 100644
+--- a/firefox-ios/Client/TabManagement/Tab.swift
++++ b/firefox-ios/Client/TabManagement/Tab.swift
+@@ -153,6 +153,8 @@ class Tab: NSObject, ThemeApplicable, FeatureFlaggable, ShareTab {
+     var hasHomeScreenshot = false
+     var shouldScrollToTop = false
+     var isFindInPageMode = false
++    // Stores the vertical homepage offset for this tab when reusing the shared HomepageViewController.
++    var homepageScrollOffset: CGFloat?
+ 
+     // To check if current URL is the starting page i.e. either blank page or internal page like topsites
+     var isURLStartingPage: Bool {
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/BrowserCoordinatorTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/BrowserCoordinatorTests.swift
+index d512e60ad2026..4d8ee7a8dca9a 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/BrowserCoordinatorTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/BrowserCoordinatorTests.swift
+@@ -109,6 +109,7 @@ final class BrowserCoordinatorTests: XCTestCase, FeatureFlaggable {
+                              toastContainer: UIView())
+ 
+         let secondHomepage = HomepageViewController(windowUUID: windowUUID,
++                                                    tabManager: MockTabManager(),
+                                                     overlayManager: overlayModeManager,
+                                                     toastContainer: UIView())
+         XCTAssertFalse(subject.browserViewController.contentContainer.canAdd(content: secondHomepage))
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/ContentContainerTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/ContentContainerTests.swift
+index 9abbf51741073..dd1d010789f9d 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/ContentContainerTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/ContentContainerTests.swift
+@@ -11,6 +11,7 @@ import XCTest
+ final class ContentContainerTests: XCTestCase {
+     private var profile: MockProfile!
+     private var overlayModeManager: MockOverlayModeManager!
++    private var tabManager: MockTabManager!
+ 
+     override func setUp() async throws {
+         try await super.setUp()
+@@ -18,11 +19,13 @@ final class ContentContainerTests: XCTestCase {
+         DependencyHelperMock().bootstrapDependencies()
+         LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: profile)
+         self.overlayModeManager = MockOverlayModeManager()
++        self.tabManager = MockTabManager()
+     }
+ 
+     override func tearDown() async throws {
+         self.profile = nil
+         self.overlayModeManager = nil
++        self.tabManager = nil
+         DependencyHelperMock().reset()
+         try await super.tearDown()
+     }
+@@ -50,6 +53,7 @@ final class ContentContainerTests: XCTestCase {
+         let subject = createSubject()
+         let homepage = HomepageViewController(
+             windowUUID: .XCTestDefaultUUID,
++            tabManager: tabManager,
+             overlayManager: overlayModeManager,
+             toastContainer: UIView()
+         )
+@@ -61,6 +65,7 @@ final class ContentContainerTests: XCTestCase {
+         let subject = createSubject()
+         let homepage = HomepageViewController(
+             windowUUID: .XCTestDefaultUUID,
++            tabManager: tabManager,
+             overlayManager: overlayModeManager,
+             toastContainer: UIView()
+         )
+@@ -123,6 +128,7 @@ final class ContentContainerTests: XCTestCase {
+         let subject = createSubject()
+         let homepage = HomepageViewController(
+             windowUUID: .XCTestDefaultUUID,
++            tabManager: tabManager,
+             overlayManager: overlayModeManager,
+             toastContainer: UIView()
+         )
+@@ -176,6 +182,7 @@ final class ContentContainerTests: XCTestCase {
+         let subject = createSubject()
+         let homepage = HomepageViewController(
+             windowUUID: .XCTestDefaultUUID,
++            tabManager: tabManager,
+             overlayManager: overlayModeManager,
+             toastContainer: UIView()
+         )
+@@ -218,6 +225,7 @@ final class ContentContainerTests: XCTestCase {
+         let subject = createSubject()
+         let homepage = HomepageViewController(
+             windowUUID: .XCTestDefaultUUID,
++            tabManager: tabManager,
+             overlayManager: overlayModeManager,
+             toastContainer: UIView()
+         )
+@@ -241,6 +249,7 @@ final class ContentContainerTests: XCTestCase {
+         let subject = createSubject()
+         let homepage = HomepageViewController(
+             windowUUID: .XCTestDefaultUUID,
++            tabManager: tabManager,
+             overlayManager: overlayModeManager,
+             toastContainer: UIView()
+         )
+@@ -286,6 +295,7 @@ final class ContentContainerTests: XCTestCase {
+ 
+         let homepage = HomepageViewController(
+             windowUUID: .XCTestDefaultUUID,
++            tabManager: tabManager,
+             overlayManager: overlayModeManager,
+             toastContainer: UIView()
+         )
+@@ -304,6 +314,7 @@ final class ContentContainerTests: XCTestCase {
+     private func createHomepage() -> HomepageViewController {
+         return HomepageViewController(
+             windowUUID: WindowUUID.XCTestDefaultUUID,
++            tabManager: tabManager,
+             overlayManager: overlayModeManager,
+             toastContainer: UIView()
+         )
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/HomepageViewControllerTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/HomepageViewControllerTests.swift
+index 994c4bf4b4925..4b68c74a387b1 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/HomepageViewControllerTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/HomepageViewControllerTests.swift
+@@ -356,7 +356,130 @@ final class HomepageViewControllerTests: XCTestCase, StoreTestUtility {
+         XCTAssertEqual(collectionView.contentOffset, CGPoint(x: 0, y: -collectionView.adjustedContentInset.top))
+     }
+ 
+-    private func createSubject(statusBarScrollDelegate: StatusBarScrollDelegate? = nil) -> HomepageViewController {
++    func test_restoreContentOffset_withStoredOffset_setsCollectionViewOffset() {
++        setupNimbusStoriesScrollDirectionTesting(scrollDirection: .vertical)
++        let tabManager = HomepageRestoreContentOffsetTabManager()
++        let tab = MockTab(profile: MockProfile(), windowUUID: .XCTestDefaultUUID)
++        tab.homepageScrollOffset = 180
++        tabManager.tabs = [tab]
++        tabManager.selectedTab = tab
++        let subject = createSubject(tabManager: tabManager)
++
++        subject.loadViewIfNeeded()
++
++        guard let collectionView = subject.view.subviews.first(where: {
++            $0 is UICollectionView
++        }) as? UICollectionView else {
++            XCTFail()
++            return
++        }
++
++        collectionView.contentOffset = CGPoint(x: 0, y: 0)
++
++        subject.restoreVerticalScrollOffset()
++
++        XCTAssertEqual(collectionView.contentOffset.y, 180)
++    }
++
++    func test_restoreContentOffset_withoutStoredOffset_scrollsToTop() {
++        let tabManager = HomepageRestoreContentOffsetTabManager()
++        let tab = MockTab(profile: MockProfile(), windowUUID: .XCTestDefaultUUID)
++        tabManager.tabs = [tab]
++        tabManager.selectedTab = tab
++        let subject = createSubject(tabManager: tabManager)
++
++        subject.loadViewIfNeeded()
++
++        guard let collectionView = subject.view.subviews.first(where: {
++            $0 is UICollectionView
++        }) as? UICollectionView else {
++            XCTFail()
++            return
++        }
++
++        collectionView.contentOffset = CGPoint(x: 0, y: 75)
++
++        subject.restoreVerticalScrollOffset()
++
++        XCTAssertEqual(collectionView.contentOffset, CGPoint(x: 0, y: -collectionView.adjustedContentInset.top))
++    }
++
++    func test_viewDidDisappear_savesVerticalScrollOffset() {
++        let tabManager = HomepageRestoreContentOffsetTabManager()
++        let tab = MockTab(profile: MockProfile(), windowUUID: .XCTestDefaultUUID)
++        tabManager.tabs = [tab]
++        tabManager.selectedTab = tab
++        let subject = createSubject(tabManager: tabManager)
++
++        subject.loadViewIfNeeded()
++        subject.viewWillAppear(false)
++
++        guard let collectionView = subject.view.subviews.first(where: {
++            $0 is UICollectionView
++        }) as? UICollectionView else {
++            XCTFail()
++            return
++        }
++
++        collectionView.contentOffset = CGPoint(x: 0, y: 140)
++
++        subject.viewWillDisappear(false)
++
++        XCTAssertEqual(tab.homepageScrollOffset, 140)
++    }
++
++    func test_scrollViewDidEndDragging_savesVerticalScrollOffset() {
++        let tabManager = HomepageRestoreContentOffsetTabManager()
++        let tab = MockTab(profile: MockProfile(), windowUUID: .XCTestDefaultUUID)
++        tabManager.tabs = [tab]
++        tabManager.selectedTab = tab
++        let subject = createSubject(tabManager: tabManager)
++
++        subject.loadViewIfNeeded()
++        subject.viewWillAppear(false)
++
++        guard let collectionView = subject.view.subviews.first(where: {
++            $0 is UICollectionView
++        }) as? UICollectionView else {
++            XCTFail()
++            return
++        }
++
++        collectionView.contentOffset = CGPoint(x: 0, y: 140)
++
++        subject.scrollViewDidEndDragging(UIScrollView(), willDecelerate: false)
++
++        XCTAssertEqual(tab.homepageScrollOffset, 140)
++    }
++
++    func test_scrollViewDidEndDecelerating_savesVerticalScrollOffset() {
++        let tabManager = HomepageRestoreContentOffsetTabManager()
++        let tab = MockTab(profile: MockProfile(), windowUUID: .XCTestDefaultUUID)
++        tabManager.tabs = [tab]
++        tabManager.selectedTab = tab
++        let subject = createSubject(tabManager: tabManager)
++
++        subject.loadViewIfNeeded()
++        subject.viewWillAppear(false)
++
++        guard let collectionView = subject.view.subviews.first(where: {
++            $0 is UICollectionView
++        }) as? UICollectionView else {
++            XCTFail()
++            return
++        }
++
++        collectionView.contentOffset = CGPoint(x: 0, y: 140)
++
++        subject.scrollViewDidEndDecelerating(UIScrollView())
++
++        XCTAssertEqual(tab.homepageScrollOffset, 140)
++    }
++
++    private func createSubject(
++        tabManager: TabManager = MockTabManager(),
++        statusBarScrollDelegate: StatusBarScrollDelegate? = nil
++    ) -> HomepageViewController {
+         let notificationCenter = MockNotificationCenter()
+         let themeManager = MockThemeManager()
+         let mockOverlayManager = MockOverlayModeManager()
+@@ -367,6 +490,7 @@ final class HomepageViewControllerTests: XCTestCase, StoreTestUtility {
+         let homepageViewController = HomepageViewController(
+             windowUUID: .XCTestDefaultUUID,
+             themeManager: themeManager,
++            tabManager: tabManager,
+             overlayManager: mockOverlayManager,
+             statusBarScrollDelegate: statusBarScrollDelegate,
+             toastContainer: UIView(),
+@@ -398,6 +522,12 @@ final class HomepageViewControllerTests: XCTestCase, StoreTestUtility {
+         }
+     }
+ 
++    private func setupNimbusStoriesScrollDirectionTesting(scrollDirection: ScrollDirection) {
++        FxNimbus.shared.features.homepageRedesignFeature.with { _, _ in
++            return HomepageRedesignFeature(storiesScrollDirection: scrollDirection)
++        }
++    }
++
+     private func getPopulatedCollectionViewState(from currentState: HomepageState) async -> HomepageState {
+         let merinoManager = MockMerinoManager()
+         let merinoStories = await merinoManager.getMerinoItems(source: .homepage)
+@@ -423,3 +553,9 @@ private func changeInitialStateToTriggerUpdateInSnapshot() -> HomepageState {
+         )
+     )
+ }
++
++private final class HomepageRestoreContentOffsetTabManager: MockTabManager {
++    override func getTabForUUID(uuid: TabUUID) -> Tab? {
++        return tabs.first(where: { $0.tabUUID == uuid })
++    }
++}

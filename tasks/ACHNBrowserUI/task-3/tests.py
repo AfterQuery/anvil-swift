@@ -4,15 +4,28 @@ from pathlib import Path
 ROOT = Path("/app/ACHNBrowserUI")
 
 USER_COLLECTION = ROOT / "Packages/Backend/Sources/Backend/Environments/UserCollection.swift"
+BACKEND_MODELS_DIR = ROOT / "Packages/Backend/Sources/Backend/Models"
+BACKEND_ENV_DIR = ROOT / "Packages/Backend/Sources/Backend/Environments"
 ITEM = ROOT / "Packages/Backend/Sources/Backend/Models/Item.swift"
 ITEM_DETAIL_VIEW = ROOT / "ACHNBrowserUI/views/items/detail/ItemDetailView.swift"
 LIKE_BUTTON_VIEW = ROOT / "ACHNBrowserUI/views/shared/LikeButtonView.swift"
 LIKE_BUTTON_VM = ROOT / "ACHNBrowserUI/viewModels/LikeButtonViewModel.swift"
 VARIANTS_FOR_LIKE_VIEW = ROOT / "ACHNBrowserUI/views/shared/VariantsForLikeView.swift"
+SHARED_VIEWS_DIR = ROOT / "ACHNBrowserUI/views/shared"
+VIEW_MODELS_DIR = ROOT / "ACHNBrowserUI/viewModels"
 
 
 def _read(path):
     return path.read_text() if path.exists() else ""
+
+
+def _read_all_swift(directories):
+    """Read all .swift files in multiple directories (non-recursive)."""
+    contents = []
+    for d in directories:
+        if d.exists():
+            contents.extend(f.read_text() for f in sorted(d.glob("*.swift")) if f.is_file())
+    return "\n".join(contents)
 
 
 # ---------------------------------------------------------------------------
@@ -22,26 +35,22 @@ def _read(path):
 
 def test_user_collection_tracks_variant_completion():
     """UserCollection must have a way to determine the like status based on
-    variant completion. Accepts methods like:
-      - completionStatus(for: Item)
-      - variantCompletionStatus(for: Item)
-      - getItemLikeStatus(item: Item)
-      - isPartiallyLiked(item: Item)
-      - variantsLikedCount(for: Item)
+    variant completion — returning a state like unstarted/partial/complete.
     """
-    content = _read(USER_COLLECTION)
-    has_completion_check = bool(
+    all_content = _read_all_swift([BACKEND_MODELS_DIR, BACKEND_ENV_DIR, VIEW_MODELS_DIR])
+    has_completion_enum = bool(
         re.search(
-            r"func\s+\w*(?:[Cc]ompletion|[Ss]tatus|[Ll]iked[Cc]ount|[Ll]ike[Ss]tatus)\w*\s*\(",
-            content,
+            r"enum\s+\w*[Cc]ompletion\w*|case\s+unstarted.*case\s+partial|case\s+partial.*case\s+complete",
+            all_content,
+            re.DOTALL,
         )
     )
-    has_variant_tracking = bool(
-        re.search(r"[Ll]iked[Vv]ariants|variant.*\[.*\]|variantIds", content)
+    has_completion_func = bool(
+        re.search(r"func\s+\w*[Cc]ompletion[Ss]tatus\s*\(", all_content)
     )
-    assert has_completion_check or has_variant_tracking, (
-        "UserCollection should track which variants are liked for each item "
-        "and provide a way to check completion status"
+    assert has_completion_enum or has_completion_func, (
+        "A variant completion status enum should be defined "
+        "(e.g. VariantsCompletionStatus/CompletionStatus with unstarted/partial/complete)"
     )
 
 
@@ -51,30 +60,28 @@ def test_user_collection_tracks_variant_completion():
 
 
 def test_item_has_variant_properties():
-    """Item must expose variant information. Accepts:
-    - variations: [Variant] property
-    - variants: [Variant] property
-    - hasVariants / hasSomeVariations: Bool property
+    """There must be a way to check whether an item has multiple variants.
+    Accepts: a computed Bool property (hasSomeVariations, hasMultipleVariants,
+    hasVariants) on Item, UserCollection, or LikeButtonViewModel, or an
+    inline check like `variations?.count > 1` / `variants.count > 1`.
     """
-    content = _read(ITEM)
-    uc_content = _read(USER_COLLECTION)
-    all_content = content + uc_content
+    all_content = _read_all_swift([BACKEND_MODELS_DIR, BACKEND_ENV_DIR, VIEW_MODELS_DIR, SHARED_VIEWS_DIR])
 
-    has_variations_prop = bool(
-        re.search(r"(?:var|let)\s+variations\s*:", content)
-    )
-    has_variants_prop = bool(
-        re.search(r"(?:var|let)\s+variants\s*:", content)
-    )
-    has_variant_check = bool(
+    has_variant_bool = bool(
         re.search(
-            r"(?:var|let)\s+\w*(?:[Hh]as[Vv]ariant|[Hh]as[Ss]ome[Vv]ariation)\w*\s*:",
+            r"var\s+\w*(?:[Hh]as[Vv]ariant|[Hh]as[Ss]ome[Vv]ariation|[Hh]asMultiple[Vv]ariant)\w*\s*:\s*Bool",
             all_content,
         )
     )
-    assert has_variations_prop or has_variants_prop or has_variant_check, (
-        "Item should have properties to access variant information "
-        "(e.g. variations: [Variant], hasSomeVariations: Bool)"
+    has_inline_check = bool(
+        re.search(
+            r"variant(?:ion)?s?\?*\.count\s*(?:>|>=)\s*[12]|variant(?:ion)?s?\?*\.count\s*.*>\s*1",
+            all_content,
+        )
+    )
+    assert has_variant_bool or has_inline_check, (
+        "There should be a way to check if an item has multiple variants "
+        "(e.g. hasSomeVariations: Bool, or variations?.count > 1)"
     )
 
 
@@ -152,28 +159,31 @@ def test_variant_selection_view_exists():
 
 
 def test_item_detail_favorite_button_shows_variants():
-    """When an item with variants is tapped on the favorite button in
-    ItemDetail, it should show the variant selection view instead of just
-    toggling the parent item.
+    """When an item with variants is tapped on the favorite button,
+    it should show the variant selection view instead of just toggling
+    the parent item. This logic can be in ItemDetailView or LikeButtonView.
     """
     content = _read(ITEM_DETAIL_VIEW)
+    like_content = _read(LIKE_BUTTON_VIEW)
+    vm_content = _read(LIKE_BUTTON_VM)
+    all_content = content + like_content + vm_content
 
     has_variant_trigger = bool(
         re.search(
-            r"itemToDisplayVariantsLike|likedItemWithVariants|showVariant|presentVariant",
-            content,
+            r"itemToDisplayVariantsLike|likedItemWithVariants|showVariant|presentVariant|showingVariant|variantSelector|variantSheet",
+            all_content,
             re.IGNORECASE,
         )
     )
     has_variation_check = bool(
         re.search(
-            r"hasSomeVariations|hasVariants|variant.*sheet|VariantsForLike",
-            content,
+            r"hasSomeVariations|hasVariants|hasMultipleVariants|variant.*sheet|VariantsForLike|VariantSelection|VariantSelector",
+            all_content,
             re.IGNORECASE,
         )
     )
     assert has_variant_trigger or has_variation_check, (
-        "ItemDetailView should trigger variant selection when "
+        "ItemDetailView or LikeButtonView should trigger variant selection when "
         "favorite button is tapped for multi-variant items"
     )
 
@@ -185,26 +195,23 @@ def test_item_detail_favorite_button_shows_variants():
 
 def test_parent_item_synced_on_variant_like():
     """When the first variant of an item is liked, the parent item should
-    automatically be added to the collection.
+    automatically be added to the collection. This can be done by calling
+    toggleItem based on completionStatus, or by checking completion state
+    after variant toggle.
     """
-    content = _read(USER_COLLECTION)
+    all_content = _read_all_swift([BACKEND_ENV_DIR, VIEW_MODELS_DIR])
 
-    has_sync_logic = bool(
-        re.search(
-            r"first.*variant|variant.*added|parent.*sync|add.*parent|toggleItem",
-            content,
-            re.IGNORECASE,
-        )
+    has_sync_in_toggle_variant = bool(
+        re.search(r"[Cc]ompletion[Ss]tatus.*toggleItem|toggleItem.*[Cc]ompletion[Ss]tatus",
+                  all_content, re.DOTALL)
     )
-    has_variant_update = bool(
-        re.search(
-            r"update.*variant|variant.*change|addVariant|completionStatus.*unstarted",
-            content,
-        )
+    has_auto_add = bool(
+        re.search(r"[Cc]ompletion[Ss]tatus.*!=\s*\.unstarted|[Cc]ompletion[Ss]tatus.*==\s*\.unstarted",
+                  all_content)
     )
-    assert has_sync_logic or has_variant_update, (
-        "UserCollection should have logic to sync parent item with variants "
-        "(auto-add parent when first variant is liked)"
+    assert has_sync_in_toggle_variant or has_auto_add, (
+        "toggleVariant should auto-add/remove the parent item "
+        "based on completionStatus (e.g. toggle when status changes to/from unstarted)"
     )
 
 
@@ -217,20 +224,17 @@ def test_items_without_variants_unaffected():
     """Items with zero or one variant should not display the partial like
     system. Only items with 2+ variants should show half-star state.
     """
-    uc_content = _read(USER_COLLECTION)
-    item_content = _read(ITEM)
-    vm_content = _read(LIKE_BUTTON_VM)
-    all_content = uc_content + item_content + vm_content
+    all_content = _read_all_swift([BACKEND_ENV_DIR, BACKEND_MODELS_DIR, VIEW_MODELS_DIR, SHARED_VIEWS_DIR])
 
     has_variant_count_check = bool(
         re.search(
-            r"variations?\??\.count.*[<>=]|variant[Cc]ount.*[<>=]|\bvariantCount\b",
+            r"variant(?:ion)?s?\?*\.count\s*[<>=>\s]|variant[Cc]ount\s*[<>=]|\bvariantCount\b",
             all_content,
         )
     )
     has_multi_variant_check = bool(
         re.search(
-            r"variations?\??\.count\s*.*[>].*1|hasSomeVariations|hasMultiple[Vv]ariants",
+            r"variant(?:ion)?s?\?*\.count\s*.*[>]\s*1|hasSomeVariations|hasMultiple[Vv]ariants|hasVariants",
             all_content,
         )
     )
@@ -248,24 +252,19 @@ def test_items_without_variants_unaffected():
 def test_variant_selection_updates_like_state():
     """When variants are toggled in the variant selection view, the half-star
     icon should update immediately to reflect the new completion status.
+    The LikeButtonViewModel must publish a completion status property.
     """
-    sheet_content = _read(VARIANTS_FOR_LIKE_VIEW)
-    detail_content = _read(ITEM_DETAIL_VIEW)
     vm_content = _read(LIKE_BUTTON_VM)
 
-    all_content = sheet_content + detail_content + vm_content
-
-    has_state_update = bool(
-        re.search(
-            r"\.onChange|\.onReceive|didSet.*variant|update.*like|refresh.*state|completionStatus",
-            all_content,
-            re.IGNORECASE,
-        )
+    has_published_status = bool(
+        re.search(r"@Published.*[Cc]ompletion[Ss]tatus",
+                  vm_content)
     )
-    has_reactive = bool(
-        re.search(r"@State|@Published|@ObservedObject|@StateObject|@Binding", all_content)
+    has_completion_type = bool(
+        re.search(r"[Vv]ariant[Ss]?[Cc]ompletion[Ss]tatus|CompletionStatus",
+                  vm_content)
     )
-    assert has_state_update or has_reactive, (
-        "The variant selection view should trigger updates to the like state "
-        "observable when variants are toggled"
+    assert has_published_status or has_completion_type, (
+        "LikeButtonViewModel should have a @Published completion status property "
+        "that updates when variants are toggled"
     )

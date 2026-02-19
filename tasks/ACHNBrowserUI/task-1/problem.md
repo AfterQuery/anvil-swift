@@ -1,26 +1,16 @@
-## Feature: Add "To Catch Now" section to Active Critters view
+## Feature: Help users identify critters available right now
 
 ### Problem Description
 
-In the **ACHNBrowserUI** app, the Active Critters view currently shows a single "To Catch" section that lists all critters available during the current month. Users have to manually scan through the entire list to figure out which critters are actually catchable at the current hour, since many critters are only active during specific time windows within the day.
+In the **ACHNBrowserUI** app, the Active Critters view has a "To Catch" section that lists all critters available during the current month. However, many critters are only active during specific time windows within the day (e.g., evening-only fish). Users have to manually cross-reference each critter's active hours to figure out which ones they can actually go catch right now versus ones they'll need to wait for.
 
-This makes it difficult for users to quickly identify what they should be looking for right now.
+This makes it difficult to quickly plan a catching session.
 
-### Expected Behavior
+### Acceptance Criteria
 
-The "To Catch" section should be split into two separate sections:
-
-1. **To Catch Now** — critters that are available at the current hour.
-2. **To Catch Later** — critters that are available this month but not at the current time.
-
-This requires:
-
-- Extracting active hour information from each item's time data to determine if a critter is currently catchable.
-- Updating `ActiveCrittersView` to display the new `toCatchNow` and `toCatchLater` collections as separate sections.
-- Handling all critter types (fish, bugs) consistently.
-
-### Constraints
-
-- Edge cases such as empty collections should be handled gracefully (sections should not appear if empty).
-- The existing "To Catch" logic should be preserved for the "Later" section.
-- Do not change the behavior of other sections in the Active Critters view.
+1. Critters must be checkable for whether they are active at the current hour/time of day, not just the current month.
+2. The "To Catch" list must be split into two groups: critters catchable right now and critters catchable later this month.
+3. The old combined "To catch" section must be replaced — the view should display "To catch now" and "To catch later" as separate sections.
+4. Both fish and bugs should be handled consistently.
+5. French localization strings must be provided for the new section titles.
+6. The existing behavior for other sections (e.g., "New this month", "Leaving this month", "Caught") must remain unchanged.

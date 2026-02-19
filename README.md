@@ -46,12 +46,14 @@ Go to [hub.docker.com](https://hub.docker.com) and create a new **private** repo
 Build and push Docker images for a dataset to your private repo:
 
 ```bash
-anvil publish-images --dataset datasets/file-utilization -u <dockerhub-username> --repo anvil-images
+anvil publish-images --dataset datasets/file-utilization
 ```
+
+The username and repo are read from `REGISTRY_USERNAME` and `REGISTRY_REPO` in `.env` (or pass `-u <username>` / `--repo <name>` to override).
 
 Modal sandboxes pull images from Docker Hub, so task images need to be pushed there first.
 
-To remove local anvil images: `docker rmi $(docker images <dockerhub-username>/anvil-images -q) --force`
+To remove local anvil images: `docker rmi $(docker images $(grep REGISTRY_USERNAME .env | cut -d= -f2)/anvil-images -q) --force`
 
 ### Run evaluations
 
@@ -62,8 +64,6 @@ anvil run-evals \
   --model openrouter/google/gemini-2.5-flash \
   --dataset datasets/file-utilization \
   --agent mini-swe-agent \
-  --dockerhub-username <dockerhub-username> \
-  --dockerhub-repo anvil-images \
   --n-attempts 3
 ```
 
@@ -76,10 +76,7 @@ Use `--n-attempts` to control how many runs per task (useful for pass@k metrics)
 Verify that fail_to_pass tests actually fail against the unpatched base images:
 
 ```bash
-anvil verify-base \
-  --dataset datasets/my-dataset \
-  --dockerhub-username <username> \
-  --dockerhub-repo anvil-images
+anvil verify-base --dataset datasets/my-dataset
 ```
 
 This runs each task's test suite against the Docker image **without** the gold patch applied. All `fail_to_pass` tests must FAIL for the harness to be valid. Any `pass_to_pass` regression tests are also checked to confirm they still pass.
@@ -92,9 +89,7 @@ Use the `oracle` agent to validate your task harnesses before running LLM agents
 # Oracle: applies gold patches - all tests should PASS
 anvil run-evals \
   --dataset datasets/my-dataset \
-  --agent oracle \
-  --dockerhub-username <username> \
-  --dockerhub-repo anvil-images
+  --agent oracle
 ```
 
 The oracle agent skips LLM rollouts and applies gold patches from `gold_patches.json` directly. All tests should pass if your harness is correct.
@@ -107,8 +102,8 @@ The oracle agent skips LLM rollouts and applies gold patches from `gold_patches.
 | ---------------------- | -------------- | --------------------------------------------------- |
 | `--model`              | —              | Model ID (required for agents, optional for oracle) |
 | `--dataset`            | —              | Dataset ID or path                                  |
-| `--dockerhub-username` | —              | Docker Hub username                                 |
-| `--dockerhub-repo`     | —              | Docker Hub repo name                                |
+| `--dockerhub-username` | `REGISTRY_USERNAME` env | Docker Hub username                          |
+| `--dockerhub-repo`     | `anvil-images`          | Docker Hub repo name                         |
 | `--agent`              | mini-swe-agent | Agent to use (`mini-swe-agent` or `oracle`)         |
 | `--n-attempts`         | 1              | Attempts per task (for pass@k)                      |
 | `--max-parallel`       | 30             | Concurrent agent runs                               |
@@ -152,26 +147,26 @@ anvil add-task -d datasets/GPX-Tracker -n 4 --base-commit fa320f1cc5cfe1e58ac538
 # 3. Convert to Anvil evaluation format
 [Dockerhub](https://hub.docker.com/repositories/marvindeng)
 
-anvil convert-dataset -d my-dataset -u <dockerhub-username>
+anvil convert-dataset -d my-dataset
 
-anvil convert-dataset -d datasets/GPX-Tracker -u marvindeng
+anvil convert-dataset -d datasets/GPX-Tracker
 
 # 4. Publish image
-anvil publish-images -d my-dataset -u <dockerhub-username> --repo anvil-images
+anvil publish-images -d my-dataset
 
-anvil publish-images --dataset datasets/GPX-Tracker -u marvindeng --repo anvil-images
+anvil publish-images --dataset datasets/GPX-Tracker
 
 # Remove cached builds
 docker builder prune -f
 
 # 5. Run base and Oracle
-anvil run-evals -d my-dataset --agent oracle -u <dockerhub-username> --dockerhub-repo anvil-images --no-continue
+anvil run-evals -d my-dataset --agent oracle --no-continue
 
 # All fail_to_pass tests fail on unpatched base
-anvil verify-base -d datasets/GPX-Tracker -u marvindeng --dockerhub-repo anvil-images
+anvil verify-base -d datasets/GPX-Tracker
 
 # All tests pass with gold patch (oracle)
-anvil run-evals --dataset datasets/GPX-Tracker --agent oracle --dockerhub-username marvindeng --dockerhub-repo anvil-images --no-continue
+anvil run-evals --dataset datasets/GPX-Tracker --agent oracle --no-continue
 
 # 6. Run against models
 
@@ -179,8 +174,6 @@ anvil run-evals --dataset datasets/GPX-Tracker --agent oracle --dockerhub-userna
 anvil run-evals \
   --dataset datasets/GPX-Tracker \
   --agent mini-swe-agent \
-  --dockerhub-username marvindeng \
-  --dockerhub-repo anvil-images \
   --model openrouter/anthropic/claude-sonnet-4.5 \
   --no-continue \
   --n-attempts 4
@@ -189,8 +182,6 @@ anvil run-evals \
 anvil run-evals \
   --dataset datasets/GPX-Tracker \
   --agent mini-swe-agent \
-  --dockerhub-username marvindeng \
-  --dockerhub-repo anvil-images \
   --model openrouter/anthropic/claude-opus-4.6 \
   --no-continue \
   --n-attempts 4
@@ -199,8 +190,6 @@ anvil run-evals \
 anvil run-evals \
   --dataset datasets/GPX-Tracker \
   --agent mini-swe-agent \
-  --dockerhub-username marvindeng \
-  --dockerhub-repo anvil-images \
   --model openrouter/openai/gpt-5.2 \
   --no-continue \
   --n-attempts 4
@@ -209,19 +198,14 @@ anvil run-evals \
 anvil run-evals \
   --dataset datasets/GPX-Tracker \
   --agent mini-swe-agent \
-  --dockerhub-username marvindeng \
-  --dockerhub-repo anvil-images \
   --model openrouter/openai/gpt-5.2-codex \
   --no-continue \
   --n-attempts 4
-
 
 # Gemini 3 Pro
 anvil run-evals \
   --dataset datasets/GPX-Tracker \
   --agent mini-swe-agent \
-  --dockerhub-username marvindeng \
-  --dockerhub-repo anvil-images \
   --model openrouter/google/gemini-3-pro-preview \
   --no-continue \
   --n-attempts 4
@@ -230,8 +214,6 @@ anvil run-evals \
 anvil run-evals \
   --dataset datasets/GPX-Tracker \
   --agent mini-swe-agent \
-  --dockerhub-username marvindeng \
-  --dockerhub-repo anvil-images \
   --model openrouter/meta-llama/llama-4-maverick \
   --no-continue \
   --n-attempts 4
@@ -240,8 +222,6 @@ anvil run-evals \
 anvil run-evals \
   --dataset datasets/GPX-Tracker \
   --agent mini-swe-agent \
-  --dockerhub-username marvindeng \
-  --dockerhub-repo anvil-images \
   --model openrouter/qwen/qwen3-coder-next \
   --no-continue \
   --n-attempts 4
@@ -250,8 +230,6 @@ anvil run-evals \
 anvil run-evals \
   --dataset datasets/GPX-Tracker \
   --agent mini-swe-agent \
-  --dockerhub-username marvindeng \
-  --dockerhub-repo anvil-images \
   --model openrouter/deepseek/deepseek-v3.2 \
   --no-continue \
   --n-attempts 4

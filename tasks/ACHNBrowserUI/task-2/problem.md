@@ -1,20 +1,15 @@
-## Fix: Improve Alignment and Grid Layout for Turnip Price Predictions
+## Fix: Turnip price columns are misaligned across rows
 
 ### Problem Description
 
-In the **ACHNBrowserUI** app, the Turnips price prediction section displays daily AM/PM price estimates using separate row view structs (`TurnipsAveragePriceRow`, `TurnipsMinMaxPriceRow`, `TurnipsPriceRow`) that each define their own `HStack` layout. Because each row independently positions its columns with `Spacer()`, the AM and PM values do not align cleanly across rows, creating a jagged or "staircase" visual effect.
+In the **ACHNBrowserUI** app, the Turnips price prediction section displays daily AM/PM price estimates. Each row in the table independently positions its columns, which causes the AM and PM values to not align vertically across rows. This creates a jagged, hard-to-read layout.
 
-### Expected Behavior
+The misalignment affects all three display modes: average prices, min/max prices, and profits.
 
-The turnip price grid should use a unified grid layout component (e.g., a custom `GridStack` using row/column indices) so that:
+### Acceptance Criteria
 
-1. **Horizontal Alignment**: AM and PM columns are consistently aligned under their headers across all rows.
-2. **Vertical Spacing**: Consistent row height and dividers between the days of the week.
-3. **Code Simplification**: The separate row view files and the `eraseToAnyViewForRow()` workaround should be removed, replaced by a single grid component used for all three display modes (average prices, min/max prices, and profits).
-
-### Constraints
-
-- The grid layout must be used for all three display modes (average, min/max, profits) — not just one.
-- The old row view files (`TurnipsAveragePriceRow.swift`, `TurnipsMinMaxPriceRow.swift`, `TurnipsPriceRow.swift`) and the `rows/` directory should be removed entirely.
-- The `eraseToAnyViewForRow()` helper on `View` should be removed since the grid handles row layout directly.
-- Do not change the chart views, island views, or other unrelated sections of the turnip price screen.
+1. The AM and PM columns must be consistently aligned under their headers across all rows using a unified grid or column-aligned layout.
+2. The unified layout must be used for all three display modes (average, min/max, profits).
+3. The old separate row view files in the `rows/` directory must be removed, along with any references to those components from the turnip price view.
+4. Any workarounds that existed solely to support the old row-based layout should be removed.
+5. Do not change the chart views, island views, or other unrelated sections of the turnip price screen.

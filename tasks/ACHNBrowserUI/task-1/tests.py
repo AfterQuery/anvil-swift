@@ -25,16 +25,12 @@ def test_item_has_hour_level_check():
       isActiveNow(), activeAtCurrentHour(), etc.
     """
     content = _read(ITEM)
-    # Look for a function that references hour or "now" in the context of activity
     has_hour_func = bool(re.search(
-        r'func\s+\w*(?:[Hh]our|[Nn]ow|[Cc]urrent[Tt]ime)\w*\s*\(', content))
-    # Also accept: the word "hour" appears in a new func body near Calendar/Date
-    has_hour_logic = bool(re.search(
-        r'\.hour', content)) and bool(re.search(
-        r'Calendar\.current|DateComponents', content))
-    assert has_hour_func or has_hour_logic, (
-        "Item should have a method or logic to check if a critter is "
-        "active at the current hour (not just the current month)"
+        r'func\s+\w*(?:[Aa]ctive|[Aa]vailable|[Cc]atch)\w*(?:[Hh]our|[Nn]ow|[Tt]ime)\w*\s*\(.*\)\s*->\s*Bool',
+        content))
+    assert has_hour_func, (
+        "Item should have a Bool-returning method to check if a critter is "
+        "active at the current hour (e.g. isActiveAtThisHour() -> Bool)"
     )
 
 
@@ -51,8 +47,8 @@ def test_view_model_has_two_catch_collections():
     """
     content = _read(VIEW_MODEL)
     # Look for two distinct properties with "now" and "later" (or similar)
-    has_now = bool(re.search(r'(?:catch|available|active)\w*[Nn]ow', content))
-    has_later = bool(re.search(r'(?:catch|available|active)\w*[Ll]ater', content))
+    has_now = bool(re.search(r'(?:catch|available|active)\w*[Nn]ow', content, re.IGNORECASE))
+    has_later = bool(re.search(r'(?:catch|available|active)\w*[Ll]ater', content, re.IGNORECASE))
     assert has_now and has_later, (
         "ViewModel should have two separate catch collections "
         "(e.g. toCatchNow/toCatchLater) instead of a single toCatch"
@@ -71,7 +67,7 @@ def test_view_model_single_to_catch_removed():
     # The old code has `let toCatch: [Item]` and `let toCatch = active.filter{...}`
     # After the patch, these become toCatchNow/toCatchLater
     single_decl = re.findall(r'\btoCatch\b(?!Now|Later|now|later)', content)
-    has_split = bool(re.search(r'(?:catch|available|active)\w*[Nn]ow', content))
+    has_split = bool(re.search(r'(?:catch|available|active)\w*[Nn]ow', content, re.IGNORECASE))
     assert has_split or len(single_decl) == 0, (
         "The single toCatch should be split into now/later collections"
     )
