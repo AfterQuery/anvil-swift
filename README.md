@@ -1,10 +1,7 @@
-# Anvil
+# Anvil Swift
 
-Run coding agent evaluations on SWE-bench style tasks using Modal sandboxes.
-
-Anvil makes it easy to run agents against SWE-bench Pro tasks. It handles the infrastructure—spinning up Modal sandboxes, applying patches, running test harnesses, aggregating results—so you can benchmark different models and configurations in just 2 commands.
-
-[IOS Bench Planning](https://docs.google.com/document/d/1Z4GBUpmrXLeStbd7piRd--3_QEBh5qOoUvYEyTonEww/edit?usp=sharing)
+- [IOS Bench Planning](https://docs.google.com/document/d/1Z4GBUpmrXLeStbd7piRd--3_QEBh5qOoUvYEyTonEww/edit?usp=sharing)
+- [IOS SWE Bench Run Results](https://docs.google.com/spreadsheets/d/1Nakl-DBZibBaoPCxJI6aNfICPZPnfrgeM5ZTV-NkF9s/edit?usp=sharing)
 
 ## Setup
 
@@ -98,17 +95,17 @@ The oracle agent skips LLM rollouts and applies gold patches from `gold_patches.
 
 ### Options
 
-| Flag                   | Default        | Description                                         |
-| ---------------------- | -------------- | --------------------------------------------------- |
-| `--model`              | —              | Model ID (required for agents, optional for oracle) |
-| `--dataset`            | —              | Dataset ID or path                                  |
-| `--dockerhub-username` | `REGISTRY_USERNAME` env | Docker Hub username                          |
-| `--dockerhub-repo`     | `anvil-images`          | Docker Hub repo name                         |
-| `--agent`              | mini-swe-agent | Agent to use (`mini-swe-agent` or `oracle`)         |
-| `--n-attempts`         | 1              | Attempts per task (for pass@k)                      |
-| `--max-parallel`       | 30             | Concurrent agent runs                               |
-| `--no-continue`        | false          | Start fresh, ignore previous results                |
-| `--max-wait`           | auto           | Minutes to wait for Modal rate limits               |
+| Flag                   | Default                 | Description                                         |
+| ---------------------- | ----------------------- | --------------------------------------------------- |
+| `--model`              | —                       | Model ID (required for agents, optional for oracle) |
+| `--dataset`            | —                       | Dataset ID or path                                  |
+| `--dockerhub-username` | `REGISTRY_USERNAME` env | Docker Hub username                                 |
+| `--dockerhub-repo`     | `anvil-images`          | Docker Hub repo name                                |
+| `--agent`              | mini-swe-agent          | Agent to use (`mini-swe-agent` or `oracle`)         |
+| `--n-attempts`         | 1                       | Attempts per task (for pass@k)                      |
+| `--max-parallel`       | 30                      | Concurrent agent runs                               |
+| `--no-continue`        | false                   | Start fresh, ignore previous results                |
+| `--max-wait`           | auto                    | Minutes to wait for Modal rate limits               |
 
 ## Creating Custom Tasks
 
