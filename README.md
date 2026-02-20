@@ -68,16 +68,6 @@ Use `--n-attempts` to control how many runs per task (useful for pass@k metrics)
 
 > 💡 **Progress is saved automatically** to minimize costs. If you re-run the same command, completed tasks are skipped—nothing runs on Modal for those tasks. Use `--no-continue` to start fresh.
 
-### Verify base (fail_to_pass check)
-
-Verify that fail_to_pass tests actually fail against the unpatched base images:
-
-```bash
-anvil verify-base --dataset datasets/my-dataset
-```
-
-This runs each task's test suite against the Docker image **without** the gold patch applied. All `fail_to_pass` tests must FAIL for the harness to be valid. Any `pass_to_pass` regression tests are also checked to confirm they still pass.
-
 ### Oracle Agent
 
 Use the `oracle` agent to validate your task harnesses before running LLM agents:
@@ -201,9 +191,6 @@ docker builder prune -f
 
 # 5. Run base and Oracle
 anvil run-evals -d my-dataset --agent oracle --no-continue
-
-# All fail_to_pass tests fail on unpatched base
-anvil verify-base -d datasets/GPX-Tracker
 
 # All tests pass with gold patch (oracle)
 anvil run-evals --dataset datasets/GPX-Tracker --agent oracle --no-continue

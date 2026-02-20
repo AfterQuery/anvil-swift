@@ -8,7 +8,6 @@ import typer
 from . import __version__
 from .publish import publish_images
 from .run_evals import run_evals
-from .verify_base import verify_base
 from .warm_cache import warm_xcode_cache
 from .wizard.commands import add_task, init_dataset, validate_dataset
 from .wizard.converters import convert_dataset
@@ -26,7 +25,6 @@ app = typer.Typer(help="AQ Project Anvil - SWE-Bench Pro Tasks", no_args_is_help
 app.command("publish-images", no_args_is_help=True)(publish_images)
 app.command("run-evals", no_args_is_help=True)(run_evals)
 
-app.command("verify-base", no_args_is_help=True)(verify_base)
 app.command("warm-xcode-cache", no_args_is_help=True)(warm_xcode_cache)
 
 # Task creation wizard commands
