@@ -217,6 +217,7 @@ def run_xcode_evals(
     eval_id: str,
     max_workers: int | None = None,
     compile_only: bool = False,
+    dataset_id: str | None = None,
 ) -> dict[str, bool]:
     """Run Xcode-based evaluation for a batch of patches.
 
@@ -228,13 +229,14 @@ def run_xcode_evals(
         eval_id: Evaluation identifier prefix.
         max_workers: Max concurrent xcodebuild processes.
         compile_only: If True, only check compilation (skip tests).
+        dataset_id: Dataset identifier for config lookup.
 
     Returns:
         Dict mapping "instance_id:attempt_N" to bool pass/fail.
     """
     import pandas as pd
 
-    xcode_config = load_xcode_config(dataset_tasks_dir)
+    xcode_config = load_xcode_config(dataset_tasks_dir, dataset_id=dataset_id)
     cache = XcodeBuildCache()
 
     instance_map = {inst["instance_id"]: inst for inst in instances}

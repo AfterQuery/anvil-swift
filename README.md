@@ -93,6 +93,47 @@ The oracle agent skips LLM rollouts and applies gold patches from `gold_patches.
 
 **Prerequisites**: Requires Modal and Docker Hub setup (see [Setup](#setup)).
 
+### Local Xcode evaluation (macOS)
+
+Instead of running evals in Docker containers via Modal, you can compile and test patches locally with Xcode. This is faster for iOS/Swift datasets and doesn't require Docker Hub or Modal.
+
+**Prerequisites**
+
+- macOS with Xcode installed (`xcode-select --install` if needed)
+- iOS platform component downloaded: `xcodebuild -downloadPlatform iOS`
+- Source repos cloned into `repos/` (e.g. `repos/ACHNBrowserUI/`)
+
+**Step 1: Warm the build cache (one-time)**
+
+Pre-builds every base commit so subsequent evals only do fast incremental builds:
+
+```bash
+anvil warm-xcode-cache --dataset datasets/ACHNBrowserUI
+```
+
+Cached DerivedData is stored in `~/.anvil/xcode-cache/`. This takes a few minutes per unique base commit but only needs to run once.
+
+**Step 2: Run evals with the Xcode backend**
+
+```bash
+# Compile-only check (fastest — just verifies the patch compiles)
+anvil run-evals \
+  --dataset datasets/ACHNBrowserUI \
+  --agent oracle \
+  --eval-backend xcode \
+  --compile-only
+
+# Full eval (compile + existing pytest structural tests)
+anvil run-evals \
+  --dataset datasets/ACHNBrowserUI \
+  --model openrouter/anthropic/claude-sonnet-4.5 \
+  --agent mini-swe-agent \
+  --eval-backend xcode \
+  --n-attempts 4
+```
+
+Each dataset needs a `xcode_config.yaml` in its source tasks directory (e.g. `tasks/ACHNBrowserUI/xcode_config.yaml`) specifying the Xcode project/workspace, scheme, and build destination.
+
 ### Options
 
 | Flag                   | Default                 | Description                                         |
@@ -106,6 +147,8 @@ The oracle agent skips LLM rollouts and applies gold patches from `gold_patches.
 | `--max-parallel`       | 30                      | Concurrent agent runs                               |
 | `--no-continue`        | false                   | Start fresh, ignore previous results                |
 | `--max-wait`           | auto                    | Minutes to wait for Modal rate limits               |
+| `--eval-backend`       | `modal`                 | `modal` (Docker/Modal) or `xcode` (local macOS)    |
+| `--compile-only`       | false                   | Xcode backend: only check compilation, skip tests   |
 
 ## Creating Custom Tasks
 

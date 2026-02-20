@@ -30,59 +30,24 @@ Animal Crossing Helper: https://github.com/Dimillian/ACHNBrowserUI
 - Patch Commit: 0bfd982
 - Base Commit: 89ac53bfe6d0769411f4005060e8974fa8fd35d4
 
+## Existing Unit Tests
+
+- `Packages/Backend/Tests/BackendTests/ItemsTests.swift` — JSON decoding for ItemResponse
+- `Packages/Backend/Tests/BackendTests/CrittersTests.swift` — critter/fish decoding, active months, categories
+- `Packages/Backend/Tests/BackendTests/CollectionTest.swift` — UserCollection toggle functionality
+- `Packages/UI/Tests/UITests/UITests.swift` — placeholder
+
+Test targets configured in Package.swift: `BackendTests`, `UITests`
+
 ## Commands
 
 ```bash
-# 1. Clone repo
-git clone https://github.com/Dimillian/ACHNBrowserUI.git repos/ACHNBrowserUI
+# Compile-only check (fastest — just verifies agent patches compile)
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent oracle --eval-backend xcode --compile-only
 
-# 2. Initialize dataset
-source .venv/bin/activate
-
-anvil init-dataset -d datasets/ACHNBrowserUI --repo-path repos/ACHNBrowserUI --base-image swift:5.9
-
-# 3. Add all tasks
-anvil add-task -d datasets/ACHNBrowserUI -n 1 --base-commit 3eba9512b0fb430d2507e27df3f8311d3bd67706
-anvil add-task -d datasets/ACHNBrowserUI -n 2 --base-commit 31b3185f7435e9f1c208ad7c0c726a54652ca791
-anvil add-task -d datasets/ACHNBrowserUI -n 3 --base-commit 3d11674846dd9ad905de616782134b0a76a4e148
-anvil add-task -d datasets/ACHNBrowserUI -n 4 --base-commit 89ac53bfe6d0769411f4005060e8974fa8fd35d4
-
-# 4. Convert to Anvil evaluation format
-anvil convert-dataset -d datasets/ACHNBrowserUI
-
-# 5. Publish images
-
-# Remove cached builds
-docker builder prune -f
-
-anvil publish-images --dataset datasets/ACHNBrowserUI
-
-# 6. Verify base (all fail_to_pass tests should fail)
-anvil verify-base -d datasets/ACHNBrowserUI
-
-# 7. Run oracle (all tests should pass with gold patch)
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent oracle --no-continue
-
-# 8. Run against models
-
-# Claude Sonnet 4.5
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --no-continue --n-attempts 4
-
-# Claude Opus 4.6
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/anthropic/claude-opus-4.6 --no-continue --n-attempts 4
-
-# GPT 5.2
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/openai/gpt-5.2 --no-continue --n-attempts 4
-
-# GPT 5.2 Codex
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --no-continue --n-attempts 4
-
-# Gemini 3 Pro
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --no-continue --n-attempts 4
-
-# Qwen 3 Coder Next
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/qwen/qwen3-coder-next --no-continue --n-attempts 4
-
-# Deepseek V3.2
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --no-continue --n-attempts 4
+# Run against models
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --eval-backend xcode --n-attempts 4
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --eval-backend xcode --n-attempts 4
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --eval-backend xcode --n-attempts 4
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --eval-backend xcode --n-attempts 4
 ```

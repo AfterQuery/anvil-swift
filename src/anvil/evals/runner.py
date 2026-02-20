@@ -375,6 +375,7 @@ def run_evaluation(
                 eval_id=eval_id,
                 max_workers=min(len(all_patches), max_parallel),
                 compile_only=compile_only,
+                dataset_id=dataset_id,
             )
         else:
             patches_file = base_out / f"{eval_id}_all_patches.json"

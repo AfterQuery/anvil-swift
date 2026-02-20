@@ -39,6 +39,17 @@ def eval_dir(dataset_id: str, eval_id: str) -> Path:
 eval_output_dir = eval_dir
 
 
+def source_tasks_dir(dataset_id: str) -> Path:
+    """Return the source tasks directory for a dataset (e.g. tasks/ACHNBrowserUI/).
+
+    The dataset_id is typically 'datasets/ACHNBrowserUI' — this extracts
+    the project name and returns repo_root/tasks/{project_name}/.
+    """
+    parts = dataset_id.replace("\\", "/").strip("/").split("/")
+    project_name = parts[-1] if parts else dataset_id
+    return repo_root() / "tasks" / project_name
+
+
 def swe_bench_eval_script() -> Path:
     """Return the path to the SWE-bench Pro evaluation script."""
     return Path(__file__).parent / "_vendor" / "swe_bench_pro" / "swe_bench_pro_eval.py"

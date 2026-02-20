@@ -1,3 +1,5 @@
+"""CLI command to pre-warm Xcode build caches for a dataset."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -5,7 +7,7 @@ from pathlib import Path
 import typer
 from ruamel.yaml import YAML
 
-from .config import tasks_dir, repo_root
+from .config import source_tasks_dir, tasks_dir, repo_root
 from .evals.xcode_cache import XcodeBuildCache, load_xcode_config
 
 
@@ -18,17 +20,27 @@ def warm_xcode_cache(
     will use the cached builds for fast incremental compilation.
     """
     dataset_tasks_dir = tasks_dir(dataset)
-    instances_path = dataset_tasks_dir / "instances.yaml"
-
-    if not instances_path.exists():
-        typer.echo(f"Error: instances.yaml not found at {instances_path}", err=True)
-        raise typer.Exit(1)
+    src_tasks_dir = source_tasks_dir(dataset)
 
     yaml = YAML()
-    instances = yaml.load(instances_path)
+    instances = None
+    for candidate in [dataset_tasks_dir / "instances.yaml", src_tasks_dir / "instances.yaml"]:
+        if candidate.exists():
+            instances = yaml.load(candidate)
+            typer.echo(f"Loaded instances from {candidate}")
+            break
+
+    if not instances:
+        typer.echo(
+            f"Error: instances.yaml not found.\n"
+            f"  Searched: {dataset_tasks_dir / 'instances.yaml'}\n"
+            f"           {src_tasks_dir / 'instances.yaml'}",
+            err=True,
+        )
+        raise typer.Exit(1)
 
     try:
-        xcode_config = load_xcode_config(dataset_tasks_dir)
+        xcode_config = load_xcode_config(dataset_tasks_dir, dataset_id=dataset)
     except FileNotFoundError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)

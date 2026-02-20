@@ -152,13 +152,17 @@ def _build_xcodebuild_cmd(
     clean: bool = False,
     compile_only: bool = False,
 ) -> list[str]:
-    """Build the xcodebuild command from config."""
+    """Build the xcodebuild command from config.
+
+    If both workspace and project are specified, prefers the workspace when it
+    exists at the worktree path, otherwise falls back to the project.
+    """
     project = xcode_config.get("project", "")
     workspace = xcode_config.get("workspace", "")
     scheme = xcode_config["scheme"]
     destination = xcode_config.get(
         "destination",
-        "platform=iOS Simulator,name=iPhone 16,OS=latest",
+        "generic/platform=iOS Simulator",
     )
 
     cmd = ["xcodebuild"]
@@ -167,10 +171,17 @@ def _build_xcodebuild_cmd(
         cmd.append("clean")
     cmd.append("build")
 
-    if workspace:
-        cmd.extend(["-workspace", str(work_dir / workspace)])
+    workspace_path = work_dir / workspace if workspace else None
+    project_path = work_dir / project if project else None
+
+    if workspace_path and workspace_path.exists():
+        cmd.extend(["-workspace", str(workspace_path)])
+    elif project_path and project_path.exists():
+        cmd.extend(["-project", str(project_path)])
+    elif workspace:
+        cmd.extend(["-workspace", str(workspace_path)])
     elif project:
-        cmd.extend(["-project", str(work_dir / project)])
+        cmd.extend(["-project", str(project_path)])
 
     cmd.extend([
         "-scheme", scheme,
@@ -201,14 +212,22 @@ def _run_cmd(cmd: list[str], check: bool = True, **kwargs) -> subprocess.Complet
     )
 
 
-def load_xcode_config(dataset_tasks_dir: Path) -> dict:
-    """Load xcode_config.yaml from a dataset's tasks directory."""
-    config_path = dataset_tasks_dir / "xcode_config.yaml"
-    if not config_path.exists():
-        raise FileNotFoundError(
-            f"No xcode_config.yaml found at {config_path}. "
-            "Create one with project/scheme/destination settings."
-        )
-    from ruamel.yaml import YAML
-    yaml = YAML()
-    return yaml.load(config_path)
+def load_xcode_config(dataset_tasks_dir: Path, dataset_id: str | None = None) -> dict:
+    """Load xcode_config.yaml, searching generated and source task dirs."""
+    candidates = [dataset_tasks_dir / "xcode_config.yaml"]
+
+    if dataset_id:
+        from ..config import source_tasks_dir
+        candidates.append(source_tasks_dir(dataset_id) / "xcode_config.yaml")
+
+    for path in candidates:
+        if path.exists():
+            from ruamel.yaml import YAML
+            yaml = YAML()
+            return yaml.load(path)
+
+    searched = ", ".join(str(c) for c in candidates)
+    raise FileNotFoundError(
+        f"No xcode_config.yaml found. Searched: {searched}. "
+        "Create one with project/scheme/destination settings."
+    )
