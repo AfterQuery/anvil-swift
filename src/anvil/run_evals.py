@@ -53,12 +53,26 @@ def run_evals(
     dockerhub_repo: str = typer.Option(
         "", "--dockerhub-repo", help="DockerHub repo name"
     ),
+    eval_backend: Annotated[
+        Literal["modal", "xcode"],
+        typer.Option(
+            "--eval-backend",
+            help="Evaluation backend: 'modal' (Linux Docker via Modal) or 'xcode' (local macOS xcodebuild)",
+        ),
+    ] = "modal",
+    compile_only: Annotated[
+        bool,
+        typer.Option(
+            "--compile-only",
+            help="(xcode backend) Only check compilation, skip tests",
+        ),
+    ] = False,
 ) -> None:
     """Run evaluation with an agent on a dataset."""
     dockerhub_username = dockerhub_username or os.environ.get("REGISTRY_USERNAME", "")
     dockerhub_repo = dockerhub_repo or os.environ.get("REGISTRY_REPO", "anvil-images")
-    if not dockerhub_username:
-        typer.echo("Docker Hub username required. Set REGISTRY_USERNAME in .env or pass -u.", err=True)
+    if eval_backend == "modal" and not dockerhub_username:
+        typer.echo("Docker Hub username required for modal backend. Set REGISTRY_USERNAME in .env or pass -u.", err=True)
         raise typer.Exit(1)
 
     from .evals import run_evaluation
@@ -74,5 +88,7 @@ def run_evals(
         max_wait_minutes=max_wait,
         max_parallel=max_parallel,
         no_continue=no_continue,
+        eval_backend=eval_backend,
+        compile_only=compile_only,
     )
     raise typer.Exit(rc)

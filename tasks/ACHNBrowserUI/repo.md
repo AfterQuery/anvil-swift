@@ -80,9 +80,6 @@ anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model 
 # Gemini 3 Pro
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --no-continue --n-attempts 4
 
-# Llama 4 Maverick
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/meta-llama/llama-4-maverick --no-continue --n-attempts 4
-
 # Qwen 3 Coder Next
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/qwen/qwen3-coder-next --no-continue --n-attempts 4
 

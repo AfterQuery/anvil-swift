@@ -149,6 +149,8 @@ def run_evaluation(
     max_wait_minutes: int | None = None,
     max_parallel: int = 30,
     no_continue: bool = False,
+    eval_backend: str = "modal",
+    compile_only: bool = False,
 ) -> int:
     """Run full evaluation with an agent on a dataset."""
     from tqdm import tqdm
@@ -167,10 +169,11 @@ def run_evaluation(
         typer.echo("Error: --model is required for non-oracle agents")
         return 1
 
-    # Validate registry credentials upfront - required for both agent runs and evals
+    # Validate registry credentials upfront - required for Modal-based runs
     reg_user = os.environ.get("REGISTRY_USERNAME")
     reg_pass = os.environ.get("REGISTRY_PASSWORD")
-    if not reg_user or not reg_pass:
+    needs_registry = eval_backend == "modal" or agent != "oracle"
+    if needs_registry and (not reg_user or not reg_pass):
         typer.echo("Error: REGISTRY_USERNAME and REGISTRY_PASSWORD must be set")
         typer.echo("")
         typer.echo("These credentials are required to pull Docker images from Docker Hub.")
@@ -361,35 +364,47 @@ def run_evaluation(
         typer.echo(eval_status)
 
     if all_patches:
-        patches_file = base_out / f"{eval_id}_all_patches.json"
-        patches_file.write_text(json.dumps(all_patches, indent=2))
+        if eval_backend == "xcode":
+            from .xcode_eval import run_xcode_evals
 
-        eval_workers = min(len(all_patches), max_parallel)
+            run_xcode_evals(
+                patches=all_patches,
+                instances=instances,
+                dataset_tasks_dir=dataset_tasks_dir,
+                output_dir=base_out,
+                eval_id=eval_id,
+                max_workers=min(len(all_patches), max_parallel),
+                compile_only=compile_only,
+            )
+        else:
+            patches_file = base_out / f"{eval_id}_all_patches.json"
+            patches_file.write_text(json.dumps(all_patches, indent=2))
 
-        cmd = [
-            "uv",
-            "run",
-            str(swe_bench_eval_script()),
-            f"--raw_sample_path={dataset_tasks_dir / 'tasks.csv'}",
-            f"--patch_path={patches_file}",
-            f"--output_dir={base_out}",
-            f"--scripts_dir={ensure_dir(dataset_tasks_dir / 'run_scripts')}",
-            f"--num_workers={eval_workers}",
-            f"--dockerhub_username={dockerhub_username}",
-            f"--dockerhub_repo={dockerhub_repo}",
-        ]
+            eval_workers = min(len(all_patches), max_parallel)
 
-        # Pass environment variables (including REGISTRY_USERNAME/PASSWORD) to subprocess
-        result = subprocess.run(
-            cmd,
-            cwd=str(dataset_tasks_dir),
-            env=os.environ.copy(),
-        )
+            cmd = [
+                "uv",
+                "run",
+                str(swe_bench_eval_script()),
+                f"--raw_sample_path={dataset_tasks_dir / 'tasks.csv'}",
+                f"--patch_path={patches_file}",
+                f"--output_dir={base_out}",
+                f"--scripts_dir={ensure_dir(dataset_tasks_dir / 'run_scripts')}",
+                f"--num_workers={eval_workers}",
+                f"--dockerhub_username={dockerhub_username}",
+                f"--dockerhub_repo={dockerhub_repo}",
+            ]
 
-        patches_file.unlink(missing_ok=True)
-        
-        if result.returncode != 0:
-            return 1
+            result = subprocess.run(
+                cmd,
+                cwd=str(dataset_tasks_dir),
+                env=os.environ.copy(),
+            )
+
+            patches_file.unlink(missing_ok=True)
+
+            if result.returncode != 0:
+                return 1
 
     # ---- Aggregate Results ----
     results_file = base_out / "eval_results.json"

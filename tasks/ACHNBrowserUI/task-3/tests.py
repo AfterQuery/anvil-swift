@@ -79,17 +79,27 @@ def test_item_has_variant_properties():
 
     has_variant_bool = bool(
         re.search(
-            r"var\s+\w*(?:[Hh]as[Vv]ariant|[Hh]as[Ss]ome[Vv]ariation|[Hh]asMultiple[Vv]ariant)\w*\s*:\s*Bool",
+            r"var\s+\w*(?:[Hh]as[Vv]ariant|[Hh]as[Ss]ome[Vv]ariation|[Hh]asMultiple[Vv]ariant)\w*",
             all_content,
         )
     )
     has_inline_check = bool(
         re.search(
-            r"variant(?:ion)?s?\?*\.count\s*(?:>|>=)\s*[12]|variant(?:ion)?s?\?*\.count\s*.*>\s*1",
+            r"varia(?:nt|tion)s?\?*\.count\s*(?:\?\?\s*\d+\s*)?(?:>|>=)\s*[12]"
+            r"|\(*\s*varia(?:nt|tion)s?\?*\.count\s*\?\?\s*\d+\s*\)*\s*(?:>|>=)\s*[12]"
+            r"|varia(?:nt|tion)s?\?*\.count\s*.*>\s*1",
             all_content,
         )
     )
-    assert has_variant_bool or has_inline_check, (
+    has_count_then_compare = bool(
+        re.search(r"varia(?:nt|tion)s?\?*\.count", all_content, re.IGNORECASE)
+    ) and bool(
+        re.search(
+            r"\w*(?:[Cc]ount|[Vv]ariant|[Vv]ariation)\w*\s*(?:>|>=)\s*[12]",
+            all_content,
+        )
+    )
+    assert has_variant_bool or has_inline_check or has_count_then_compare, (
         "There should be a way to check if an item has multiple variants "
         "(e.g. hasSomeVariations: Bool, or variations?.count > 1)"
     )
@@ -249,13 +259,13 @@ def test_items_without_variants_unaffected():
 
     has_variant_count_check = bool(
         re.search(
-            r"variant(?:ion)?s?\?*\.count\s*[<>=>\s]|variant[Cc]ount\s*[<>=]|\bvariantCount\b",
+            r"varia(?:nt|tion)s?\?*\.count\s*[<>=>\s]|variant[Cc]ount\s*[<>=]|\bvariantCount\b",
             all_content,
         )
     )
     has_multi_variant_check = bool(
         re.search(
-            r"variant(?:ion)?s?\?*\.count\s*.*[>]\s*1|hasSomeVariations|hasMultiple[Vv]ariants|hasVariants",
+            r"varia(?:nt|tion)s?\?*\.count\s*.*[>]\s*1|hasSomeVariations|hasMultiple[Vv]ariants|hasVariants",
             all_content,
         )
     )

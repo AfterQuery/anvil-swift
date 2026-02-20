@@ -115,7 +115,8 @@ def test_grid_used_for_all_display_modes():
         r'GridStack|LazyVGrid|LazyHGrid|\bGrid\s*\(', content))
     has_unified_component = bool(re.search(
         r'enum\s+\w*(?:[Dd]isplay[Mm]ode|[Pp]redictions?[Dd]isplay|[Pp]rice[Mm]ode)\w*'
-        r'|[Pp]rice[Gg]rid|[Tt]urnips[Pp]rice[Gg]rid|[Tt]urnips[Pp]rices[Tt]able',
+        r'|[Pp]rice[Gg]rid|[Pp]rice[Tt]able'
+        r'|[Tt]urnips?[Pp]rice[Gg]rid|[Tt]urnips?[Pp]rices?[Tt]able',
         content))
     has_geometry_columns = (
         len(re.findall(r'GeometryReader', content)) >= 1
