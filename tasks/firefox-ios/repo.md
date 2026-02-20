@@ -41,15 +41,25 @@ Firefox for iOS: https://github.com/mozilla-mobile/firefox-ios
 ## Commands
 
 ```bash
-# One-time: warm build cache (~5 min per unique base commit)
+
+# Step 1: (Run only once) Warm Xcode build cache (~5 min per unique base commit)
 anvil warm-xcode-cache --dataset datasets/firefox-ios
 
-# Compile-only check (fastest — just verifies agent patches compile)
+# Step 2: Convert dataset (reads tasks/, writes to datasets/)
+anvil convert-dataset --dataset tasks/firefox-ios
+
+# Step 3: Verify gold patches compile (no Modal/Docker needed)
 anvil run-evals --dataset datasets/firefox-ios --agent oracle --eval-backend xcode --compile-only
 
-# Full eval (compile + run tests)
+# Step 4: Publish Docker images (required for LLM agent runs — agents run in Modal)
+anvil publish-images --dataset datasets/firefox-ios
+
+# Step 5: Run against models (agent rollout via Modal, eval via local Xcode)
 anvil run-evals --dataset datasets/firefox-ios --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --eval-backend xcode --n-attempts 4
+
 anvil run-evals --dataset datasets/firefox-ios --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --eval-backend xcode --n-attempts 4
+
 anvil run-evals --dataset datasets/firefox-ios --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --eval-backend xcode --n-attempts 4
+
 anvil run-evals --dataset datasets/firefox-ios --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --eval-backend xcode --n-attempts 4
 ```

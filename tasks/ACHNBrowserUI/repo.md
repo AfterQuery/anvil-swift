@@ -42,12 +42,25 @@ Test targets configured in Package.swift: `BackendTests`, `UITests`
 ## Commands
 
 ```bash
-# Compile-only check (fastest — just verifies agent patches compile)
+
+# Step 1: (Run only once) Warm Xcode build cache (~5 min per unique base commit)
+anvil warm-xcode-cache --dataset datasets/ACHNBrowserUI
+
+# Step 2: Convert dataset (reads tasks/, writes to datasets/)
+anvil convert-dataset --dataset tasks/ACHNBrowserUI
+
+# Step 3: Verify gold patches compile (no Modal/Docker needed)
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent oracle --eval-backend xcode --compile-only
 
-# Run against models
+# Step 4: Publish Docker images (required for LLM agent runs — agents run in Modal)
+anvil publish-images --dataset datasets/ACHNBrowserUI
+
+# Step 5: Run against models (agent rollout via Modal, eval via local Xcode)
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --eval-backend xcode --n-attempts 4
+
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --eval-backend xcode --n-attempts 4
+
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --eval-backend xcode --n-attempts 4
+
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --eval-backend xcode --n-attempts 4
 ```

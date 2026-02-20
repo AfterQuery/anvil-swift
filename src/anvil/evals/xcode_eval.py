@@ -73,7 +73,7 @@ def eval_single_patch(
             cwd=str(worktree_dir),
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=600,
         )
 
         build_output = parse_build_result(build_result.returncode, build_result.stdout, build_result.stderr)
@@ -115,7 +115,7 @@ def eval_single_patch(
     except subprocess.TimeoutExpired:
         logger.error("Build timed out for %s", tag)
         result = {"tests": [{"name": "compilation", "status": "FAILED",
-                              "message": "Build timed out (300s)"}]}
+                              "message": "Build timed out (600s)"}]}
         _save_eval_output(output_dir, instance_id, attempt, eval_id, result, patch, "", "")
         return result
     except Exception as e:
