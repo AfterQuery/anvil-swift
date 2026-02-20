@@ -11,8 +11,8 @@ from pathlib import Path
 import typer
 from tqdm import tqdm
 
-from .xcode_cache import XcodeBuildCache, _build_xcodebuild_cmd, load_xcode_config
-from .xcode_parser import merge_test_results, parse_build_result
+from .xcode_cache import XcodeBuildCache, _build_xcodebuild_cmd, _build_xcodebuild_test_cmd, load_xcode_config
+from .xcode_parser import merge_test_results, parse_build_result, parse_xcodebuild_output
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +28,6 @@ def eval_single_patch(
     eval_id: str,
     attempt: int | None = None,
     compile_only: bool = False,
-    run_script_path: Path | None = None,
-    parser_path: Path | None = None,
 ) -> dict | None:
     """Evaluate a single patch using local xcodebuild.
 
@@ -79,23 +77,39 @@ def eval_single_patch(
         )
 
         build_output = parse_build_result(build_result.returncode, build_result.stdout, build_result.stderr)
+        all_stdout = build_result.stdout
+        all_stderr = build_result.stderr
 
         if build_result.returncode != 0:
             _save_eval_output(output_dir, instance_id, attempt, eval_id, build_output,
-                              patch, build_result.stdout, build_result.stderr)
+                              patch, all_stdout, all_stderr)
             return build_output
 
-        pytest_output = None
-        if run_script_path and run_script_path.exists() and not compile_only:
-            pytest_output = _run_pytest_tests(worktree_dir, run_script_path, parser_path)
+        xctest_output = None
+        if not compile_only:
+            test_cmd = _build_xcodebuild_test_cmd(xcode_config, worktree_dir, dd_dir)
+            if test_cmd:
+                test_result = subprocess.run(
+                    test_cmd,
+                    cwd=str(worktree_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+                all_stdout += "\n" + test_result.stdout
+                all_stderr += "\n" + test_result.stderr
+                xctest_output = parse_xcodebuild_output(test_result.stdout, test_result.stderr)
+                if test_result.returncode != 0 and not xctest_output["tests"]:
+                    xctest_output = {"tests": [{"name": "xctest_run", "status": "FAILED",
+                                                "message": "xcodebuild test exited with non-zero"}]}
 
-        if pytest_output:
-            combined = merge_test_results(build_output, pytest_output)
+        if xctest_output:
+            combined = merge_test_results(build_output, xctest_output)
         else:
             combined = build_output
 
         _save_eval_output(output_dir, instance_id, attempt, eval_id, combined,
-                          patch, build_result.stdout, build_result.stderr)
+                          patch, all_stdout, all_stderr)
         return combined
 
     except subprocess.TimeoutExpired:
@@ -113,74 +127,6 @@ def eval_single_patch(
                 cache.cleanup(repo_name, worktree_dir)
             except Exception:
                 pass
-
-
-def _run_pytest_tests(
-    worktree_dir: Path,
-    run_script_path: Path,
-    parser_path: Path | None,
-) -> dict | None:
-    """Run the existing pytest structural tests against the worktree."""
-    try:
-        test_dir = worktree_dir / "_anvil_tests"
-        test_dir.mkdir(exist_ok=True)
-
-        run_script_content = run_script_path.read_text()
-        modified_script = run_script_content.replace("/app", str(worktree_dir))
-
-        script_file = test_dir / "run_script.sh"
-        script_file.write_text(modified_script)
-        script_file.chmod(0o755)
-
-        result = subprocess.run(
-            ["bash", str(script_file)],
-            cwd=str(worktree_dir),
-            capture_output=True,
-            text=True,
-            timeout=60,
-            env={**os.environ, "PATH": os.environ.get("PATH", "/usr/bin:/usr/local/bin")},
-        )
-
-        stdout = result.stdout
-        stderr = result.stderr
-
-        if parser_path and parser_path.exists():
-            stdout_file = test_dir / "stdout.log"
-            stderr_file = test_dir / "stderr.log"
-            output_file = test_dir / "output.json"
-            stdout_file.write_text(stdout)
-            stderr_file.write_text(stderr)
-
-            subprocess.run(
-                ["python3", str(parser_path), str(stdout_file), str(stderr_file), str(output_file)],
-                cwd=str(worktree_dir),
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-
-            if output_file.exists():
-                return json.loads(output_file.read_text())
-
-        return _parse_pytest_fallback(stdout + "\n" + stderr)
-
-    except Exception as e:
-        logger.warning("pytest run failed: %s", e)
-        return None
-
-
-def _parse_pytest_fallback(output: str) -> dict:
-    """Fallback parser for pytest verbose output."""
-    import re
-    tests = []
-    pattern = re.compile(
-        r"^([\w/.-]+\.py::(?:[\w]+::)?[\w]+)\s+(PASSED|FAILED|SKIPPED|ERROR)",
-        re.MULTILINE,
-    )
-    for match in pattern.finditer(output):
-        name = match.group(1).split("::")[-1]
-        tests.append({"name": name, "status": match.group(2)})
-    return {"tests": tests}
 
 
 def _save_eval_output(
@@ -234,15 +180,10 @@ def run_xcode_evals(
     Returns:
         Dict mapping "instance_id:attempt_N" to bool pass/fail.
     """
-    import pandas as pd
-
     xcode_config = load_xcode_config(dataset_tasks_dir, dataset_id=dataset_id)
     cache = XcodeBuildCache()
 
     instance_map = {inst["instance_id"]: inst for inst in instances}
-
-    tasks_csv = dataset_tasks_dir / "tasks.csv"
-    raw_sample_df = pd.read_csv(tasks_csv).fillna("").set_index("instance_id", drop=False)
 
     if max_workers is None:
         cpu_count = os.cpu_count() or 4
@@ -261,9 +202,6 @@ def run_xcode_evals(
             if not inst:
                 continue
 
-            run_script = dataset_tasks_dir / "run_scripts" / iid / "run_script.sh"
-            parser = dataset_tasks_dir / "run_scripts" / iid / "parser.py"
-
             future = pool.submit(
                 eval_single_patch,
                 patch=patch_sample.get("patch", patch_sample.get("model_patch", "")),
@@ -276,8 +214,6 @@ def run_xcode_evals(
                 eval_id=eval_id,
                 attempt=attempt,
                 compile_only=compile_only,
-                run_script_path=run_script,
-                parser_path=parser,
             )
             future_to_patch[future] = patch_sample
 
@@ -297,15 +233,9 @@ def run_xcode_evals(
             if output is None:
                 eval_results[result_key] = False
             else:
-                if iid in raw_sample_df.index:
-                    raw_sample = raw_sample_df.loc[iid]
-                    passed_tests = {t["name"] for t in output.get("tests", []) if t["status"] == "PASSED"}
-                    f2p = set(eval(raw_sample["fail_to_pass"])) if raw_sample["fail_to_pass"] else set()
-                    p2p = set(eval(raw_sample["pass_to_pass"])) if raw_sample["pass_to_pass"] else set()
-                    result = (f2p | p2p) <= passed_tests
-                    eval_results[result_key] = result
-                else:
-                    eval_results[result_key] = False
+                tests = output.get("tests", [])
+                failed = [t for t in tests if t["status"] == "FAILED"]
+                eval_results[result_key] = len(tests) > 0 and len(failed) == 0
 
                 if attempt is not None:
                     task_results_dir = output_dir / iid / f"attempt_{attempt}" / "eval_results"

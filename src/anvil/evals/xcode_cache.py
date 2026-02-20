@@ -145,6 +145,25 @@ class XcodeBuildCache:
             shutil.rmtree(target_dir, ignore_errors=True)
 
 
+def _resolve_project_args(xcode_config: dict, work_dir: Path) -> list[str]:
+    """Resolve -workspace/-project args, preferring workspace when it exists."""
+    workspace = xcode_config.get("workspace", "")
+    project = xcode_config.get("project", "")
+
+    workspace_path = work_dir / workspace if workspace else None
+    project_path = work_dir / project if project else None
+
+    if workspace_path and workspace_path.exists():
+        return ["-workspace", str(workspace_path)]
+    elif project_path and project_path.exists():
+        return ["-project", str(project_path)]
+    elif workspace:
+        return ["-workspace", str(workspace_path)]
+    elif project:
+        return ["-project", str(project_path)]
+    return []
+
+
 def _build_xcodebuild_cmd(
     xcode_config: dict,
     work_dir: Path,
@@ -152,13 +171,7 @@ def _build_xcodebuild_cmd(
     clean: bool = False,
     compile_only: bool = False,
 ) -> list[str]:
-    """Build the xcodebuild command from config.
-
-    If both workspace and project are specified, prefers the workspace when it
-    exists at the worktree path, otherwise falls back to the project.
-    """
-    project = xcode_config.get("project", "")
-    workspace = xcode_config.get("workspace", "")
+    """Build the xcodebuild compile command from config."""
     scheme = xcode_config["scheme"]
     destination = xcode_config.get(
         "destination",
@@ -166,23 +179,11 @@ def _build_xcodebuild_cmd(
     )
 
     cmd = ["xcodebuild"]
-
     if clean:
         cmd.append("clean")
     cmd.append("build")
 
-    workspace_path = work_dir / workspace if workspace else None
-    project_path = work_dir / project if project else None
-
-    if workspace_path and workspace_path.exists():
-        cmd.extend(["-workspace", str(workspace_path)])
-    elif project_path and project_path.exists():
-        cmd.extend(["-project", str(project_path)])
-    elif workspace:
-        cmd.extend(["-workspace", str(workspace_path)])
-    elif project:
-        cmd.extend(["-project", str(project_path)])
-
+    cmd.extend(_resolve_project_args(xcode_config, work_dir))
     cmd.extend([
         "-scheme", scheme,
         "-destination", destination,
@@ -194,9 +195,49 @@ def _build_xcodebuild_cmd(
     ])
 
     if compile_only:
-        cmd.extend([
-            "COMPILER_INDEX_STORE_ENABLE=NO",
-        ])
+        cmd.append("COMPILER_INDEX_STORE_ENABLE=NO")
+
+    return cmd
+
+
+def _build_xcodebuild_test_cmd(
+    xcode_config: dict,
+    work_dir: Path,
+    derived_data_dir: Path,
+    test_only: list[str] | None = None,
+) -> list[str] | None:
+    """Build the xcodebuild test command. Returns None if no test config.
+
+    Args:
+        test_only: Optional list of test identifiers to run, e.g.
+            ["BackendTests/ItemsTests", "BackendTests/CrittersTests/testFishDecoding"]
+            Uses xcodebuild's -only-testing: flag.
+    """
+    test_scheme = xcode_config.get("test_scheme", "")
+    if not test_scheme:
+        return None
+
+    test_destination = xcode_config.get(
+        "test_destination",
+        xcode_config.get("destination", ""),
+    )
+    if not test_destination or "generic/" in test_destination:
+        return None
+
+    cmd = ["xcodebuild", "test"]
+    cmd.extend(_resolve_project_args(xcode_config, work_dir))
+    cmd.extend([
+        "-scheme", test_scheme,
+        "-destination", test_destination,
+        "-derivedDataPath", str(derived_data_dir),
+        "ONLY_ACTIVE_ARCH=YES",
+        "CODE_SIGNING_ALLOWED=NO",
+        "CODE_SIGN_IDENTITY=",
+    ])
+
+    only = test_only or xcode_config.get("test_only", [])
+    for target in only:
+        cmd.extend(["-only-testing:" + target])
 
     return cmd
 
