@@ -40,9 +40,9 @@ Animal Crossing Helper: https://github.com/Dimillian/ACHNBrowserUI
 
 ### Per-task evaluation tests
 
-Task-specific unit tests live in `tasks/ACHNBrowserUI/task-X/tests/`. During
+Task-specific unit tests live in `tasks/ACHNBrowserUI/task-N/tests.swift`. During
 evaluation they are copied into the BackendTests SPM test target and run via
-`xcodebuild test -scheme BackendTests`.
+`xcodebuild test -scheme Backend`.
 
 | Task | Tests | What they validate |
 |------|-------|--------------------|
@@ -56,24 +56,24 @@ evaluation they are copied into the BackendTests SPM test target and run via
 ```bash
 source .venv/bin/activate
 
-# Step 1: (Run only once) Warm Xcode build cache (~5 min per unique base commit)
-anvil warm-xcode-cache --dataset datasets/ACHNBrowserUI
-
-# Step 2: Convert dataset (reads tasks/, writes to datasets/)
+# Step 1: Convert dataset (reads tasks/, writes to datasets/)
 anvil convert-dataset --dataset tasks/ACHNBrowserUI
 
+# Step 2: (Run only once) Warm Xcode build cache (~5 min per unique base commit)
+anvil warm-xcode-cache --dataset datasets/ACHNBrowserUI
+
 # Step 3: Verify gold patches compile and pass unit tests
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent oracle --eval-backend xcode
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent oracle
 
 # Step 4: Publish Docker images (required for LLM agent runs — agents run in Modal)
 anvil publish-images --dataset datasets/ACHNBrowserUI
 
 # Step 5: Run against models (agent rollout via Modal, eval via local Xcode)
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --eval-backend xcode --n-attempts 4
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --n-attempts 4
 
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --eval-backend xcode --n-attempts 4
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --n-attempts 4
 
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --eval-backend xcode --n-attempts 4
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --n-attempts 4
 
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --eval-backend xcode --n-attempts 4
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --n-attempts 4
 ```

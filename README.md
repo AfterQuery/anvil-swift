@@ -13,7 +13,14 @@ source .venv/bin/activate
 uv sync
 ```
 
-**2. Configure environment**
+**2. Install Xcode prerequisites**
+
+```bash
+xcode-select --install
+xcodebuild -downloadPlatform iOS
+```
+
+**3. Configure environment**
 
 Copy `.env.example` to `.env` and fill in:
 
@@ -21,16 +28,16 @@ Copy `.env.example` to `.env` and fill in:
 - `REGISTRY_USERNAME` - your Docker Hub username
 - `REGISTRY_PASSWORD` - a Docker Hub [access token](https://hub.docker.com/settings/security)
 
-**3. Authenticate services**
+**4. Authenticate services**
 
 Make sure Docker is running locally, then:
 
 ```bash
-modal setup          # Modal account for sandboxed execution
+modal setup          # Modal account for sandboxed agent execution
 docker login         # Docker Hub for image pulls
 ```
 
-**4. Create a private Docker Hub repository**
+**5. Create a private Docker Hub repository**
 
 Go to [hub.docker.com](https://hub.docker.com) and create a new **private** repository (e.g., `anvil-images`).
 
@@ -52,48 +59,7 @@ Modal sandboxes pull images from Docker Hub, so task images need to be pushed th
 
 To remove local anvil images: `docker rmi $(docker images $(grep REGISTRY_USERNAME .env | cut -d= -f2)/anvil-images -q) --force`
 
-### Run evaluations
-
-Run an agent on all tasks and evaluate the patches:
-
-```bash
-anvil run-evals \
-  --model openrouter/google/gemini-2.5-flash \
-  --dataset datasets/file-utilization \
-  --agent mini-swe-agent \
-  --n-attempts 3
-```
-
-Use `--n-attempts` to control how many runs per task (useful for pass@k metrics). Results are saved to `<dataset>/runs/<agent>_<model>/`.
-
-> 💡 **Progress is saved automatically** to minimize costs. If you re-run the same command, completed tasks are skipped—nothing runs on Modal for those tasks. Use `--no-continue` to start fresh.
-
-### Oracle Agent
-
-Use the `oracle` agent to validate your task harnesses before running LLM agents:
-
-```bash
-# Oracle: applies gold patches - all tests should PASS
-anvil run-evals \
-  --dataset datasets/my-dataset \
-  --agent oracle
-```
-
-The oracle agent skips LLM rollouts and applies gold patches from `gold_patches.json` directly. All tests should pass if your harness is correct.
-
-**Prerequisites**: Requires Modal and Docker Hub setup (see [Setup](#setup)).
-
-### Local Xcode evaluation (macOS)
-
-Instead of running evals in Docker containers via Modal, you can compile and test patches locally with Xcode. This is faster for iOS/Swift datasets and doesn't require Docker Hub or Modal.
-
-**Prerequisites**
-
-- macOS with Xcode installed (`xcode-select --install` if needed)
-- iOS platform component downloaded: `xcodebuild -downloadPlatform iOS`
-- Source repos cloned into `repos/` (e.g. `repos/ACHNBrowserUI/`)
-
-**Step 1: Warm the build cache (one-time)**
+### Warm the build cache (one-time)
 
 Pre-builds every base commit so subsequent evals only do fast incremental builds:
 
@@ -101,26 +67,33 @@ Pre-builds every base commit so subsequent evals only do fast incremental builds
 anvil warm-xcode-cache --dataset datasets/ACHNBrowserUI
 ```
 
-Cached DerivedData is stored in `~/.anvil/xcode-cache/`. This takes a few minutes per unique base commit but only needs to run once.
+Cached DerivedData is stored in `.xcode-cache/` in the project root. This takes a few minutes per unique base commit but only needs to run once.
 
-**Step 2: Run evals with the Xcode backend**
+### Run evaluations
+
+Run an agent on all tasks and evaluate the patches:
 
 ```bash
-# Compile-only check (fastest — just verifies the patch compiles)
-anvil run-evals \
-  --dataset datasets/ACHNBrowserUI \
-  --agent oracle \
-  --eval-backend xcode \
-  --compile-only
-
-# Full eval (compile + existing pytest structural tests)
 anvil run-evals \
   --dataset datasets/ACHNBrowserUI \
   --model openrouter/anthropic/claude-sonnet-4.5 \
   --agent mini-swe-agent \
-  --eval-backend xcode \
   --n-attempts 4
 ```
+
+Use `--n-attempts` to control how many runs per task (useful for pass@k metrics). Results are saved to `<dataset>/runs/<agent>_<model>/`.
+
+> 💡 **Progress is saved automatically** to minimize costs. If you re-run the same command, completed tasks are skipped. Use `--no-continue` to start fresh.
+
+### Oracle Agent
+
+Use the `oracle` agent to validate your task harnesses before running LLM agents:
+
+```bash
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent oracle
+```
+
+The oracle agent skips LLM rollouts and applies gold patches from `gold_patches.json` directly. All tests should pass if your harness is correct.
 
 Each dataset needs a `xcode_config.yaml` in its source tasks directory (e.g. `tasks/ACHNBrowserUI/xcode_config.yaml`) specifying the Xcode project/workspace, scheme, and build destination.
 
@@ -130,15 +103,15 @@ Each dataset needs a `xcode_config.yaml` in its source tasks directory (e.g. `ta
 | ---------------------- | ----------------------- | --------------------------------------------------- |
 | `--model`              | —                       | Model ID (required for agents, optional for oracle) |
 | `--dataset`            | —                       | Dataset ID or path                                  |
-| `--dockerhub-username` | `REGISTRY_USERNAME` env | Docker Hub username                                 |
-| `--dockerhub-repo`     | `anvil-images`          | Docker Hub repo name                                |
 | `--agent`              | mini-swe-agent          | Agent to use (`mini-swe-agent` or `oracle`)         |
 | `--n-attempts`         | 1                       | Attempts per task (for pass@k)                      |
-| `--max-parallel`       | 30                      | Concurrent agent runs                               |
+| `--compile-only`       | false                   | Only check compilation, skip unit tests             |
 | `--no-continue`        | false                   | Start fresh, ignore previous results                |
+| `--max-parallel`       | 30                      | Concurrent agent runs                               |
 | `--max-wait`           | auto                    | Minutes to wait for Modal rate limits               |
-| `--eval-backend`       | `modal`                 | `modal` (Docker/Modal) or `xcode` (local macOS)    |
-| `--compile-only`       | false                   | Xcode backend: only check compilation, skip tests   |
+| `--eval-backend`       | `xcode`                 | `xcode` (local macOS) or `modal` (Docker/Modal)    |
+| `--dockerhub-username` | `REGISTRY_USERNAME` env | Docker Hub username (modal backend)                 |
+| `--dockerhub-repo`     | `anvil-images`          | Docker Hub repo name (modal backend)                |
 
 ## Creating Custom Tasks
 
@@ -271,9 +244,8 @@ See **[docs/TASK_CREATION_GUIDE.md](docs/TASK_CREATION_GUIDE.md)** for the compl
 
 ## How it works
 
-1. **Agent phase**: Each task runs in a Modal sandbox using the pre-built Docker image. The agent (mini-swe-agent) receives the problem statement and generates a patch.
+1. **Agent phase**: Each task runs in a Modal sandbox using a pre-built Docker image. The agent (mini-swe-agent) receives the problem statement and generates a patch.
 
-2. **Eval phase**: Patches are applied and test harnesses run inside containers. Results are aggregated into pass/fail per task.
+2. **Eval phase**: Patches are applied to a local worktree with cached DerivedData. `xcodebuild` compiles the patched project and runs per-task unit tests. Results are aggregated into pass/fail per task.
 
 3. **Output**: Trajectories, patches, stdout/stderr, and eval results are saved per-task. A summary with pass@k metrics is printed at the end.
-```

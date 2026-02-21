@@ -15,9 +15,6 @@ def warm_xcode_cache(
     dataset: str = typer.Option(..., "--dataset", "-d", help="Dataset ID or path"),
 ) -> None:
     """Pre-build all base commits for a dataset and cache DerivedData.
-
-    This is a one-time setup step. Subsequent evals with --eval-backend xcode
-    will use the cached builds for fast incremental compilation.
     """
     dataset_tasks_dir = tasks_dir(dataset)
     src_tasks_dir = source_tasks_dir(dataset)

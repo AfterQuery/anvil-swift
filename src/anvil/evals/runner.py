@@ -149,7 +149,7 @@ def run_evaluation(
     max_wait_minutes: int | None = None,
     max_parallel: int = 30,
     no_continue: bool = False,
-    eval_backend: str = "modal",
+    eval_backend: str = "xcode",
     compile_only: bool = False,
 ) -> int:
     """Run full evaluation with an agent on a dataset."""

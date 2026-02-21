@@ -54,12 +54,12 @@ def run_evals(
         "", "--dockerhub-repo", help="DockerHub repo name"
     ),
     eval_backend: Annotated[
-        Literal["modal", "xcode"],
+        Literal["xcode", "modal"],
         typer.Option(
             "--eval-backend",
-            help="Evaluation backend: 'modal' (Linux Docker via Modal) or 'xcode' (local macOS xcodebuild)",
+            help="Evaluation backend: 'xcode' (local macOS xcodebuild) or 'modal' (Linux Docker via Modal)",
         ),
-    ] = "modal",
+    ] = "xcode",
     compile_only: Annotated[
         bool,
         typer.Option(

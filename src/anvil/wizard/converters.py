@@ -589,9 +589,9 @@ def convert_dataset(
     typer.echo("\nNext steps:")
     if has_xcode_config:
         typer.echo(f"  1. Warm cache:      anvil warm-xcode-cache --dataset {ds_path}")
-        typer.echo(f"  2. Oracle eval:     anvil run-evals --dataset {ds_path} --agent oracle --eval-backend xcode --compile-only")
+        typer.echo(f"  2. Oracle eval:     anvil run-evals --dataset {ds_path} --agent oracle --compile-only")
         typer.echo(f"  3. Publish images:  anvil publish-images --dataset {ds_path}")
-        typer.echo(f"  4. Agent eval:      anvil run-evals --dataset {ds_path} --agent mini-swe-agent --model <model> --eval-backend xcode --compile-only")
+        typer.echo(f"  4. Agent eval:      anvil run-evals --dataset {ds_path} --agent mini-swe-agent --model <model> --compile-only")
     else:
         typer.echo(f"  1. Publish images:  anvil publish-images --dataset {ds_path}")
         typer.echo(f"  2. Run evaluation:  anvil run-evals --dataset {ds_path} --agent oracle")
