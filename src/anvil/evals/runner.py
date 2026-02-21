@@ -15,7 +15,6 @@ import time
 from pathlib import Path
 
 import typer
-from ruamel.yaml import YAML
 
 from ..agents.harness import (
     AGENT_CONFIGS,

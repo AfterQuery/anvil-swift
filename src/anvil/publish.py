@@ -6,7 +6,6 @@ import json
 import os
 import re
 import subprocess
-import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass

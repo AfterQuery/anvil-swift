@@ -31,7 +31,6 @@ import typer
 import yaml
 
 from .models import Task, TestSpec
-from .templates import PARSER_PY
 
 
 def _parse_instance_info(instance_info_path: Path) -> dict:
