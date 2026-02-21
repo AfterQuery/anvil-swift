@@ -49,17 +49,17 @@ anvil warm-xcode-cache --dataset datasets/firefox-ios
 anvil convert-dataset --dataset tasks/firefox-ios
 
 # Step 3: Verify gold patches compile (no Modal/Docker needed)
-anvil run-evals --dataset datasets/firefox-ios --agent oracle --compile-only
+anvil run-evals --dataset datasets/firefox-ios --agent oracle --compile-only --no-continue
 
 # Step 4: Publish Docker images (required for LLM agent runs — agents run in Modal)
 anvil publish-images --dataset datasets/firefox-ios
 
 # Step 5: Run against models (agent rollout via Modal, eval via local Xcode)
-anvil run-evals --dataset datasets/firefox-ios --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --n-attempts 4
+anvil run-evals --dataset datasets/firefox-ios --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --n-attempts 4 --no-continue
 
-anvil run-evals --dataset datasets/firefox-ios --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --n-attempts 4
+anvil run-evals --dataset datasets/firefox-ios --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --n-attempts 4 --no-continue
 
-anvil run-evals --dataset datasets/firefox-ios --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --n-attempts 4
+anvil run-evals --dataset datasets/firefox-ios --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --n-attempts 4 --no-continue
 
-anvil run-evals --dataset datasets/firefox-ios --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --n-attempts 4
+anvil run-evals --dataset datasets/firefox-ios --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --n-attempts 4 --no-continue
 ```
