@@ -67,14 +67,9 @@ def warm_xcode_cache(
             typer.echo(f"  Skipping {repo_name}@{base_commit[:8]}: repo not found at {repo_path}", err=True)
             continue
 
-        if cache.is_warm(repo_name, base_commit):
-            typer.echo(f"  {repo_name}@{base_commit[:8]}: already cached")
-            continue
-
-        typer.echo(f"  {repo_name}@{base_commit[:8]}: building...")
         try:
             cache.warm(repo_path, repo_name, base_commit, xcode_config)
-            typer.echo(f"  {repo_name}@{base_commit[:8]}: cached successfully")
+            typer.echo(f"  {repo_name}@{base_commit[:8]}: cached")
         except Exception as e:
             typer.echo(f"  {repo_name}@{base_commit[:8]}: FAILED - {e}", err=True)
 
