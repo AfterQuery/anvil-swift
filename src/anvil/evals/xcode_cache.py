@@ -4,13 +4,34 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import typer
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CACHE_ROOT = Path.home() / ".anvil" / "xcode-cache"
+
+def _apfs_clone(src: Path, dst: Path) -> None:
+    """Copy a directory tree using APFS clonefile (instant COW on macOS).
+
+    Falls back to :func:`shutil.copytree` on non-macOS or non-APFS volumes.
+    """
+    if sys.platform == "darwin":
+        result = subprocess.run(
+            ["cp", "-c", "-r", "-p", str(src), str(dst)],
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            return
+        if dst.exists():
+            shutil.rmtree(dst, ignore_errors=True)
+        logger.debug("cp -c failed, falling back to shutil.copytree: %s", result.stderr)
+    shutil.copytree(str(src), str(dst), symlinks=True)
+
+def _default_cache_root() -> Path:
+    from ..config import repo_root
+    return repo_root() / ".xcode-cache"
 
 
 def resolve_test_package_path(xcode_config: dict, work_dir: Path) -> str:
@@ -33,8 +54,8 @@ def resolve_test_package_path(xcode_config: dict, work_dir: Path) -> str:
 class XcodeBuildCache:
     """Manages pre-built DerivedData caches per (repo, base_commit) pair."""
 
-    def __init__(self, cache_root: Path = DEFAULT_CACHE_ROOT):
-        self.cache_root = cache_root
+    def __init__(self, cache_root: Path | None = None):
+        self.cache_root = cache_root or _default_cache_root()
         self.cache_root.mkdir(parents=True, exist_ok=True)
 
     def _repo_cache_dir(self, repo_name: str) -> Path:
@@ -49,6 +70,9 @@ class XcodeBuildCache:
 
     def _derived_data_dir(self, repo_name: str, base_commit: str) -> Path:
         return self._commit_cache_dir(repo_name, base_commit) / "DerivedData"
+
+    def _test_derived_data_dir(self, repo_name: str, base_commit: str) -> Path:
+        return self._commit_cache_dir(repo_name, base_commit) / "DerivedData-tests"
 
     def is_warm(self, repo_name: str, base_commit: str) -> bool:
         dd = self._derived_data_dir(repo_name, base_commit)
@@ -111,6 +135,8 @@ class XcodeBuildCache:
             shutil.rmtree(dd_dir, ignore_errors=True)
             raise RuntimeError(f"xcodebuild failed for {repo_name}@{base_commit[:8]}")
 
+        self._warm_test_dd(xcode_config, work_dir, repo_name, base_commit)
+
         _run_cmd(["git", "-C", str(clone_dir), "worktree", "remove", "--force", str(work_dir)],
                  check=False)
         if work_dir.exists():
@@ -118,6 +144,64 @@ class XcodeBuildCache:
 
         typer.echo(f"  Cached DerivedData for {repo_name}@{base_commit[:8]}")
         return dd_dir
+
+    def _warm_test_dd(
+        self,
+        xcode_config: dict,
+        work_dir: Path,
+        repo_name: str,
+        base_commit: str,
+    ) -> None:
+        """Pre-build the SPM test scheme so eval runs skip dependency resolution."""
+        test_scheme = xcode_config.get("test_scheme", "")
+        if not test_scheme:
+            return
+
+        test_dd_dir = self._test_derived_data_dir(repo_name, base_commit)
+        if test_dd_dir.exists() and any(test_dd_dir.iterdir()):
+            return
+
+        resolved_pkg = resolve_test_package_path(xcode_config, work_dir)
+        if not resolved_pkg:
+            return
+
+        test_files_dest = xcode_config.get("test_files_dest", "")
+        if not test_files_dest:
+            return
+
+        dummy_dir = work_dir / resolved_pkg / test_files_dest
+        dummy_dir.mkdir(parents=True, exist_ok=True)
+        dummy_file = dummy_dir / "_anvil_warmup.swift"
+        dummy_file.write_text(
+            "import XCTest\nclass AnvilWarmupTests: XCTestCase {}\n"
+        )
+
+        test_dd_dir.mkdir(parents=True, exist_ok=True)
+        test_cmd_info = _build_xcodebuild_test_cmd(xcode_config, work_dir, test_dd_dir)
+        if not test_cmd_info:
+            dummy_file.unlink(missing_ok=True)
+            return
+
+        test_cmd, test_cwd = test_cmd_info
+        test_cmd = ["build-for-testing" if c == "test" else c for c in test_cmd]
+
+        typer.echo(f"  Warming test DerivedData for {repo_name}@{base_commit[:8]}...")
+        result = subprocess.run(
+            test_cmd,
+            cwd=str(test_cwd),
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        dummy_file.unlink(missing_ok=True)
+
+        if result.returncode != 0:
+            error_lines = [
+                ln for ln in result.stderr.splitlines() if "error:" in ln.lower()
+            ]
+            summary = "\n".join(error_lines[:5]) if error_lines else result.stderr[-300:]
+            typer.echo(f"  Test warm failed (non-fatal): {summary}", err=True)
+            shutil.rmtree(test_dd_dir, ignore_errors=True)
 
     def checkout(
         self,
@@ -146,7 +230,12 @@ class XcodeBuildCache:
         dd_src = self._derived_data_dir(repo_name, base_commit)
         dd_dst = target_dir / "DerivedData"
         if dd_src.exists() and any(dd_src.iterdir()):
-            shutil.copytree(str(dd_src), str(dd_dst), symlinks=True)
+            _apfs_clone(dd_src, dd_dst)
+
+        test_dd_src = self._test_derived_data_dir(repo_name, base_commit)
+        test_dd_dst = target_dir / "DerivedData-tests"
+        if test_dd_src.exists() and any(test_dd_src.iterdir()):
+            _apfs_clone(test_dd_src, test_dd_dst)
 
         return target_dir
 
