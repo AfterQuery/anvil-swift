@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -224,10 +225,12 @@ def eval_single_patch(
         return None
     finally:
         if worktree_dir and worktree_dir.exists():
-            try:
-                cache.cleanup(repo_name, worktree_dir)
-            except Exception:
-                pass
+            def _bg_cleanup(c=cache, r=repo_name, d=worktree_dir):
+                try:
+                    c.cleanup(r, d)
+                except Exception:
+                    pass
+            threading.Thread(target=_bg_cleanup, daemon=True).start()
 
 
 def _save_eval_output(
