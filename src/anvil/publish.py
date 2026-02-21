@@ -53,6 +53,10 @@ def _discover_build_tasks(tasks_dir: Path) -> tuple[list[BuildTask], list[BuildT
     """Find Docker images to build.
 
     Returns (base_tasks, instance_tasks) - base images must be built first.
+
+    For base images, if a local clone exists at ``repos/<project>/``, it is
+    used as the Docker build context instead of the (usually empty) creation
+    directory.  This avoids ``git clone`` from GitHub during the build.
     """
     creation_dir = tasks_dir / "dockerfiles" / "docker_image_creation"
     instance_df_dir = tasks_dir / "dockerfiles" / "instance_dockerfile"
@@ -61,12 +65,16 @@ def _discover_build_tasks(tasks_dir: Path) -> tuple[list[BuildTask], list[BuildT
         return [], []
 
     contexts = {d.name: d for d in creation_dir.iterdir() if d.is_dir()}
+    repos_dir = Path("repos")
 
     # Base images: built from docker_image_creation/<project>/Dockerfile
     base_tasks = []
     for name, context in sorted(contexts.items()):
         dockerfile = context / "Dockerfile"
         if dockerfile.exists():
+            local_repo = repos_dir / name
+            if (local_repo / ".git").is_dir():
+                context = local_repo
             base_tasks.append(BuildTask(name=f"{name}.base", dockerfile=dockerfile, context=context))
 
     # Instance images: built from instance_dockerfile/<project>.<task>/Dockerfile
@@ -79,17 +87,34 @@ def _discover_build_tasks(tasks_dir: Path) -> tuple[list[BuildTask], list[BuildT
             project = task_dir.name.partition(".")[0]
             context = contexts.get(project)
             if context:
+                local_repo = repos_dir / project
+                if (local_repo / ".git").is_dir():
+                    context = local_repo
                 instance_tasks.append(BuildTask(name=task_dir.name, dockerfile=dockerfile, context=context))
 
     return base_tasks, instance_tasks
 
 
-def _patch_dockerfile_if_needed(dockerfile: Path, username: str, repo: str) -> str:
-    """Return Dockerfile content with COPY . . inserted after FROM if missing."""
+def _patch_dockerfile_if_needed(dockerfile: Path, username: str, repo: str, context: Path | None = None) -> str:
+    """Return Dockerfile content with COPY . . inserted after FROM if missing.
+
+    When *context* points to a local repo clone, ``RUN git clone …`` lines are
+    replaced with ``COPY . <dest>`` so the build uses the local checkout
+    instead of fetching from GitHub.
+    """
     content = dockerfile.read_text()
 
     # Rewrite FROM to use user's repo
     content = re.sub(r"^(FROM\s+)\S+/\S+:", rf"\1{username}/{repo}:", content, count=1, flags=re.MULTILINE)
+
+    # Replace `RUN git clone <url> <dest>` with COPY from local context.
+    if context and (context / ".git").is_dir():
+        content = re.sub(
+            r"^RUN\s+git\s+clone\s+\S+\s+(/\S+)\s*$",
+            r"COPY . \1",
+            content,
+            flags=re.MULTILINE,
+        )
 
     if re.search(r"(?:COPY|ADD)\s+\.\s", content):
         return content
@@ -131,7 +156,7 @@ def _push_with_retry(tag: str, max_retries: int = 3) -> tuple[bool, str]:
 def _build_and_push(task: BuildTask, username: str, repo: str, platform: str) -> tuple[str | None, str | None]:
     """Build and push a Docker image. Returns (tag, None) on success, (None, error) on failure."""
     tag = task.tag(username, repo)
-    patched_content = _patch_dockerfile_if_needed(task.dockerfile, username, repo)
+    patched_content = _patch_dockerfile_if_needed(task.dockerfile, username, repo, context=task.context)
 
     build_cmd = [
         "docker", "build",

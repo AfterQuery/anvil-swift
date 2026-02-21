@@ -373,7 +373,6 @@ def run_evaluation(
                 dataset_tasks_dir=dataset_tasks_dir,
                 output_dir=base_out,
                 eval_id=eval_id,
-                max_workers=min(len(all_patches), max_parallel),
                 compile_only=compile_only,
                 dataset_id=dataset_id,
             )

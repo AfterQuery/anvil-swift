@@ -30,18 +30,31 @@ Animal Crossing Helper: https://github.com/Dimillian/ACHNBrowserUI
 - Patch Commit: 0bfd982
 - Base Commit: 89ac53bfe6d0769411f4005060e8974fa8fd35d4
 
-## Existing Unit Tests
+## Unit Tests
+
+### Existing repo tests (BackendTests)
 
 - `Packages/Backend/Tests/BackendTests/ItemsTests.swift` — JSON decoding for ItemResponse
 - `Packages/Backend/Tests/BackendTests/CrittersTests.swift` — critter/fish decoding, active months, categories
 - `Packages/Backend/Tests/BackendTests/CollectionTest.swift` — UserCollection toggle functionality
-- `Packages/UI/Tests/UITests/UITests.swift` — placeholder
 
-Test targets configured in Package.swift: `BackendTests`, `UITests`
+### Per-task evaluation tests
+
+Task-specific unit tests live in `tasks/ACHNBrowserUI/task-X/tests/`. During
+evaluation they are copied into the BackendTests SPM test target and run via
+`xcodebuild test -scheme BackendTests`.
+
+| Task | Tests | What they validate |
+|------|-------|--------------------|
+| task-1 | `AnvilTask1Tests.swift` | `isActiveThisMonth()`, `isActiveAtThisHour()`, `filterActiveThisMonth()`, `formattedTimes()` |
+| task-2 | *(compile-only)* | App-layer changes (GridStack, TurnipsView) — no Backend code modified |
+| task-3 | `AnvilTask3Tests.swift` | `hasSomeVariations`, `VariantsCompletionStatus`, `completionStatus(for:)`, variant toggle auto-manages parent |
+| task-4 | *(compile-only)* | App-layer changes (VillagersSortView, VillagersViewModel) — no Backend code modified |
 
 ## Commands
 
 ```bash
+source .venv/bin/activate
 
 # Step 1: (Run only once) Warm Xcode build cache (~5 min per unique base commit)
 anvil warm-xcode-cache --dataset datasets/ACHNBrowserUI
@@ -49,8 +62,8 @@ anvil warm-xcode-cache --dataset datasets/ACHNBrowserUI
 # Step 2: Convert dataset (reads tasks/, writes to datasets/)
 anvil convert-dataset --dataset tasks/ACHNBrowserUI
 
-# Step 3: Verify gold patches compile (no Modal/Docker needed)
-anvil run-evals --dataset datasets/ACHNBrowserUI --agent oracle --eval-backend xcode --compile-only
+# Step 3: Verify gold patches compile and pass unit tests
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent oracle --eval-backend xcode
 
 # Step 4: Publish Docker images (required for LLM agent runs — agents run in Modal)
 anvil publish-images --dataset datasets/ACHNBrowserUI

@@ -13,6 +13,23 @@ logger = logging.getLogger(__name__)
 DEFAULT_CACHE_ROOT = Path.home() / ".anvil" / "xcode-cache"
 
 
+def resolve_test_package_path(xcode_config: dict, work_dir: Path) -> str:
+    """Resolve ``test_package_path`` to the first candidate that exists.
+
+    ``test_package_path`` may be a single string or a list of candidate paths.
+    Returns the first path where ``Package.swift`` exists under *work_dir*,
+    or an empty string if none match.
+    """
+    raw = xcode_config.get("test_package_path", "")
+    if not raw:
+        return ""
+    candidates = raw if isinstance(raw, list) else [raw]
+    for candidate in candidates:
+        if (work_dir / candidate / "Package.swift").exists():
+            return candidate
+    return ""
+
+
 class XcodeBuildCache:
     """Manages pre-built DerivedData caches per (repo, base_commit) pair."""
 
@@ -205,8 +222,15 @@ def _build_xcodebuild_test_cmd(
     work_dir: Path,
     derived_data_dir: Path,
     test_only: list[str] | None = None,
-) -> list[str] | None:
-    """Build the xcodebuild test command. Returns None if no test config.
+) -> tuple[list[str], Path] | None:
+    """Build the xcodebuild test command.
+
+    Returns (cmd, cwd) or None if no test config.
+
+    When ``test_package_path`` is set in the config, the test command targets
+    the standalone SPM package (no -project/-workspace flags) and ``cwd`` is
+    set to the package directory.  Otherwise the main project is used and
+    ``cwd`` is the worktree root.
 
     Args:
         test_only: Optional list of test identifiers to run, e.g.
@@ -224,8 +248,22 @@ def _build_xcodebuild_test_cmd(
     if not test_destination or "generic/" in test_destination:
         return None
 
+    test_package_path = resolve_test_package_path(xcode_config, work_dir)
+
     cmd = ["xcodebuild", "test"]
-    cmd.extend(_resolve_project_args(xcode_config, work_dir))
+
+    if test_package_path:
+        cwd = work_dir / test_package_path
+    elif xcode_config.get("test_package_path"):
+        logger.warning(
+            "No test_package_path candidate has Package.swift at %s — skipping tests",
+            work_dir,
+        )
+        return None
+    else:
+        cwd = work_dir
+        cmd.extend(_resolve_project_args(xcode_config, work_dir))
+
     cmd.extend([
         "-scheme", test_scheme,
         "-destination", test_destination,
@@ -239,7 +277,7 @@ def _build_xcodebuild_test_cmd(
     for target in only:
         cmd.extend(["-only-testing:" + target])
 
-    return cmd
+    return cmd, cwd
 
 
 def _run_cmd(cmd: list[str], check: bool = True, **kwargs) -> subprocess.CompletedProcess:
