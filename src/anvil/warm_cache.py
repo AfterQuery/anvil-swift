@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
 import typer
@@ -14,8 +16,7 @@ from .evals.xcode_cache import XcodeBuildCache, load_xcode_config
 def warm_xcode_cache(
     dataset: str = typer.Option(..., "--dataset", "-d", help="Dataset ID or path"),
 ) -> None:
-    """Pre-build all base commits for a dataset and cache DerivedData.
-    """
+    """Pre-build all base commits for a dataset and cache DerivedData."""
     dataset_tasks_dir = tasks_dir(dataset)
     src_tasks_dir = source_tasks_dir(dataset)
 
@@ -55,25 +56,22 @@ def warm_xcode_cache(
 
     cache = XcodeBuildCache()
 
-    import shutil
-    import subprocess
-
+    pruned_repos: set[str] = set()
     for key in seen_commits:
         repo_name, base_commit = key.split(":", 1)
         commit_dir = cache._commit_cache_dir(repo_name, base_commit)
         if commit_dir.exists():
             shutil.rmtree(commit_dir)
             typer.echo(f"  Deleted cache for {repo_name}@{base_commit[:8]}")
+            pruned_repos.add(repo_name)
 
-    for key in seen_commits:
-        repo_name = key.split(":", 1)[0]
+    for repo_name in pruned_repos:
         clone_dir = cache._repo_clone_dir(repo_name)
         if clone_dir.exists():
             subprocess.run(
                 ["git", "-C", str(clone_dir), "worktree", "prune"],
                 capture_output=True,
             )
-            break
 
     repos_root = repo_root() / "repos"
     for key, example_iid in seen_commits.items():
