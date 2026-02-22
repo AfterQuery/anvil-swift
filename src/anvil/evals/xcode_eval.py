@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import multiprocessing
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -17,6 +19,60 @@ from .xcode_cache import XcodeBuildCache, _build_xcodebuild_cmd, _build_xcodebui
 from .xcode_parser import merge_test_results, parse_build_result, parse_xcodebuild_output
 
 logger = logging.getLogger(__name__)
+
+# Per-worker simulator UDID, set by _init_sim_worker in child processes.
+_worker_sim_udid: str | None = None
+
+
+def _init_sim_worker(sim_udids: list[str], counter: multiprocessing.Value) -> None:
+    """ProcessPoolExecutor initializer: assign each worker a unique simulator."""
+    global _worker_sim_udid
+    with counter.get_lock():
+        idx = counter.value
+        counter.value += 1
+    _worker_sim_udid = sim_udids[idx]
+
+
+def _parse_device_name(test_destination: str) -> str:
+    """Extract device name from a destination string like
+    ``platform=iOS Simulator,name=iPhone 17 Pro,OS=latest``."""
+    match = re.search(r"name=([^,]+)", test_destination)
+    return match.group(1).strip() if match else "iPhone 16"
+
+
+def _create_simulator_pool(n: int, test_destination: str) -> list[str]:
+    """Create *n* iOS Simulator clones for parallel test execution.
+
+    Returns a list of simulator UDIDs.
+    """
+    device_name = _parse_device_name(test_destination)
+    udids: list[str] = []
+    for i in range(n):
+        sim_name = f"anvil-eval-{i}"
+        subprocess.run(
+            ["xcrun", "simctl", "delete", sim_name],
+            capture_output=True, text=True,
+        )
+        result = subprocess.run(
+            ["xcrun", "simctl", "create", sim_name, device_name],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            logger.error("Failed to create simulator %s: %s", sim_name, result.stderr.strip())
+            raise RuntimeError(f"xcrun simctl create failed for '{sim_name}': {result.stderr.strip()}")
+        udid = result.stdout.strip()
+        udids.append(udid)
+        logger.info("Created simulator %s (%s) based on '%s'", sim_name, udid, device_name)
+    return udids
+
+
+def _destroy_simulator_pool(udids: list[str]) -> None:
+    """Delete simulators created by :func:`_create_simulator_pool`."""
+    for udid in udids:
+        subprocess.run(
+            ["xcrun", "simctl", "delete", udid],
+            capture_output=True, text=True,
+        )
 
 
 def _copy_task_tests(
@@ -184,7 +240,14 @@ def eval_single_patch(
             test_dd = dd_dir
             if resolve_test_package_path(xcode_config, worktree_dir):
                 test_dd = worktree_dir / "DerivedData-tests"
-            test_info = _build_xcodebuild_test_cmd(xcode_config, worktree_dir, test_dd)
+
+            # Override test_destination with per-worker simulator when running
+            # inside a pool with dedicated simulators (avoids boot conflicts).
+            test_xcode_config = xcode_config
+            if _worker_sim_udid:
+                test_xcode_config = {**xcode_config, "test_destination": f"platform=iOS Simulator,id={_worker_sim_udid}"}
+
+            test_info = _build_xcodebuild_test_cmd(test_xcode_config, worktree_dir, test_dd)
             if test_info:
                 test_cmd, test_cwd = test_info
                 test_result = subprocess.run(
@@ -315,63 +378,88 @@ def run_xcode_evals(
         f"compile_only={compile_only}, {n_with_tests} with unit tests)"
     )
 
-    with ProcessPoolExecutor(max_workers=max_workers) as pool:
-        future_to_patch = {}
-        for patch_sample in patches:
-            iid = patch_sample["instance_id"]
-            attempt = patch_sample.get("attempt")
-            inst = instance_map.get(iid)
-            if not inst:
-                continue
+    needs_tests = n_with_tests > 0 or not compile_only
+    test_destination = xcode_config.get(
+        "test_destination", xcode_config.get("destination", ""),
+    )
+    needs_sim_pool = (
+        needs_tests
+        and max_workers > 1
+        and test_destination
+        and "generic/" not in test_destination
+    )
 
-            future = pool.submit(
-                eval_single_patch,
-                patch=patch_sample.get("patch", patch_sample.get("model_patch", "")),
-                instance_id=iid,
-                base_commit=inst["base_commit"],
-                repo_name=inst["repo_name"],
-                xcode_config=xcode_config,
-                cache=cache,
-                output_dir=output_dir,
-                eval_id=eval_id,
-                attempt=attempt,
-                compile_only=compile_only,
-                source_tasks_dir=src_tasks,
-            )
-            future_to_patch[future] = patch_sample
+    sim_udids: list[str] = []
+    try:
+        pool_kwargs: dict = {}
+        if needs_sim_pool:
+            typer.echo(f"Creating {max_workers} simulators for parallel test execution...")
+            sim_udids = _create_simulator_pool(max_workers, test_destination)
+            sim_counter = multiprocessing.Value("i", 0)
+            pool_kwargs["initializer"] = _init_sim_worker
+            pool_kwargs["initargs"] = (sim_udids, sim_counter)
 
-        pbar = tqdm(as_completed(future_to_patch), total=len(future_to_patch), desc="Xcode evals", unit="eval")
-        for future in pbar:
-            patch_sample = future_to_patch[future]
-            iid = patch_sample["instance_id"]
-            attempt = patch_sample.get("attempt")
-            result_key = f"{iid}:attempt_{attempt}" if attempt else iid
+        with ProcessPoolExecutor(max_workers=max_workers, **pool_kwargs) as pool:
+            future_to_patch = {}
+            for patch_sample in patches:
+                iid = patch_sample["instance_id"]
+                attempt = patch_sample.get("attempt")
+                inst = instance_map.get(iid)
+                if not inst:
+                    continue
 
-            try:
-                output = future.result()
-            except Exception as e:
-                logger.error("Eval failed for %s: %s", result_key, e)
-                output = None
+                future = pool.submit(
+                    eval_single_patch,
+                    patch=patch_sample.get("patch", patch_sample.get("model_patch", "")),
+                    instance_id=iid,
+                    base_commit=inst["base_commit"],
+                    repo_name=inst["repo_name"],
+                    xcode_config=xcode_config,
+                    cache=cache,
+                    output_dir=output_dir,
+                    eval_id=eval_id,
+                    attempt=attempt,
+                    compile_only=compile_only,
+                    source_tasks_dir=src_tasks,
+                )
+                future_to_patch[future] = patch_sample
 
-            if output is None:
-                eval_results[result_key] = False
-            else:
-                tests = output.get("tests", [])
-                failed = [t for t in tests if t["status"] == "FAILED"]
-                eval_results[result_key] = len(tests) > 0 and len(failed) == 0
+            pbar = tqdm(as_completed(future_to_patch), total=len(future_to_patch), desc="Xcode evals", unit="eval")
+            for future in pbar:
+                patch_sample = future_to_patch[future]
+                iid = patch_sample["instance_id"]
+                attempt = patch_sample.get("attempt")
+                result_key = f"{iid}:attempt_{attempt}" if attempt else iid
 
-                if attempt is not None:
-                    task_results_dir = output_dir / iid / f"attempt_{attempt}" / "eval_results"
-                    task_results_dir.mkdir(parents=True, exist_ok=True)
-                    (task_results_dir / "eval_results.json").write_text(
-                        json.dumps({iid: eval_results[result_key]})
-                    )
+                try:
+                    output = future.result()
+                except Exception as e:
+                    logger.error("Eval failed for %s: %s", result_key, e)
+                    output = None
 
-            passed = sum(eval_results.values())
-            total = len(eval_results)
-            tag = f"{iid}:{attempt}" if attempt else iid
-            status = "pass" if eval_results.get(result_key) else "fail"
-            pbar.set_postfix_str(f"{passed}/{total} passed, {tag} {status}")
+                if output is None:
+                    eval_results[result_key] = False
+                else:
+                    tests = output.get("tests", [])
+                    failed = [t for t in tests if t["status"] == "FAILED"]
+                    eval_results[result_key] = len(tests) > 0 and len(failed) == 0
+
+                    if attempt is not None:
+                        task_results_dir = output_dir / iid / f"attempt_{attempt}" / "eval_results"
+                        task_results_dir.mkdir(parents=True, exist_ok=True)
+                        (task_results_dir / "eval_results.json").write_text(
+                            json.dumps({iid: eval_results[result_key]})
+                        )
+
+                passed = sum(eval_results.values())
+                total = len(eval_results)
+                tag = f"{iid}:{attempt}" if attempt else iid
+                status = "pass" if eval_results.get(result_key) else "fail"
+                pbar.set_postfix_str(f"{passed}/{total} passed, {tag} {status}")
+    finally:
+        if sim_udids:
+            typer.echo(f"Cleaning up {len(sim_udids)} eval simulators...")
+            _destroy_simulator_pool(sim_udids)
 
     (output_dir / "eval_results.json").write_text(json.dumps(eval_results))
     typer.echo(f"Xcode eval complete: {sum(eval_results.values())}/{len(eval_results)} passed")
