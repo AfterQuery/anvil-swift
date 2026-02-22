@@ -18,6 +18,7 @@ Xcode layout (problem.md + solution.diff, base commits in repo.md):
 
 from __future__ import annotations
 
+import ast
 import csv
 import io
 import os
@@ -83,7 +84,7 @@ def load_task_from_directory(task_dir: Path) -> Task | None:
     pass_str = instance_info.get("pass_to_pass", "[]")
 
     try:
-        fail_to_pass = eval(fail_str) if fail_str else []
+        fail_to_pass = ast.literal_eval(fail_str) if fail_str else []
     except Exception as e:
         import sys
 
@@ -94,7 +95,7 @@ def load_task_from_directory(task_dir: Path) -> Task | None:
         fail_to_pass = []
 
     try:
-        pass_to_pass = eval(pass_str) if pass_str else []
+        pass_to_pass = ast.literal_eval(pass_str) if pass_str else []
     except Exception as e:
         import sys
 
