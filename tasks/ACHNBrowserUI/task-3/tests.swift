@@ -51,6 +51,12 @@ final class AnvilTask3F2PTests: XCTestCase {
                         "Item with 0 variants should not count as having variations")
     }
 
+    func testHasSomeVariationsWithExactlyTwo() {
+        let item = makeItem(variationCount: 2)
+        XCTAssertTrue(item.hasSomeVariations,
+                       "Item with exactly 2 variants should report hasSomeVariations == true")
+    }
+
     // MARK: - VariantsCompletionStatus enum
 
     func testVariantsCompletionStatusEnumCases() {
@@ -78,6 +84,13 @@ final class AnvilTask3F2PTests: XCTestCase {
         let item = makeItem(variationCount: 3)
         let dict: [String: [Variant]] = ["anvil_test_item": item.variations!]
         XCTAssertEqual(dict.completionStatus(for: item), .complete)
+    }
+
+    func testCompletionStatusUnstartedForEmptyVariantsArray() {
+        let item = makeItem(variationCount: 3)
+        let dict: [String: [Variant]] = ["anvil_test_item": []]
+        XCTAssertEqual(dict.completionStatus(for: item), .unstarted,
+                        "Key present but empty array should be treated as unstarted")
     }
 
     // MARK: - toggleVariant auto-manages parent item (acceptance criterion 5)
@@ -122,5 +135,19 @@ final class AnvilTask3F2PTests: XCTestCase {
         _ = collection.toggleVariant(item: item, variant: v0)
         XCTAssertTrue(collection.items.contains(item),
                        "Parent should remain in collection while at least one variant is still liked")
+    }
+
+    // MARK: - toggleVariant return value
+
+    func testToggleVariantReturnValues() {
+        let collection = UserCollection(iCloudDisabled: true)
+        let item = makeItem(variationCount: 3)
+        let variant = item.variations![0]
+
+        let addResult = collection.toggleVariant(item: item, variant: variant)
+        XCTAssertTrue(addResult, "toggleVariant should return true when adding a variant")
+
+        let removeResult = collection.toggleVariant(item: item, variant: variant)
+        XCTAssertFalse(removeResult, "toggleVariant should return false when removing a variant")
     }
 }

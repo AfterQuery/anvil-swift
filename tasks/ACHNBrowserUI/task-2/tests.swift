@@ -19,4 +19,17 @@ final class AnvilTask2F2PTests: XCTestCase {
         XCTAssertEqual(gs.columns, 3)
         XCTAssertEqual(gs.spacing, 16)
     }
+
+    func testGridStackDefaultSpacingIsNil() {
+        let gs = GridStack<AnyView>(rows: 2, columns: 3) { _, _ in AnyView(EmptyView()) }
+        XCTAssertNil(gs.spacing,
+                     "GridStack without explicit spacing should default to nil")
+    }
+
+    func testGridStackContentClosureCallable() {
+        let gs = GridStack<AnyView>(rows: 3, columns: 2) { _, _ in AnyView(Text("cell")) }
+        let view = gs.content(0, 0)
+        XCTAssertNotNil(view, "Content closure should return a view for valid indices")
+        _ = gs.content(2, 1)
+    }
 }

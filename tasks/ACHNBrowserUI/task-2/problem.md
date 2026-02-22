@@ -13,4 +13,4 @@ The misalignment affects all three display modes: average prices, min/max prices
 3. The old separate row view files in the `rows/` directory must be removed, along with any references to those components from the turnip price view.
 4. Any workarounds that existed solely to support the old row-based layout should be removed.
 5. Do not change the chart views, island views, or other unrelated sections of the turnip price screen.
-6. Implement the unified layout as a reusable `GridStack` view in the shared views directory.
+6. Implement the unified layout as a reusable `GridStack` view in the shared views directory, with `rows`, `columns`, and an optional `spacing` parameter.

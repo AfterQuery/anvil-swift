@@ -16,6 +16,16 @@ final class AnvilTask1F2PTests: XCTestCase {
                        "Item without active hours data should not be active this hour")
     }
 
+    func testIsActiveAtThisHourReturnsTrueWhenActiveAllYearAndAllDay() {
+        let months = (0..<12)
+            .map { "\"\($0)\":{\"activeTimes\":[\"0\",\"0\"]}" }
+            .joined(separator: ",")
+        let json = "{\"name\":\"TestFish\",\"category\":\"Fish\",\"filename\":\"test_fish\",\"activeMonths\":{\(months)}}"
+        let item = try! JSONDecoder().decode(Item.self, from: json.data(using: .utf8)!)
+        XCTAssertTrue(item.isActiveAtThisHour(),
+                      "Item active all year and all day should always be active at this hour")
+    }
+
     // MARK: - App ViewModel: CritterInfo integration point
 
     func testCritterInfoHasToCatchNowAndToCatchLater() {
