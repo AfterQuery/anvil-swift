@@ -54,11 +54,17 @@ anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent oracle --compile
 anvil publish-images --dataset datasets/iOS-Open-GPX-Tracker
 
 # Step 5: Run against models (agent rollout via Modal, eval via local Xcode)
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/anthropic/claude-opus-4.6 --compile-only --n-attempts 4 --no-continue
+
 anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --compile-only --n-attempts 4 --no-continue
+
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/openai/gpt-5.2 --compile-only --n-attempts 4 --no-continue
 
 anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --compile-only --n-attempts 4 --no-continue
 
 anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --compile-only --n-attempts 4 --no-continue
+
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/qwen/qwen3-coder-next --compile-only --n-attempts 4 --no-continue
 
 anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --compile-only --n-attempts 4 --no-continue
 ```

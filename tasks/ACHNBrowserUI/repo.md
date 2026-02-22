@@ -69,11 +69,17 @@ anvil run-evals --dataset datasets/ACHNBrowserUI --agent oracle --no-continue
 anvil publish-images --dataset datasets/ACHNBrowserUI
 
 # Step 5: Run against models (agent rollout via Modal, eval via local Xcode)
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/anthropic/claude-opus-4.6 --n-attempts 4 --no-continue
+
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --n-attempts 4 --no-continue
+
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/openai/gpt-5.2 --n-attempts 4 --no-continue
 
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --n-attempts 4 --no-continue
 
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --n-attempts 4 --no-continue
+
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/qwen/qwen3-coder-next --n-attempts 4 --no-continue
 
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --n-attempts 4 --no-continue
 ```
