@@ -538,10 +538,30 @@ def validate_task_tests(
             all_ok = False
             continue
 
-        # Skip the synthetic "compilation" entry
-        real_tests = [t for t in tests if t["name"] != "compilation"]
-        if not real_tests:
+        # Separate real test results from synthetic/meta entries
+        _synthetic = {"compilation", "xctest_run", "unit_test_setup", "patch_apply"}
+        real_tests = [t for t in tests if t["name"] not in _synthetic]
+        synthetic_failures = [t for t in tests if t["name"] in _synthetic and t["status"] == "FAILED"]
+
+        if not real_tests and not synthetic_failures:
             typer.secho(f"  {task_name}: OK — compile-only (no unit tests)", fg=typer.colors.GREEN)
+            continue
+
+        if not real_tests and synthetic_failures:
+            # Tests failed to compile/run — check if the source has F2P classes
+            test_src = src_tasks / task_name / "tests.swift"
+            has_f2p = "F2P" in test_src.read_text().upper() if test_src.is_file() else False
+            if has_f2p:
+                typer.secho(
+                    f"  {task_name}: OK — tests failed to compile on base (f2p expected)",
+                    fg=typer.colors.GREEN,
+                )
+            else:
+                typer.secho(
+                    f"  {task_name}: ERROR — tests failed to compile on base (no F2P classes — test bug?)",
+                    fg=typer.colors.RED,
+                )
+                all_ok = False
             continue
 
         # Categorize: "F2P" in class name → fail-to-pass, everything else → pass-to-pass

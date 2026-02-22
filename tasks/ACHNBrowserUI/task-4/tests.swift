@@ -17,11 +17,9 @@ final class AnvilTask4P2PTests: XCTestCase {
 
     func testVillagerNameSortingUsingLocalizedCompare() {
         let a = Villager(id: 1, fileName: "a", catchPhrase: nil,
-                         catchTranslations: nil,
                          name: ["name-en": "Bob"], personality: "Lazy",
                          birthday: nil, gender: "Male", species: "Cat")
         let b = Villager(id: 2, fileName: "b", catchPhrase: nil,
-                         catchTranslations: nil,
                          name: ["name-en": "Alice"], personality: "Normal",
                          birthday: nil, gender: "Female", species: "Dog")
 
