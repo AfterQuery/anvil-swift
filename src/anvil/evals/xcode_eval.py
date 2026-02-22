@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import traceback
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import typer
@@ -87,8 +87,6 @@ def _create_simulator_pool(n: int, test_destination: str) -> list[str]:
         )
         return udid
 
-    from concurrent.futures import ThreadPoolExecutor
-
     with ThreadPoolExecutor(max_workers=n) as pool:
         udids = list(pool.map(_create_one, range(n)))
     return udids
@@ -104,8 +102,6 @@ def _destroy_simulator_pool(udids: list[str]) -> None:
         subprocess.run(
             ["xcrun", "simctl", "delete", udid], capture_output=True, text=True
         )
-
-    from concurrent.futures import ThreadPoolExecutor
 
     with ThreadPoolExecutor(max_workers=len(udids)) as pool:
         list(pool.map(_delete_one, udids))
@@ -177,6 +173,37 @@ def _copy_task_tests(
         return _copy_spm_tests(instance_id, tests_file, xcode_config, worktree_dir)
 
 
+def _add_file_to_pbxproj(
+    worktree_dir: Path,
+    project_rel: str,
+    file_path: Path,
+    target_name: str,
+) -> None:
+    """Add a file to a pbxproj target's compile sources.
+
+    *file_path* is the absolute path to the file on disk.
+    *project_rel* is the xcodeproj path relative to the worktree root.
+    """
+    pbxproj_path = worktree_dir / project_rel / "project.pbxproj"
+    if not pbxproj_path.exists():
+        return
+
+    try:
+        from pbxproj import XcodeProject
+
+        project = XcodeProject.load(str(pbxproj_path))
+        # rel_path must be relative to the xcodeproj's parent dir
+        # (SOURCE_ROOT), not the worktree root — otherwise pbxproj
+        # doubles the project subdirectory component.
+        project_dir = (worktree_dir / project_rel).parent
+        rel_path = str(file_path.relative_to(project_dir))
+        project.add_file(rel_path, target_name=target_name)
+        project.save()
+        logger.info("Added %s to target %s in pbxproj", rel_path, target_name)
+    except Exception as exc:
+        logger.warning("pbxproj injection failed for %s: %s", target_name, exc)
+
+
 def _copy_spm_tests(
     instance_id: str,
     tests_file: Path,
@@ -209,26 +236,9 @@ def _copy_spm_tests(
     logger.info("Copied test file %s → %s (spm)", tests_file.name, dest_dir)
 
     test_target = xcode_config.get("test_target", "")
-    if test_target and not xcode_config.get("test_package_path"):
-        project_rel = xcode_config.get("project", "")
-        if project_rel:
-            pbxproj_path = worktree_dir / project_rel / "project.pbxproj"
-            if pbxproj_path.exists():
-                try:
-                    from pbxproj import XcodeProject
-
-                    project = XcodeProject.load(str(pbxproj_path))
-                    project_dir = (worktree_dir / project_rel).parent
-                    rel_path = str(dst.relative_to(project_dir))
-                    project.add_file(rel_path, target_name=test_target)
-                    project.save()
-                    logger.info(
-                        "Added %s to target %s in pbxproj", rel_path, test_target
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "pbxproj injection failed for %s: %s", test_target, exc
-                    )
+    project_rel = xcode_config.get("project", "")
+    if test_target and not xcode_config.get("test_package_path") and project_rel:
+        _add_file_to_pbxproj(worktree_dir, project_rel, dst, test_target)
 
     return "spm"
 
@@ -241,9 +251,8 @@ def _copy_app_tests(
 ) -> str:
     """Copy tests into the app-level test target.
 
-    Injects the ``ACHNBrowserUITests`` target into the project if it doesn't
-    exist, then copies the test file and adds it to the target's Sources
-    build phase via ``pbxproj``.
+    Injects the test target into the project if it doesn't exist, then copies
+    the test file and adds it to the target's compile sources via pbxproj.
     """
     app_test_target = xcode_config.get("app_test_target", "")
     app_test_files_dest = xcode_config.get("app_test_files_dest", "")
@@ -264,79 +273,20 @@ def _copy_app_tests(
 
     project_rel = xcode_config.get("project", "")
     if project_rel:
-        pbxproj_path = worktree_dir / project_rel / "project.pbxproj"
-        if pbxproj_path.exists():
-            try:
-                from pbxproj import XcodeProject
-
-                project = XcodeProject.load(str(pbxproj_path))
-                # rel_path must be relative to the xcodeproj's parent dir
-                # (SOURCE_ROOT), not the worktree root — otherwise pbxproj
-                # doubles the project subdirectory component.
-                project_dir = (worktree_dir / project_rel).parent
-                rel_path = str(dst.relative_to(project_dir))
-                project.add_file(rel_path, target_name=app_test_target)
-                project.save()
-                logger.info(
-                    "Added %s to target %s in pbxproj", rel_path, app_test_target
-                )
-            except Exception as exc:
-                logger.warning(
-                    "pbxproj injection failed for %s: %s", app_test_target, exc
-                )
+        _add_file_to_pbxproj(worktree_dir, project_rel, dst, app_test_target)
 
     return "app"
 
 
-def _run_spm_tests(
-    xcode_config: dict,
-    worktree_dir: Path,
-    dd_dir: Path,
-    all_stdout: str = "",
-    all_stderr: str = "",
+def _run_xcodebuild_tests(
+    cmd_info: tuple[list[str], Path] | None,
+    timeout: int,
 ) -> dict | None:
-    """Run SPM-based backend tests. Returns test output dict or None."""
-    test_dd = dd_dir
-    if resolve_test_package_path(xcode_config, worktree_dir):
-        test_dd = worktree_dir / "DerivedData-tests"
+    """Run an xcodebuild test command and parse the output.
 
-    test_info = _build_xcodebuild_test_cmd(xcode_config, worktree_dir, test_dd)
-    if not test_info:
-        return None
-
-    test_cmd, test_cwd = test_info
-    test_result = subprocess.run(
-        test_cmd,
-        cwd=str(test_cwd),
-        capture_output=True,
-        text=True,
-        timeout=600,
-    )
-    output = parse_xcodebuild_output(test_result.stdout, test_result.stderr)
-    if test_result.returncode != 0 and not output["tests"]:
-        output = {
-            "tests": [
-                {
-                    "name": "xctest_run",
-                    "status": "FAILED",
-                    "message": "xcodebuild test exited with non-zero",
-                }
-            ]
-        }
-    output["_stdout"] = test_result.stdout
-    output["_stderr"] = test_result.stderr
-    return output
-
-
-def _run_app_tests(
-    xcode_config: dict,
-    worktree_dir: Path,
-    all_stdout: str = "",
-    all_stderr: str = "",
-) -> dict | None:
-    """Run app-level unit tests. Returns test output dict or None."""
-    app_test_dd = worktree_dir / "DerivedData-app-tests"
-    cmd_info = _build_xcodebuild_app_test_cmd(xcode_config, worktree_dir, app_test_dd)
+    Returns parsed test output dict with ``_stdout``/``_stderr`` keys,
+    or ``None`` when *cmd_info* is ``None``.
+    """
     if not cmd_info:
         return None
 
@@ -346,7 +296,7 @@ def _run_app_tests(
         cwd=str(test_cwd),
         capture_output=True,
         text=True,
-        timeout=1200,
+        timeout=timeout,
     )
     output = parse_xcodebuild_output(test_result.stdout, test_result.stderr)
     if test_result.returncode != 0 and not output["tests"]:
@@ -362,6 +312,33 @@ def _run_app_tests(
     output["_stdout"] = test_result.stdout
     output["_stderr"] = test_result.stderr
     return output
+
+
+def _run_spm_tests(
+    xcode_config: dict,
+    worktree_dir: Path,
+    dd_dir: Path,
+) -> dict | None:
+    """Run SPM-based backend tests. Returns test output dict or None."""
+    test_dd = dd_dir
+    if resolve_test_package_path(xcode_config, worktree_dir):
+        test_dd = worktree_dir / "DerivedData-tests"
+    return _run_xcodebuild_tests(
+        _build_xcodebuild_test_cmd(xcode_config, worktree_dir, test_dd),
+        timeout=600,
+    )
+
+
+def _run_app_tests(
+    xcode_config: dict,
+    worktree_dir: Path,
+) -> dict | None:
+    """Run app-level unit tests. Returns test output dict or None."""
+    app_test_dd = worktree_dir / "DerivedData-app-tests"
+    return _run_xcodebuild_tests(
+        _build_xcodebuild_app_test_cmd(xcode_config, worktree_dir, app_test_dd),
+        timeout=1200,
+    )
 
 
 def eval_single_patch(
@@ -449,11 +426,7 @@ def eval_single_patch(
         else:
             dd_dir = worktree_dir / "DerivedData"
             build_cmd = _build_xcodebuild_cmd(
-                xcode_config,
-                worktree_dir,
-                dd_dir,
-                clean=False,
-                compile_only=compile_only,
+                xcode_config, worktree_dir, dd_dir, clean=False,
             )
 
             build_result = subprocess.run(
@@ -498,25 +471,13 @@ def eval_single_patch(
         xctest_output = None
         if run_tests:
             if test_type == "app":
-                xctest_output = _run_app_tests(
-                    test_xcode_config,
-                    worktree_dir,
-                    all_stdout,
-                    all_stderr,
-                )
+                xctest_output = _run_app_tests(test_xcode_config, worktree_dir)
             else:
-                xctest_output = _run_spm_tests(
-                    test_xcode_config,
-                    worktree_dir,
-                    dd_dir,
-                    all_stdout,
-                    all_stderr,
-                )
+                xctest_output = _run_spm_tests(test_xcode_config, worktree_dir, dd_dir)
 
-            if xctest_output and "_stdout" in xctest_output:
-                all_stdout += "\n" + xctest_output.pop("_stdout")
-            if xctest_output and "_stderr" in xctest_output:
-                all_stderr += "\n" + xctest_output.pop("_stderr")
+            if xctest_output:
+                all_stdout += "\n" + xctest_output.pop("_stdout", "")
+                all_stderr += "\n" + xctest_output.pop("_stderr", "")
 
             if xctest_output is None and has_task_tests:
                 xctest_output = {
