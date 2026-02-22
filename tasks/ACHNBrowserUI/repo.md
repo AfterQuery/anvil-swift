@@ -68,7 +68,7 @@ source .venv/bin/activate
 # Step 1: Convert dataset (reads tasks/, writes to datasets/)
 anvil convert-dataset --dataset tasks/ACHNBrowserUI
 
-# Step 2: (Run only once) Warm Xcode build cache (~5 min per unique base commit)
+# Step 2: Warm Xcode build cache (~5 min per unique base commit)
 anvil warm-xcode-cache --dataset datasets/ACHNBrowserUI
 
 # Step 3: Validate task tests fail on unpatched base commits

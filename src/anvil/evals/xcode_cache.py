@@ -126,6 +126,7 @@ class XcodeBuildCache:
             dd_dir.mkdir(parents=True, exist_ok=True)
 
             build_cmd = _build_xcodebuild_cmd(xcode_config, work_dir, dd_dir, clean=True)
+            build_cmd = [c for c in build_cmd if c != "-disableAutomaticPackageResolution"]
             result = subprocess.run(
                 build_cmd,
                 cwd=str(work_dir),
@@ -145,6 +146,7 @@ class XcodeBuildCache:
                 raise RuntimeError(f"xcodebuild failed for {repo_name}@{base_commit[:8]}")
 
         self._warm_test_dd(xcode_config, work_dir, repo_name, base_commit)
+        self._save_package_resolved(xcode_config, work_dir, repo_name, base_commit)
 
         _run_cmd(["git", "-C", str(clone_dir), "worktree", "remove", "--force", str(work_dir)],
                  check=False)
@@ -153,6 +155,54 @@ class XcodeBuildCache:
 
         typer.echo(f"  Cached DerivedData for {repo_name}@{base_commit[:8]}")
         return dd_dir
+
+    @staticmethod
+    def _package_resolved_path(xcode_config: dict, work_dir: Path) -> Path | None:
+        """Return the project-level Package.resolved path, or None."""
+        project_rel = xcode_config.get("project", "")
+        if not project_rel:
+            return None
+        return (
+            work_dir
+            / project_rel
+            / "project.xcworkspace"
+            / "xcshareddata"
+            / "swiftpm"
+            / "Package.resolved"
+        )
+
+    def _save_package_resolved(
+        self,
+        xcode_config: dict,
+        work_dir: Path,
+        repo_name: str,
+        base_commit: str,
+    ) -> None:
+        """Copy Package.resolved from the worktree into the cache."""
+        src = self._package_resolved_path(xcode_config, work_dir)
+        if not src or not src.exists():
+            return
+        dst = self._commit_cache_dir(repo_name, base_commit) / "Package.resolved"
+        shutil.copy2(str(src), str(dst))
+        logger.info("Saved Package.resolved for %s@%s", repo_name, base_commit[:8])
+
+    def _restore_package_resolved(
+        self,
+        xcode_config: dict,
+        repo_name: str,
+        base_commit: str,
+        target_dir: Path,
+    ) -> None:
+        """Restore cached Package.resolved into a checkout."""
+        src = self._commit_cache_dir(repo_name, base_commit) / "Package.resolved"
+        if not src.exists():
+            return
+        dst = self._package_resolved_path(xcode_config, target_dir)
+        if not dst:
+            return
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(src), str(dst))
+        logger.info("Restored Package.resolved for %s@%s", repo_name, base_commit[:8])
 
     def _needs_test_warm(self, xcode_config: dict, repo_name: str, base_commit: str) -> bool:
         """Check if any test DerivedData directories need warming."""
@@ -300,6 +350,7 @@ class XcodeBuildCache:
         repo_name: str,
         base_commit: str,
         target_dir: Path,
+        xcode_config: dict | None = None,
     ) -> Path:
         """Create an isolated worktree with pre-built DerivedData.
 
@@ -333,6 +384,11 @@ class XcodeBuildCache:
         app_test_dd_dst = target_dir / "DerivedData-app-tests"
         if app_test_dd_src.exists() and any(app_test_dd_src.iterdir()):
             _apfs_clone(app_test_dd_src, app_test_dd_dst)
+
+        if xcode_config:
+            self._restore_package_resolved(
+                xcode_config, repo_name, base_commit, target_dir
+            )
 
         return target_dir
 

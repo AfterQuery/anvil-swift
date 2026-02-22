@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -217,7 +218,8 @@ def _copy_spm_tests(
                     from pbxproj import XcodeProject
 
                     project = XcodeProject.load(str(pbxproj_path))
-                    rel_path = str(dst.relative_to(worktree_dir))
+                    project_dir = (worktree_dir / project_rel).parent
+                    rel_path = str(dst.relative_to(project_dir))
                     project.add_file(rel_path, target_name=test_target)
                     project.save()
                     logger.info(
@@ -268,7 +270,11 @@ def _copy_app_tests(
                 from pbxproj import XcodeProject
 
                 project = XcodeProject.load(str(pbxproj_path))
-                rel_path = str(dst.relative_to(worktree_dir))
+                # rel_path must be relative to the xcodeproj's parent dir
+                # (SOURCE_ROOT), not the worktree root — otherwise pbxproj
+                # doubles the project subdirectory component.
+                project_dir = (worktree_dir / project_rel).parent
+                rel_path = str(dst.relative_to(project_dir))
                 project.add_file(rel_path, target_name=app_test_target)
                 project.save()
                 logger.info(
@@ -340,7 +346,7 @@ def _run_app_tests(
         cwd=str(test_cwd),
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=1200,
     )
     output = parse_xcodebuild_output(test_result.stdout, test_result.stderr)
     if test_result.returncode != 0 and not output["tests"]:
@@ -388,7 +394,7 @@ def eval_single_patch(
             tempfile.mkdtemp(prefix=f"anvil-eval-{instance_id}-{attempt or 0}-")
         )
 
-        cache.checkout(repo_name, base_commit, worktree_dir)
+        cache.checkout(repo_name, base_commit, worktree_dir, xcode_config=xcode_config)
 
         if patch and patch.strip():
             apply_result = subprocess.run(
@@ -541,14 +547,15 @@ def eval_single_patch(
         )
         return combined
 
-    except subprocess.TimeoutExpired:
-        logger.error("Build timed out for %s", tag)
+    except subprocess.TimeoutExpired as te:
+        timeout_s = te.timeout if te.timeout else "?"
+        logger.error("Build/test timed out for %s after %ss", tag, timeout_s)
         result = {
             "tests": [
                 {
                     "name": "compilation",
                     "status": "FAILED",
-                    "message": "Build timed out (600s)",
+                    "message": f"Build timed out ({timeout_s}s)",
                 }
             ]
         }
@@ -557,8 +564,31 @@ def eval_single_patch(
         )
         return result
     except Exception as e:
-        logger.error("Error evaluating %s: %s", tag, e)
-        return None
+        logger.error("Error evaluating %s: %s", tag, e, exc_info=True)
+        error_msg = f"{type(e).__name__}: {e}"
+        result = {
+            "tests": [
+                {
+                    "name": "eval_infrastructure",
+                    "status": "FAILED",
+                    "message": error_msg[:500],
+                }
+            ]
+        }
+        try:
+            _save_eval_output(
+                output_dir,
+                instance_id,
+                attempt,
+                eval_id,
+                result,
+                patch,
+                "",
+                traceback.format_exc(),
+            )
+        except Exception:
+            pass
+        return result
     finally:
         if worktree_dir and worktree_dir.exists():
             try:
@@ -713,26 +743,37 @@ def run_xcode_evals(
                 attempt = patch_sample.get("attempt")
                 result_key = f"{iid}:attempt_{attempt}" if attempt else iid
 
+                worker_crashed = False
                 try:
                     output = future.result()
                 except Exception as e:
                     logger.error("Eval failed for %s: %s", result_key, e)
-                    output = None
+                    output = {
+                        "tests": [
+                            {
+                                "name": "eval_infrastructure",
+                                "status": "FAILED",
+                                "message": f"Worker error: {type(e).__name__}: {e}"[:500],
+                            }
+                        ]
+                    }
+                    worker_crashed = True
 
-                if output is None:
-                    eval_results[result_key] = False
-                else:
-                    tests = output.get("tests", [])
-                    failed = [t for t in tests if t["status"] == "FAILED"]
-                    eval_results[result_key] = len(tests) > 0 and len(failed) == 0
+                tests = output.get("tests", [])
+                failed = [t for t in tests if t["status"] == "FAILED"]
+                eval_results[result_key] = len(tests) > 0 and len(failed) == 0
 
-                    if attempt is not None:
-                        task_results_dir = (
-                            output_dir / iid / f"attempt_{attempt}" / "eval_results"
-                        )
-                        task_results_dir.mkdir(parents=True, exist_ok=True)
-                        (task_results_dir / "eval_results.json").write_text(
-                            json.dumps({iid: eval_results[result_key]})
+                if attempt is not None:
+                    task_results_dir = (
+                        output_dir / iid / f"attempt_{attempt}" / "eval_results"
+                    )
+                    task_results_dir.mkdir(parents=True, exist_ok=True)
+                    (task_results_dir / "eval_results.json").write_text(
+                        json.dumps({iid: eval_results[result_key]})
+                    )
+                    if worker_crashed:
+                        (task_results_dir / f"{eval_id}_output.json").write_text(
+                            json.dumps(output, indent=2)
                         )
 
                 passed = sum(eval_results.values())
