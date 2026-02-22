@@ -2,7 +2,7 @@ import XCTest
 import UIKit
 @testable import OpenGpxTracker
 
-final class AnvilTask4Tests: XCTestCase {
+final class AnvilTask4F2PTests: XCTestCase {
 
     // The solution migrates from manual frame calculations to Auto Layout
     // constraints for all UI elements in ViewController.

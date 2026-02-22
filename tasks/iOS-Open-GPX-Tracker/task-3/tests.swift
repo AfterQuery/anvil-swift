@@ -2,7 +2,7 @@ import XCTest
 import MapKit
 @testable import OpenGpxTracker
 
-final class AnvilTask3Tests: XCTestCase {
+final class AnvilTask3F2PTests: XCTestCase {
 
     // The solution adds an MKScaleView to the map and replaces deprecated
     // CLLocationManager.authorizationStatus() with the instance property.

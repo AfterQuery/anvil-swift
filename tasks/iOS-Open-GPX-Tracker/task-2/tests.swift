@@ -2,7 +2,7 @@ import XCTest
 import UIKit
 @testable import OpenGpxTracker
 
-final class AnvilTask2Tests: XCTestCase {
+final class AnvilTask2F2PTests: XCTestCase {
 
     // The solution removes all UIAlertView / UIAlertViewDelegate usage and
     // replaces them with UIAlertController.  These tests verify the migration

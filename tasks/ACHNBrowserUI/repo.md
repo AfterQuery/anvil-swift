@@ -45,8 +45,8 @@ evaluation they are copied into the BackendTests SPM test target and run via
 `xcodebuild test -scheme Backend`.
 
 **Test class convention** — `validate-tests` categorizes by class name:
-- Classes containing `P2P` (e.g. `AnvilTask1P2PTests`) — **pass-to-pass** (must pass on base)
-- All other classes — **fail-to-pass** (must fail on base)
+- Classes containing `F2P` (e.g. `AnvilTask1F2PTests`) — **fail-to-pass** (must fail on base)
+- All other classes (repo tests, P2P classes, etc.) — **pass-to-pass** (must pass on base)
 
 | Task | Tests | What they validate |
 |------|-------|--------------------|

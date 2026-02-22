@@ -2,7 +2,7 @@ import XCTest
 import UIKit
 @testable import OpenGpxTracker
 
-final class AnvilTask1Tests: XCTestCase {
+final class AnvilTask1F2PTests: XCTestCase {
 
     // MARK: - GPXTileServerColorMode enum
 

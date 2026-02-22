@@ -1,7 +1,7 @@
 import XCTest
 @testable import Backend
 
-final class AnvilTask1Tests: XCTestCase {
+final class AnvilTask1F2PTests: XCTestCase {
 
     // MARK: - isActiveThisMonth (renamed from isActive)
 

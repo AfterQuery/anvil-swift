@@ -470,12 +470,12 @@ def validate_task_tests(
 
     Tests are categorized by **class name**:
 
-    * Classes containing ``P2P`` (e.g. ``AnvilTask1P2PTests``) —
-      **pass-to-pass** regression tests; must pass on base.
-    * All other classes — **fail-to-pass**; must fail on base.
+    * Classes containing ``F2P`` (e.g. ``AnvilTask1F2PTests``) —
+      **fail-to-pass**; must fail on base.
+    * Everything else (repo tests, ``Anvil*P2P*``, etc.) —
+      **pass-to-pass**; must pass on base.
 
-    The command reports inconsistencies: p2p tests that fail or f2p tests
-    that pass on the unpatched commit.
+    Reports inconsistencies: f2p tests that pass or p2p tests that fail.
 
     Returns 0 if all tests behave as expected, 1 on inconsistencies or
     infrastructure errors.
@@ -506,7 +506,7 @@ def validate_task_tests(
         return 0
 
     typer.echo(f"Validating {len(tasks_with_tests)} task(s) on unpatched base commit")
-    typer.echo("  (class name contains 'P2P' = pass-to-pass, others = fail-to-pass)\n")
+    typer.echo("  (class name contains 'F2P' = fail-to-pass, all others = pass-to-pass)\n")
 
     output_dir = Path(tempfile.mkdtemp(prefix="anvil-validate-"))
     all_ok = True
@@ -538,22 +538,22 @@ def validate_task_tests(
             all_ok = False
             continue
 
-        # Skip the synthetic "compilation" entry from parse_build_result
+        # Skip the synthetic "compilation" entry
         real_tests = [t for t in tests if t["name"] != "compilation"]
         if not real_tests:
             typer.secho(f"  {task_name}: OK — compile-only (no unit tests)", fg=typer.colors.GREEN)
             continue
 
-        # Categorize by class name: "P2P" anywhere in class_name → pass-to-pass
+        # Categorize: "F2P" in class name → fail-to-pass, everything else → pass-to-pass
         p2p_pass, p2p_fail = [], []
         f2p_pass, f2p_fail = [], []
         for t in real_tests:
-            is_p2p = "P2P" in t.get("class_name", "").upper()
+            is_f2p = "F2P" in t.get("class_name", "").upper()
             passed = t["status"] == "PASSED"
-            if is_p2p:
-                (p2p_pass if passed else p2p_fail).append(t)
-            else:
+            if is_f2p:
                 (f2p_pass if passed else f2p_fail).append(t)
+            else:
+                (p2p_pass if passed else p2p_fail).append(t)
 
         issues = []
         if f2p_pass:

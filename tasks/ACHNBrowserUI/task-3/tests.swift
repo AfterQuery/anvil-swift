@@ -1,7 +1,7 @@
 import XCTest
 @testable import Backend
 
-final class AnvilTask3Tests: XCTestCase {
+final class AnvilTask3F2PTests: XCTestCase {
 
     // MARK: - Helpers
 

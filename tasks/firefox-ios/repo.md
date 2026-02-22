@@ -39,8 +39,8 @@ Firefox for iOS: https://github.com/mozilla-mobile/firefox-ios
 - ~692 Swift files importing XCTest across the repo
 
 **Test class convention** — `validate-tests` categorizes by class name:
-- Classes containing `P2P` (e.g. `AnvilTask1P2PTests`) — **pass-to-pass** (must pass on base)
-- All other classes — **fail-to-pass** (must fail on base)
+- Classes containing `F2P` (e.g. `AnvilTask1F2PTests`) — **fail-to-pass** (must fail on base)
+- All other classes (repo tests, P2P classes, etc.) — **pass-to-pass** (must pass on base)
 
 ## Commands
 
