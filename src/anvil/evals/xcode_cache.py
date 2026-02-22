@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import typer
+from ruamel.yaml import YAML as _YAML
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +219,7 @@ class XcodeBuildCache:
         if not src or not src.exists():
             return
         dst = self._commit_cache_dir(repo_name, base_commit) / "Package.resolved"
-        shutil.copy2(str(src), str(dst))
+        shutil.copy2(src, dst)
         logger.info("Saved Package.resolved for %s@%s", repo_name, base_commit[:8])
 
     def _restore_package_resolved(
@@ -234,7 +237,7 @@ class XcodeBuildCache:
         if not dst:
             return
         dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(str(src), str(dst))
+        shutil.copy2(src, dst)
         logger.info("Restored Package.resolved for %s@%s", repo_name, base_commit[:8])
 
     def _needs_test_warm(self, xcode_config: dict, repo_name: str, base_commit: str) -> bool:
@@ -296,7 +299,7 @@ class XcodeBuildCache:
             return
 
         test_cmd, test_cwd = test_cmd_info
-        test_cmd = ["build-for-testing" if c == "test" else c for c in test_cmd]
+        test_cmd = _as_build_for_testing(test_cmd)
 
         typer.echo(f"  Warming test DerivedData for {repo_name}@{base_commit[:8]}...")
         result = subprocess.run(
@@ -353,7 +356,7 @@ class XcodeBuildCache:
             return
 
         cmd, cwd = cmd_info
-        cmd = ["build-for-testing" if c == "test" else c for c in cmd]
+        cmd = _as_build_for_testing(cmd)
 
         typer.echo(f"  Warming app-test DerivedData for {repo_name}@{base_commit[:8]}...")
         result = subprocess.run(
@@ -427,6 +430,29 @@ class XcodeBuildCache:
             shutil.rmtree(target_dir, ignore_errors=True)
 
 
+# Shared xcodebuild flags used across build/test commands.
+_XCODEBUILD_NO_SIGN_FLAGS = [
+    "-skipPackagePluginValidation",
+    "ONLY_ACTIVE_ARCH=YES",
+    "CODE_SIGNING_ALLOWED=NO",
+    "CODE_SIGN_IDENTITY=",
+    "COMPILER_INDEX_STORE_ENABLE=NO",
+]
+# App-hosted tests need ad-hoc signing so entitlements (e.g. CloudKit) are preserved.
+_XCODEBUILD_ADHOC_SIGN_FLAGS = [
+    "-skipPackagePluginValidation",
+    "ONLY_ACTIVE_ARCH=YES",
+    "CODE_SIGNING_ALLOWED=YES",
+    "CODE_SIGN_IDENTITY=-",
+    "COMPILER_INDEX_STORE_ENABLE=NO",
+]
+
+
+def _as_build_for_testing(cmd: list[str]) -> list[str]:
+    """Replace the 'test' action with 'build-for-testing' in an xcodebuild command."""
+    return ["build-for-testing" if c == "test" else c for c in cmd]
+
+
 def _resolve_project_args(xcode_config: dict, work_dir: Path) -> list[str]:
     """Resolve -workspace/-project args, preferring workspace when it exists."""
     workspace = xcode_config.get("workspace", "")
@@ -471,11 +497,7 @@ def _build_xcodebuild_cmd(
         "-destination", destination,
         "-derivedDataPath", str(derived_data_dir),
         "-quiet",
-        "-skipPackagePluginValidation",
-        "ONLY_ACTIVE_ARCH=YES",
-        "CODE_SIGNING_ALLOWED=NO",
-        "CODE_SIGN_IDENTITY=",
-        "COMPILER_INDEX_STORE_ENABLE=NO",
+        *_XCODEBUILD_NO_SIGN_FLAGS,
     ])
     if not allow_pkg_resolution:
         cmd.append("-disableAutomaticPackageResolution")
@@ -535,11 +557,7 @@ def _build_xcodebuild_test_cmd(
         "-scheme", test_scheme,
         "-destination", test_destination,
         "-derivedDataPath", str(derived_data_dir),
-        "-skipPackagePluginValidation",
-        "ONLY_ACTIVE_ARCH=YES",
-        "CODE_SIGNING_ALLOWED=NO",
-        "CODE_SIGN_IDENTITY=",
-        "COMPILER_INDEX_STORE_ENABLE=NO",
+        *_XCODEBUILD_NO_SIGN_FLAGS,
     ])
     if not allow_pkg_resolution:
         cmd.append("-disableAutomaticPackageResolution")
@@ -563,9 +581,6 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
 
     Returns True if injection succeeded, False if skipped or failed.
     """
-    import hashlib
-    import re as _re
-
     app_test_target = xcode_config.get("app_test_target", "")
     app_test_files_dest = xcode_config.get("app_test_files_dest", "")
     project_rel = xcode_config.get("project", "")
@@ -593,27 +608,27 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
     ]}
 
     # Discover the host app target UUID and project object UUID from pbxproj
-    m = _re.search(r'(\w{24}) /\* ' + _re.escape(xcode_config.get("scheme", "")) + r' \*/ = \{\s*isa = PBXNativeTarget;', pbx)
+    m = re.search(r'(\w{24}) /\* ' + re.escape(xcode_config.get("scheme", "")) + r' \*/ = \{\s*isa = PBXNativeTarget;', pbx)
     if not m:
         logger.warning("Could not find host app target in pbxproj")
         return False
     host_target_uuid = m.group(1)
 
-    m = _re.search(r'rootObject = (\w{24})', pbx)
+    m = re.search(r'rootObject = (\w{24})', pbx)
     if not m:
         return False
     project_uuid = m.group(1)
 
     # Find the Products group UUID
-    m = _re.search(r'productRefGroup = (\w{24})', pbx)
+    m = re.search(r'productRefGroup = (\w{24})', pbx)
     products_group_uuid = m.group(1) if m else None
 
     # Find the main group UUID
-    m = _re.search(r'mainGroup = (\w{24})', pbx)
+    m = re.search(r'mainGroup = (\w{24})', pbx)
     main_group_uuid = m.group(1) if m else None
 
     # Discover the app's PRODUCT_NAME for TEST_HOST
-    m = _re.search(r'productReference = \w{24} /\* (.+?)\.app \*/', pbx)
+    m = re.search(r'productReference = \w{24} /\* (.+?)\.app \*/', pbx)
     app_product_name = m.group(1) if m else xcode_config.get("scheme", "")
 
     # 1. PBXBuildFile
@@ -695,9 +710,9 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
             1,
         )
         # Add product ref to Products group children (before closing paren)
-        products_children_end = _re.search(
+        products_children_end = re.search(
             rf'{products_group_uuid} /\* Products \*/ = \{{\s*isa = PBXGroup;\s*children = \((.*?)\);',
-            pbx, _re.DOTALL,
+            pbx, re.DOTALL,
         )
         if products_children_end:
             insert_pos = products_children_end.end(1)
@@ -727,14 +742,14 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
     )
 
     # 7. Add to project targets list
-    pbx = _re.sub(
-        rf'(targets = \([^)]*{_re.escape(host_target_uuid)}[^)]*)\);',
+    pbx = re.sub(
+        rf'(targets = \([^)]*{re.escape(host_target_uuid)}[^)]*)\);',
         rf'\1\t\t\t\t{uid["target"]} /* {app_test_target} */,\n\t\t\t);',
         pbx, count=1,
     )
 
     # 8. TargetAttributes
-    m = _re.search(r'(TargetAttributes = \{.*?)((\s*\};){2})', pbx, _re.DOTALL)
+    m = re.search(r'(TargetAttributes = \{.*?)((\s*\};){2})', pbx, re.DOTALL)
     if m:
         insert_at = m.start(2)
         attr_block = (
@@ -797,7 +812,7 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
 
     dev_team = xcode_config.get("development_team", "")
     if not dev_team:
-        m = _re.search(r'DEVELOPMENT_TEAM\s*=\s*(\w+)', pbx)
+        m = re.search(r'DEVELOPMENT_TEAM\s*=\s*(\w+)', pbx)
         dev_team = m.group(1) if m else ""
 
     dev_team_line = f"\t\t\t\tDEVELOPMENT_TEAM = {dev_team};\n" if dev_team else ""
@@ -942,11 +957,7 @@ def _build_xcodebuild_app_test_cmd(
         "-scheme", app_test_scheme,
         "-destination", dest,
         "-derivedDataPath", str(derived_data_dir),
-        "-skipPackagePluginValidation",
-        "ONLY_ACTIVE_ARCH=YES",
-        "CODE_SIGNING_ALLOWED=YES",
-        "CODE_SIGN_IDENTITY=-",
-        "COMPILER_INDEX_STORE_ENABLE=NO",
+        *_XCODEBUILD_ADHOC_SIGN_FLAGS,
     ])
     if not allow_pkg_resolution:
         cmd.append("-disableAutomaticPackageResolution")
@@ -975,9 +986,7 @@ def load_xcode_config(dataset_tasks_dir: Path, dataset_id: str | None = None) ->
 
     for path in candidates:
         if path.exists():
-            from ruamel.yaml import YAML
-            yaml = YAML()
-            return yaml.load(path)
+            return _YAML().load(path)
 
     searched = ", ".join(str(c) for c in candidates)
     raise FileNotFoundError(
