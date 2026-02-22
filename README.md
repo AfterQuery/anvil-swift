@@ -85,6 +85,21 @@ Use `--n-attempts` to control how many runs per task (useful for pass@k metrics)
 
 > 💡 **Progress is saved automatically** to minimize costs. If you re-run the same command, completed tasks are skipped. Use `--no-continue` to start fresh.
 
+### Validate task tests
+
+Check that your `tests.swift` files behave correctly on the unpatched base commit:
+
+```bash
+anvil validate-tests --dataset datasets/ACHNBrowserUI
+```
+
+Tests are categorized by **class name**:
+
+- Classes containing `F2P` (e.g. `AnvilTask1F2PTests`) — **fail-to-pass**; must fail on base
+- All other classes (repo's own tests, `AnvilTask2P2PTests`, etc.) — **pass-to-pass**; must pass on base
+
+The command reports inconsistencies (f2p tests that pass, or p2p tests that fail on the unpatched commit).
+
 ### Oracle Agent
 
 Use the `oracle` agent to validate your task harnesses before running LLM agents:
@@ -157,13 +172,17 @@ anvil publish-images --dataset datasets/GPX-Tracker
 # Remove cached builds
 docker builder prune -f
 
-# 5. Run base and Oracle
+# 5. Validate task tests on unpatched base commits
+anvil validate-tests -d my-dataset
+
+anvil validate-tests --dataset datasets/GPX-Tracker
+
+# 6. Run oracle to verify gold patches pass all tests
 anvil run-evals -d my-dataset --agent oracle --no-continue
 
-# All tests pass with gold patch (oracle)
 anvil run-evals --dataset datasets/GPX-Tracker --agent oracle --no-continue
 
-# 6. Run against models
+# 7. Run against models
 
 # Claude Sonnet 4.5
 anvil run-evals \
@@ -233,6 +252,26 @@ anvil run-evals \
 
 1. **Agent phase**: Each task runs in a Modal sandbox using a pre-built Docker image. The agent (mini-swe-agent) receives the problem statement and generates a patch.
 
-2. **Eval phase**: Patches are applied to a local worktree with cached DerivedData. `xcodebuild` compiles the patched project and runs per-task unit tests. Results are aggregated into pass/fail per task.
+2. **Eval phase**: Patches are applied to a local worktree with cached DerivedData. `xcodebuild` compiles the patched project and runs per-task unit tests (from `tests.swift`). Each worker gets its own simulator clone to avoid boot conflicts during parallel evaluation.
 
 3. **Output**: Trajectories, patches, stdout/stderr, and eval results are saved per-task. A summary with pass@k metrics is printed at the end.
+
+## Writing task tests
+
+Each task's `tests.swift` is copied into the test target during evaluation. Use XCTest class names to indicate test category:
+
+```swift
+// Fail-to-pass: tests new functionality introduced by the gold patch.
+// Must FAIL on the unpatched base commit, PASS after the patch.
+final class AnvilTask1F2PTests: XCTestCase {
+    func testNewFeature() { ... }
+}
+
+// Pass-to-pass: regression tests for existing functionality.
+// Must PASS on both the base commit and after the patch.
+final class AnvilTask1P2PTests: XCTestCase {
+    func testExistingBehavior() { ... }
+}
+```
+
+The repo's own pre-existing tests are automatically treated as pass-to-pass. Run `anvil validate-tests` to verify consistency before running model evaluations.
