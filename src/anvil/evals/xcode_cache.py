@@ -109,6 +109,19 @@ class XcodeBuildCache:
     def is_warm(self, repo_name: str, base_commit: str) -> bool:
         return _dd_is_populated(self._derived_data_dir(repo_name, base_commit))
 
+    def ensure_cloned(self, repo_name: str, repo_path: Path) -> None:
+        """Clone the repo into the cache and fetch all commits.
+
+        Call once per repo before warming commits in parallel to avoid
+        concurrent clone/fetch races when multiple commits share a repo.
+        """
+        clone_dir = self._repo_clone_dir(repo_name)
+        if not clone_dir.exists():
+            typer.echo(f"  Cloning {repo_name} into cache...")
+            _run_cmd(["git", "clone", str(repo_path.resolve()), str(clone_dir)])
+        typer.echo(f"  Fetching {repo_name}...")
+        _run_cmd(["git", "-C", str(clone_dir), "fetch", "--all"], check=False)
+
     def warm(
         self,
         repo_path: Path,
@@ -138,13 +151,13 @@ class XcodeBuildCache:
         if not clone_dir.exists():
             typer.echo(f"  Cloning {repo_name} into cache...")
             _run_cmd(["git", "clone", str(repo_path.resolve()), str(clone_dir)])
+            _run_cmd(["git", "-C", str(clone_dir), "fetch", "--all"], check=False)
 
         work_dir = commit_dir / "worktree"
         if work_dir.exists():
             _remove_worktree(clone_dir, work_dir)
 
         typer.echo(f"  Creating worktree at {base_commit[:8]}...")
-        _run_cmd(["git", "-C", str(clone_dir), "fetch", "--all"], check=False)
         _run_cmd(["git", "-C", str(clone_dir), "worktree", "add", "--detach", str(work_dir), base_commit])
 
         if not build_cached:

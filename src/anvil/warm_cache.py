@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import typer
@@ -15,6 +16,7 @@ from .evals.xcode_cache import XcodeBuildCache, load_xcode_config
 
 def warm_xcode_cache(
     dataset: str = typer.Option(..., "--dataset", "-d", help="Dataset ID or path"),
+    workers: int = typer.Option(2, "--workers", "-w", help="Number of parallel builds"),
 ) -> None:
     """Pre-build all base commits for a dataset and cache DerivedData."""
     dataset_tasks_dir = tasks_dir(dataset)
@@ -22,7 +24,10 @@ def warm_xcode_cache(
 
     yaml = YAML()
     instances = None
-    for candidate in [dataset_tasks_dir / "instances.yaml", src_tasks_dir / "instances.yaml"]:
+    for candidate in [
+        dataset_tasks_dir / "instances.yaml",
+        src_tasks_dir / "instances.yaml",
+    ]:
         if candidate.exists():
             instances = yaml.load(candidate)
             typer.echo(f"Loaded instances from {candidate}")
@@ -74,18 +79,44 @@ def warm_xcode_cache(
             )
 
     repos_root = repo_root() / "repos"
-    for key, example_iid in seen_commits.items():
+
+    unique_repos: dict[str, Path] = {}
+    for key in seen_commits:
+        repo_name, _ = key.split(":", 1)
+        if repo_name not in unique_repos:
+            unique_repos[repo_name] = repos_root / repo_name
+
+    valid_repos: set[str] = set()
+    for repo_name, repo_path in unique_repos.items():
+        if not repo_path.exists():
+            typer.echo(
+                f"  Skipping {repo_name}: repo not found at {repo_path}", err=True
+            )
+            continue
+        cache.ensure_cloned(repo_name, repo_path)
+        valid_repos.add(repo_name)
+
+    def _warm_one(key: str) -> tuple[str, Exception | None]:
         repo_name, base_commit = key.split(":", 1)
         repo_path = repos_root / repo_name
-
-        if not repo_path.exists():
-            typer.echo(f"  Skipping {repo_name}@{base_commit[:8]}: repo not found at {repo_path}", err=True)
-            continue
-
         try:
             cache.warm(repo_path, repo_name, base_commit, xcode_config)
-            typer.echo(f"  {repo_name}@{base_commit[:8]}: cached")
+            return key, None
         except Exception as e:
-            typer.echo(f"  {repo_name}@{base_commit[:8]}: FAILED - {e}", err=True)
+            return key, e
+
+    valid_commits = [key for key in seen_commits if key.split(":", 1)[0] in valid_repos]
+    typer.echo(f"  Building with {workers} parallel worker(s)...")
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_warm_one, key): key for key in valid_commits}
+        for future in as_completed(futures):
+            key, error = future.result()
+            repo_name, base_commit = key.split(":", 1)
+            if error:
+                typer.echo(
+                    f"  {repo_name}@{base_commit[:8]}: FAILED - {error}", err=True
+                )
+            else:
+                typer.echo(f"  {repo_name}@{base_commit[:8]}: cached")
 
     typer.echo("Cache warming complete.")
