@@ -23,7 +23,11 @@ from .xcode_cache import (
     load_xcode_config,
     resolve_test_package_path,
 )
-from .xcode_parser import merge_test_results, parse_build_result, parse_xcodebuild_output
+from .xcode_parser import (
+    merge_test_results,
+    parse_build_result,
+    parse_xcodebuild_output,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,19 +62,32 @@ def _create_simulator_pool(n: int, test_destination: str) -> list[str]:
         sim_name = f"anvil-eval-{i}"
         subprocess.run(
             ["xcrun", "simctl", "delete", sim_name],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         result = subprocess.run(
             ["xcrun", "simctl", "create", sim_name, device_name],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if result.returncode != 0:
-            raise RuntimeError(f"xcrun simctl create failed for '{sim_name}': {result.stderr.strip()}")
+            raise RuntimeError(
+                f"xcrun simctl create failed for '{sim_name}': {result.stderr.strip()}"
+            )
         udid = result.stdout.strip()
-        logger.info("Created simulator %s (%s) based on '%s'", sim_name, udid, device_name)
+        logger.info(
+            "Created simulator %s (%s) based on '%s'", sim_name, udid, device_name
+        )
+
+        subprocess.run(
+            ["xcrun", "simctl", "boot", udid],
+            capture_output=True,
+            text=True,
+        )
         return udid
 
     from concurrent.futures import ThreadPoolExecutor
+
     with ThreadPoolExecutor(max_workers=n) as pool:
         udids = list(pool.map(_create_one, range(n)))
     return udids
@@ -78,11 +95,19 @@ def _create_simulator_pool(n: int, test_destination: str) -> list[str]:
 
 def _destroy_simulator_pool(udids: list[str]) -> None:
     """Delete simulators created by :func:`_create_simulator_pool`."""
-    for udid in udids:
+
+    def _delete_one(udid: str) -> None:
         subprocess.run(
-            ["xcrun", "simctl", "delete", udid],
-            capture_output=True, text=True,
+            ["xcrun", "simctl", "shutdown", udid], capture_output=True, text=True
         )
+        subprocess.run(
+            ["xcrun", "simctl", "delete", udid], capture_output=True, text=True
+        )
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=len(udids)) as pool:
+        list(pool.map(_delete_one, udids))
 
 
 def _detect_test_type(tests_file: Path, xcode_config: dict) -> str:
@@ -195,9 +220,13 @@ def _copy_spm_tests(
                     rel_path = str(dst.relative_to(worktree_dir))
                     project.add_file(rel_path, target_name=test_target)
                     project.save()
-                    logger.info("Added %s to target %s in pbxproj", rel_path, test_target)
+                    logger.info(
+                        "Added %s to target %s in pbxproj", rel_path, test_target
+                    )
                 except Exception as exc:
-                    logger.warning("pbxproj injection failed for %s: %s", test_target, exc)
+                    logger.warning(
+                        "pbxproj injection failed for %s: %s", test_target, exc
+                    )
 
     return "spm"
 
@@ -217,7 +246,9 @@ def _copy_app_tests(
     app_test_target = xcode_config.get("app_test_target", "")
     app_test_files_dest = xcode_config.get("app_test_files_dest", "")
     if not app_test_target or not app_test_files_dest:
-        logger.warning("app_test_target/app_test_files_dest not configured — falling back to spm")
+        logger.warning(
+            "app_test_target/app_test_files_dest not configured — falling back to spm"
+        )
         return _copy_spm_tests(instance_id, tests_file, xcode_config, worktree_dir)
 
     inject_app_test_target(xcode_config, worktree_dir)
@@ -240,9 +271,13 @@ def _copy_app_tests(
                 rel_path = str(dst.relative_to(worktree_dir))
                 project.add_file(rel_path, target_name=app_test_target)
                 project.save()
-                logger.info("Added %s to target %s in pbxproj", rel_path, app_test_target)
+                logger.info(
+                    "Added %s to target %s in pbxproj", rel_path, app_test_target
+                )
             except Exception as exc:
-                logger.warning("pbxproj injection failed for %s: %s", app_test_target, exc)
+                logger.warning(
+                    "pbxproj injection failed for %s: %s", app_test_target, exc
+                )
 
     return "app"
 
@@ -265,13 +300,23 @@ def _run_spm_tests(
 
     test_cmd, test_cwd = test_info
     test_result = subprocess.run(
-        test_cmd, cwd=str(test_cwd),
-        capture_output=True, text=True, timeout=600,
+        test_cmd,
+        cwd=str(test_cwd),
+        capture_output=True,
+        text=True,
+        timeout=600,
     )
     output = parse_xcodebuild_output(test_result.stdout, test_result.stderr)
     if test_result.returncode != 0 and not output["tests"]:
-        output = {"tests": [{"name": "xctest_run", "status": "FAILED",
-                             "message": "xcodebuild test exited with non-zero"}]}
+        output = {
+            "tests": [
+                {
+                    "name": "xctest_run",
+                    "status": "FAILED",
+                    "message": "xcodebuild test exited with non-zero",
+                }
+            ]
+        }
     output["_stdout"] = test_result.stdout
     output["_stderr"] = test_result.stderr
     return output
@@ -291,13 +336,23 @@ def _run_app_tests(
 
     test_cmd, test_cwd = cmd_info
     test_result = subprocess.run(
-        test_cmd, cwd=str(test_cwd),
-        capture_output=True, text=True, timeout=600,
+        test_cmd,
+        cwd=str(test_cwd),
+        capture_output=True,
+        text=True,
+        timeout=600,
     )
     output = parse_xcodebuild_output(test_result.stdout, test_result.stderr)
     if test_result.returncode != 0 and not output["tests"]:
-        output = {"tests": [{"name": "xctest_run", "status": "FAILED",
-                             "message": "xcodebuild test exited with non-zero"}]}
+        output = {
+            "tests": [
+                {
+                    "name": "xctest_run",
+                    "status": "FAILED",
+                    "message": "xcodebuild test exited with non-zero",
+                }
+            ]
+        }
     output["_stdout"] = test_result.stdout
     output["_stderr"] = test_result.stderr
     return output
@@ -329,7 +384,9 @@ def eval_single_patch(
     worktree_dir = None
 
     try:
-        worktree_dir = Path(tempfile.mkdtemp(prefix=f"anvil-eval-{instance_id}-{attempt or 0}-"))
+        worktree_dir = Path(
+            tempfile.mkdtemp(prefix=f"anvil-eval-{instance_id}-{attempt or 0}-")
+        )
 
         cache.checkout(repo_name, base_commit, worktree_dir)
 
@@ -352,36 +409,73 @@ def eval_single_patch(
                 )
                 patch_file.unlink(missing_ok=True)
                 if fallback.returncode != 0:
-                    logger.warning("Patch apply failed for %s: %s", tag, fallback.stderr[:200])
-                    return {"tests": [{"name": "patch_apply", "status": "FAILED",
-                                       "message": fallback.stderr[:200]}]}
+                    logger.warning(
+                        "Patch apply failed for %s: %s", tag, fallback.stderr[:200]
+                    )
+                    return {
+                        "tests": [
+                            {
+                                "name": "patch_apply",
+                                "status": "FAILED",
+                                "message": fallback.stderr[:200],
+                            }
+                        ]
+                    }
 
         test_type = _copy_task_tests(
-            instance_id, source_tasks_dir, xcode_config, worktree_dir,
+            instance_id,
+            source_tasks_dir,
+            xcode_config,
+            worktree_dir,
         )
         has_task_tests = bool(test_type)
 
-        dd_dir = worktree_dir / "DerivedData"
-        build_cmd = _build_xcodebuild_cmd(
-            xcode_config, worktree_dir, dd_dir, clean=False, compile_only=compile_only,
-        )
+        all_stdout = ""
+        all_stderr = ""
 
-        build_result = subprocess.run(
-            build_cmd,
-            cwd=str(worktree_dir),
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
+        if test_type == "app":
+            # App-level xcodebuild test compiles and tests in one pass using
+            # DerivedData-app-tests (warmed separately).  Running a separate
+            # xcodebuild build into DerivedData would compile the same changed
+            # files a second time into a directory the test step never reads.
+            # Skip the build step — compile errors surface through test output.
+            build_output = {"tests": []}
+        else:
+            dd_dir = worktree_dir / "DerivedData"
+            build_cmd = _build_xcodebuild_cmd(
+                xcode_config,
+                worktree_dir,
+                dd_dir,
+                clean=False,
+                compile_only=compile_only,
+            )
 
-        build_output = parse_build_result(build_result.returncode, build_result.stdout, build_result.stderr)
-        all_stdout = build_result.stdout
-        all_stderr = build_result.stderr
+            build_result = subprocess.run(
+                build_cmd,
+                cwd=str(worktree_dir),
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
 
-        if build_result.returncode != 0:
-            _save_eval_output(output_dir, instance_id, attempt, eval_id, build_output,
-                              patch, all_stdout, all_stderr)
-            return build_output
+            build_output = parse_build_result(
+                build_result.returncode, build_result.stdout, build_result.stderr
+            )
+            all_stdout = build_result.stdout
+            all_stderr = build_result.stderr
+
+            if build_result.returncode != 0:
+                _save_eval_output(
+                    output_dir,
+                    instance_id,
+                    attempt,
+                    eval_id,
+                    build_output,
+                    patch,
+                    all_stdout,
+                    all_stderr,
+                )
+                return build_output
 
         run_tests = has_task_tests or not compile_only
 
@@ -399,11 +493,18 @@ def eval_single_patch(
         if run_tests:
             if test_type == "app":
                 xctest_output = _run_app_tests(
-                    test_xcode_config, worktree_dir, all_stdout, all_stderr,
+                    test_xcode_config,
+                    worktree_dir,
+                    all_stdout,
+                    all_stderr,
                 )
             else:
                 xctest_output = _run_spm_tests(
-                    test_xcode_config, worktree_dir, dd_dir, all_stdout, all_stderr,
+                    test_xcode_config,
+                    worktree_dir,
+                    dd_dir,
+                    all_stdout,
+                    all_stderr,
                 )
 
             if xctest_output and "_stdout" in xctest_output:
@@ -412,24 +513,48 @@ def eval_single_patch(
                 all_stderr += "\n" + xctest_output.pop("_stderr")
 
             if xctest_output is None and has_task_tests:
-                xctest_output = {"tests": [{"name": "unit_test_setup", "status": "FAILED",
-                                            "message": "Task tests found but test config "
-                                                       "not configured in xcode_config.yaml"}]}
+                xctest_output = {
+                    "tests": [
+                        {
+                            "name": "unit_test_setup",
+                            "status": "FAILED",
+                            "message": "Task tests found but test config "
+                            "not configured in xcode_config.yaml",
+                        }
+                    ]
+                }
 
         if xctest_output:
             combined = merge_test_results(build_output, xctest_output)
         else:
             combined = build_output
 
-        _save_eval_output(output_dir, instance_id, attempt, eval_id, combined,
-                          patch, all_stdout, all_stderr)
+        _save_eval_output(
+            output_dir,
+            instance_id,
+            attempt,
+            eval_id,
+            combined,
+            patch,
+            all_stdout,
+            all_stderr,
+        )
         return combined
 
     except subprocess.TimeoutExpired:
         logger.error("Build timed out for %s", tag)
-        result = {"tests": [{"name": "compilation", "status": "FAILED",
-                              "message": "Build timed out (600s)"}]}
-        _save_eval_output(output_dir, instance_id, attempt, eval_id, result, patch, "", "")
+        result = {
+            "tests": [
+                {
+                    "name": "compilation",
+                    "status": "FAILED",
+                    "message": "Build timed out (600s)",
+                }
+            ]
+        }
+        _save_eval_output(
+            output_dir, instance_id, attempt, eval_id, result, patch, "", ""
+        )
         return result
     except Exception as e:
         logger.error("Error evaluating %s: %s", tag, e)
@@ -502,6 +627,7 @@ def run_xcode_evals(
     src_tasks: Path | None = None
     if dataset_id:
         from ..config import source_tasks_dir as _src_tasks_dir
+
         candidate = _src_tasks_dir(dataset_id)
         if candidate.is_dir():
             src_tasks = candidate
@@ -526,7 +652,8 @@ def run_xcode_evals(
 
     needs_tests = n_with_tests > 0 or not compile_only
     test_destination = xcode_config.get(
-        "test_destination", xcode_config.get("destination", ""),
+        "test_destination",
+        xcode_config.get("destination", ""),
     )
     needs_sim_pool = (
         needs_tests
@@ -539,7 +666,9 @@ def run_xcode_evals(
     try:
         pool_kwargs: dict = {}
         if needs_sim_pool:
-            typer.echo(f"Creating {max_workers} simulators for parallel test execution...")
+            typer.echo(
+                f"Creating {max_workers} simulators for parallel test execution..."
+            )
             sim_udids = _create_simulator_pool(max_workers, test_destination)
             sim_counter = multiprocessing.Value("i", 0)
             pool_kwargs["initializer"] = _init_sim_worker
@@ -556,7 +685,9 @@ def run_xcode_evals(
 
                 future = pool.submit(
                     eval_single_patch,
-                    patch=patch_sample.get("patch", patch_sample.get("model_patch", "")),
+                    patch=patch_sample.get(
+                        "patch", patch_sample.get("model_patch", "")
+                    ),
                     instance_id=iid,
                     base_commit=inst["base_commit"],
                     repo_name=inst["repo_name"],
@@ -570,7 +701,12 @@ def run_xcode_evals(
                 )
                 future_to_patch[future] = patch_sample
 
-            pbar = tqdm(as_completed(future_to_patch), total=len(future_to_patch), desc="Xcode evals", unit="eval")
+            pbar = tqdm(
+                as_completed(future_to_patch),
+                total=len(future_to_patch),
+                desc="Xcode evals",
+                unit="eval",
+            )
             for future in pbar:
                 patch_sample = future_to_patch[future]
                 iid = patch_sample["instance_id"]
@@ -591,7 +727,9 @@ def run_xcode_evals(
                     eval_results[result_key] = len(tests) > 0 and len(failed) == 0
 
                     if attempt is not None:
-                        task_results_dir = output_dir / iid / f"attempt_{attempt}" / "eval_results"
+                        task_results_dir = (
+                            output_dir / iid / f"attempt_{attempt}" / "eval_results"
+                        )
                         task_results_dir.mkdir(parents=True, exist_ok=True)
                         (task_results_dir / "eval_results.json").write_text(
                             json.dumps({iid: eval_results[result_key]})
@@ -608,7 +746,9 @@ def run_xcode_evals(
             _destroy_simulator_pool(sim_udids)
 
     (output_dir / "eval_results.json").write_text(json.dumps(eval_results))
-    typer.echo(f"Xcode eval complete: {sum(eval_results.values())}/{len(eval_results)} passed")
+    typer.echo(
+        f"Xcode eval complete: {sum(eval_results.values())}/{len(eval_results)} passed"
+    )
 
     return eval_results
 
@@ -656,7 +796,9 @@ def validate_task_tests(
         return 0
 
     typer.echo(f"Validating {len(tasks_with_tests)} task(s) on unpatched base commit")
-    typer.echo("  (class name contains 'F2P' = fail-to-pass, all others = pass-to-pass)\n")
+    typer.echo(
+        "  (class name contains 'F2P' = fail-to-pass, all others = pass-to-pass)\n"
+    )
 
     output_dir = Path(tempfile.mkdtemp(prefix="anvil-validate-"))
     all_ok = True
@@ -691,16 +833,23 @@ def validate_task_tests(
         # Separate real test results from synthetic/meta entries
         _synthetic = {"compilation", "xctest_run", "unit_test_setup", "patch_apply"}
         real_tests = [t for t in tests if t["name"] not in _synthetic]
-        synthetic_failures = [t for t in tests if t["name"] in _synthetic and t["status"] == "FAILED"]
+        synthetic_failures = [
+            t for t in tests if t["name"] in _synthetic and t["status"] == "FAILED"
+        ]
 
         if not real_tests and not synthetic_failures:
-            typer.secho(f"  {task_name}: OK — compile-only (no unit tests)", fg=typer.colors.GREEN)
+            typer.secho(
+                f"  {task_name}: OK — compile-only (no unit tests)",
+                fg=typer.colors.GREEN,
+            )
             continue
 
         if not real_tests and synthetic_failures:
             # Tests failed to compile/run — check if the source has F2P classes
             test_src = src_tasks / task_name / "tests.swift"
-            has_f2p = "F2P" in test_src.read_text().upper() if test_src.is_file() else False
+            has_f2p = (
+                "F2P" in test_src.read_text().upper() if test_src.is_file() else False
+            )
             if has_f2p:
                 typer.secho(
                     f"  {task_name}: OK — tests failed to compile on base (f2p expected)",
@@ -744,14 +893,19 @@ def validate_task_tests(
         summary = ", ".join(counts)
 
         if issues:
-            typer.secho(f"  {task_name}: ISSUE — {'; '.join(issues)}  ({summary})", fg=typer.colors.RED)
+            typer.secho(
+                f"  {task_name}: ISSUE — {'; '.join(issues)}  ({summary})",
+                fg=typer.colors.RED,
+            )
             for t in f2p_pass:
                 cls = t.get("class_name", "?")
                 typer.echo(f"    f2p should fail: {cls}.{t['name']}")
             for t in p2p_fail:
                 cls = t.get("class_name", "?")
                 msg = t.get("message", "")
-                typer.echo(f"    p2p should pass: {cls}.{t['name']}{': ' + msg[:80] if msg else ''}")
+                typer.echo(
+                    f"    p2p should pass: {cls}.{t['name']}{': ' + msg[:80] if msg else ''}"
+                )
             all_ok = False
         else:
             typer.secho(f"  {task_name}: OK — {summary}", fg=typer.colors.GREEN)
@@ -760,7 +914,9 @@ def validate_task_tests(
     shutil.rmtree(output_dir, ignore_errors=True)
 
     if all_ok:
-        typer.secho("All task tests consistent with expectations.", fg=typer.colors.GREEN)
+        typer.secho(
+            "All task tests consistent with expectations.", fg=typer.colors.GREEN
+        )
         return 0
     else:
         typer.secho("Some tasks have inconsistencies — see above.", fg=typer.colors.RED)
@@ -770,5 +926,6 @@ def validate_task_tests(
 def _load_instances_yaml(path: Path) -> list[dict]:
     """Load instances from instances.yaml."""
     from ruamel.yaml import YAML
+
     yaml = YAML()
     return list(yaml.load(path))
