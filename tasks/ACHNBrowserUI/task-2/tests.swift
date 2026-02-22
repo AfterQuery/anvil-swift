@@ -1,7 +1,7 @@
 import XCTest
 @testable import Backend
 
-final class AnvilTask2Tests: XCTestCase {
+final class AnvilTask2P2PTests: XCTestCase {
 
     // Task 2 replaces per-row turnip price views with a unified GridStack layout.
     // All changes are in the app target (TurnipsView, GridStack); no Backend code

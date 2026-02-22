@@ -117,11 +117,6 @@ Each dataset needs a `xcode_config.yaml` in its source tasks directory (e.g. `ta
 
 Anvil includes a task creation wizard to help you build your own evaluation datasets.
 
-Swift Repos
-
-- [PullToDismiss](https://github.com/sgr-ksmt/PullToDismiss)
-  - [EdgeShadow Feature](https://github.com/sgr-ksmt/PullToDismiss/pull/10)
-
 ### Quick Start
 
 ```bash
@@ -233,14 +228,6 @@ anvil run-evals \
   --model openrouter/deepseek/deepseek-v3.2 \
   --no-continue \
   --n-attempts 4
-
-
-See **[docs/TASK_CREATION_GUIDE.md](docs/TASK_CREATION_GUIDE.md)** for the complete guide including:
-
-- Writing effective structural tests
-- Task file format reference
-- Troubleshooting tips
-- Full workflow example
 
 ## How it works
 

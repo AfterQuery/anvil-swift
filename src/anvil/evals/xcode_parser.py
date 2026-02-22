@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 def parse_xcodebuild_output(stdout: str, stderr: str) -> dict:
-    """Parse xcodebuild stdout/stderr into {tests: [{name, status}]} format.
+    """Parse xcodebuild stdout/stderr into ``{tests: [{name, class_name, status}]}`` format.
 
     Handles:
     - Build-only results (synthetic compilation test)
@@ -22,9 +22,10 @@ def parse_xcodebuild_output(stdout: str, stderr: str) -> dict:
         re.IGNORECASE,
     )
     for match in test_case_pattern.finditer(combined):
+        class_name = match.group(1)
         test_name = match.group(2)
         status = "PASSED" if match.group(3).lower() == "passed" else "FAILED"
-        tests.append({"name": test_name, "status": status})
+        tests.append({"name": test_name, "class_name": class_name, "status": status})
 
     swift_testing_pattern = re.compile(
         r"(?:Test|◇|✔|✘)\s+(\w+)\(\)\s+(passed|failed|started)",
@@ -35,6 +36,7 @@ def parse_xcodebuild_output(stdout: str, stderr: str) -> dict:
         if result in ("passed", "failed"):
             tests.append({
                 "name": match.group(1),
+                "class_name": "",
                 "status": "PASSED" if result == "passed" else "FAILED",
             })
 

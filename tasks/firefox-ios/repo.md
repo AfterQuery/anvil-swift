@@ -38,6 +38,10 @@ Firefox for iOS: https://github.com/mozilla-mobile/firefox-ios
 - `focus-ios/focus-ios-tests/` — Focus-specific tests
 - ~692 Swift files importing XCTest across the repo
 
+**Test class convention** — `validate-tests` categorizes by class name:
+- Classes containing `P2P` (e.g. `AnvilTask1P2PTests`) — **pass-to-pass** (must pass on base)
+- All other classes — **fail-to-pass** (must fail on base)
+
 ## Commands
 
 ```bash

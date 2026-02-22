@@ -35,7 +35,11 @@ Mobile GPS Logger: https://github.com/merlos/iOS-Open-GPX-Tracker
 - `OpenGpxTrackerTests/OpenGpxTrackerTests.swift` — placeholder tests only (testExample, testPerformanceExample)
 - Test target `OpenGpxTrackerTests` is configured in the Xcode project but has no real test cases
 
-> Note: This repo has no meaningful unit tests. Evaluation relies on compilation checks via Xcode.
+> Note: The repo's own tests are placeholders. Evaluation uses per-task `tests.swift` files (see below).
+
+**Test class convention** — `validate-tests` categorizes by class name:
+- Classes containing `P2P` (e.g. `AnvilTask1P2PTests`) — **pass-to-pass** (must pass on base)
+- All other classes — **fail-to-pass** (must fail on base)
 
 ## Commands
 
@@ -50,24 +54,24 @@ anvil convert-dataset --dataset tasks/iOS-Open-GPX-Tracker
 # Step 3: Validate task tests fail on unpatched base commits
 anvil validate-tests --dataset datasets/iOS-Open-GPX-Tracker
 
-# Step 4: Verify gold patches compile (no Modal/Docker needed)
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent oracle --compile-only --no-continue
+# Step 4: Verify gold patches compile and pass unit tests
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent oracle --no-continue
 
 # Step 5: Publish Docker images (required for LLM agent runs — agents run in Modal)
 anvil publish-images --dataset datasets/iOS-Open-GPX-Tracker
 
 # Step 6: Run against models (agent rollout via Modal, eval via local Xcode)
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/anthropic/claude-opus-4.6 --compile-only --n-attempts 4 --no-continue
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/anthropic/claude-opus-4.6 --n-attempts 4 --no-continue
 
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --compile-only --n-attempts 4 --no-continue
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --n-attempts 4 --no-continue
 
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/openai/gpt-5.2 --compile-only --n-attempts 4 --no-continue
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/openai/gpt-5.2 --n-attempts 4 --no-continue
 
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --compile-only --n-attempts 4 --no-continue
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --n-attempts 4 --no-continue
 
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --compile-only --n-attempts 4 --no-continue
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --n-attempts 4 --no-continue
 
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/qwen/qwen3-coder-next --compile-only --n-attempts 4 --no-continue
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/qwen/qwen3-coder-next --n-attempts 4 --no-continue
 
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --compile-only --n-attempts 4 --no-continue
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --n-attempts 4 --no-continue
 ```

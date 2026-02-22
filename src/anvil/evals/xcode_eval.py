@@ -107,7 +107,6 @@ def _copy_task_tests(
     if not tests_file.is_file():
         return False
 
-    # Resolve which test_package_path candidate exists at this worktree.
     resolved_pkg = resolve_test_package_path(xcode_config, worktree_dir)
     has_pkg_config = bool(xcode_config.get("test_package_path"))
 
@@ -118,7 +117,6 @@ def _copy_task_tests(
         )
         return False
 
-    # test_files_dest is relative to the resolved package path when one exists.
     if resolved_pkg:
         dest_dir = worktree_dir / resolved_pkg / test_files_dest
     else:
@@ -129,7 +127,6 @@ def _copy_task_tests(
     shutil.copy2(str(tests_file), str(dst))
     logger.info("Copied test file %s → %s", tests_file.name, dest_dir)
 
-    # For non-SPM projects, add the file to the Xcode test target via pbxproj.
     test_target = xcode_config.get("test_target", "")
     if test_target and not xcode_config.get("test_package_path"):
         project_rel = xcode_config.get("project", "")
@@ -165,11 +162,10 @@ def eval_single_patch(
 ) -> dict | None:
     """Evaluate a single patch using local xcodebuild.
 
-    When *source_tasks_dir* is provided, looks for a ``tests.swift`` file at
-    ``<source_tasks_dir>/<task_name>/tests.swift`` and copies it into the
-    test target directory configured by ``test_files_dest`` in xcode_config.
-    If task tests are present they are **always** run, even when
-    *compile_only* is ``True``.
+    When *source_tasks_dir* is provided, copies the task's ``tests.swift``
+    into the test target directory configured by ``test_files_dest`` in
+    xcode_config.  If task tests are present they are **always** run, even
+    when *compile_only* is ``True``.
 
     Returns {"tests": [{"name": ..., "status": ...}, ...]} or None on error.
     """
@@ -470,9 +466,19 @@ def run_xcode_evals(
 def validate_task_tests(
     dataset_id: str,
 ) -> int:
-    """Validate that task tests fail on the unpatched base commit.
+    """Run task tests against the unpatched base commit and check consistency.
 
-    Returns 0 if every task's tests correctly fail, 1 otherwise.
+    Tests are categorized by **class name**:
+
+    * Classes containing ``P2P`` (e.g. ``AnvilTask1P2PTests``) —
+      **pass-to-pass** regression tests; must pass on base.
+    * All other classes — **fail-to-pass**; must fail on base.
+
+    The command reports inconsistencies: p2p tests that fail or f2p tests
+    that pass on the unpatched commit.
+
+    Returns 0 if all tests behave as expected, 1 on inconsistencies or
+    infrastructure errors.
     """
     from ..config import source_tasks_dir as _src_tasks_dir, repo_root
 
@@ -499,7 +505,8 @@ def validate_task_tests(
         typer.echo("No tasks with tests.swift found — nothing to validate.")
         return 0
 
-    typer.echo(f"Validating {len(tasks_with_tests)} task(s): tests must FAIL on unpatched base commit\n")
+    typer.echo(f"Validating {len(tasks_with_tests)} task(s) on unpatched base commit")
+    typer.echo("  (class name contains 'P2P' = pass-to-pass, others = fail-to-pass)\n")
 
     output_dir = Path(tempfile.mkdtemp(prefix="anvil-validate-"))
     all_ok = True
@@ -522,35 +529,71 @@ def validate_task_tests(
             source_tasks_dir=src_tasks,
         )
         tests = result.get("tests", []) if result else []
-        failed = [t for t in tests if t["status"] == "FAILED"]
-        all_pass = len(tests) > 0 and len(failed) == 0
 
-        if all_pass:
+        if not tests:
             typer.secho(
-                f"  {task_name}: PROBLEM — tests PASS on base commit (they should fail)",
+                f"  {task_name}: ERROR — no test results (infrastructure issue?)",
                 fg=typer.colors.RED,
             )
             all_ok = False
-        elif not tests:
-            typer.secho(
-                f"  {task_name}: WARNING — no test results (infrastructure issue?)",
-                fg=typer.colors.YELLOW,
-            )
+            continue
+
+        # Skip the synthetic "compilation" entry from parse_build_result
+        real_tests = [t for t in tests if t["name"] != "compilation"]
+        if not real_tests:
+            typer.secho(f"  {task_name}: OK — compile-only (no unit tests)", fg=typer.colors.GREEN)
+            continue
+
+        # Categorize by class name: "P2P" anywhere in class_name → pass-to-pass
+        p2p_pass, p2p_fail = [], []
+        f2p_pass, f2p_fail = [], []
+        for t in real_tests:
+            is_p2p = "P2P" in t.get("class_name", "").upper()
+            passed = t["status"] == "PASSED"
+            if is_p2p:
+                (p2p_pass if passed else p2p_fail).append(t)
+            else:
+                (f2p_pass if passed else f2p_fail).append(t)
+
+        issues = []
+        if f2p_pass:
+            issues.append(f"{len(f2p_pass)} f2p test(s) PASS (should fail)")
+        if p2p_fail:
+            issues.append(f"{len(p2p_fail)} p2p test(s) FAIL (should pass)")
+
+        counts = []
+        if f2p_fail:
+            counts.append(f"{len(f2p_fail)} f2p fail")
+        if f2p_pass:
+            counts.append(f"{len(f2p_pass)} f2p pass")
+        if p2p_pass:
+            counts.append(f"{len(p2p_pass)} p2p pass")
+        if p2p_fail:
+            counts.append(f"{len(p2p_fail)} p2p fail")
+
+        summary = ", ".join(counts)
+
+        if issues:
+            typer.secho(f"  {task_name}: ISSUE — {'; '.join(issues)}  ({summary})", fg=typer.colors.RED)
+            for t in f2p_pass:
+                cls = t.get("class_name", "?")
+                typer.echo(f"    f2p should fail: {cls}.{t['name']}")
+            for t in p2p_fail:
+                cls = t.get("class_name", "?")
+                msg = t.get("message", "")
+                typer.echo(f"    p2p should pass: {cls}.{t['name']}{': ' + msg[:80] if msg else ''}")
             all_ok = False
         else:
-            typer.secho(
-                f"  {task_name}: OK — tests fail as expected ({len(failed)}/{len(tests)} failed)",
-                fg=typer.colors.GREEN,
-            )
+            typer.secho(f"  {task_name}: OK — {summary}", fg=typer.colors.GREEN)
 
     typer.echo("")
     shutil.rmtree(output_dir, ignore_errors=True)
 
     if all_ok:
-        typer.secho("All task tests correctly fail on the base commit.", fg=typer.colors.GREEN)
+        typer.secho("All task tests consistent with expectations.", fg=typer.colors.GREEN)
         return 0
     else:
-        typer.secho("Some tasks failed validation — see above.", fg=typer.colors.RED)
+        typer.secho("Some tasks have inconsistencies — see above.", fg=typer.colors.RED)
         return 1
 
 

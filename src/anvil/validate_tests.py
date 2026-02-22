@@ -13,13 +13,15 @@ def validate_tests(
         typer.Option("--dataset", "-d", help="Dataset ID or path (e.g. datasets/ACHNBrowserUI)"),
     ],
 ) -> None:
-    """Validate that task tests fail on the unpatched base commit.
+    """Run task tests on the unpatched base commit and check consistency.
 
-    For each task with a tests.swift file, runs tests with no patch applied.
-    Tests must FAIL — if they pass, they don't actually detect the bug and the
-    task is invalid.
+    Tests are categorized by class name:
+      - Classes containing "P2P" (e.g. AnvilTask1P2PTests) — pass-to-pass; must pass on base.
+      - All other classes — fail-to-pass; must fail on base.
 
-    To verify gold patches make tests pass, use: anvil run-evals --agent oracle
+    Reports inconsistencies (p2p tests that fail, or f2p tests that pass).
+
+    To verify gold patches make all tests pass, use: anvil run-evals --agent oracle
     """
     from .evals.xcode_eval import validate_task_tests
 

@@ -44,6 +44,10 @@ Task-specific unit tests live in `tasks/ACHNBrowserUI/task-N/tests.swift`. Durin
 evaluation they are copied into the BackendTests SPM test target and run via
 `xcodebuild test -scheme Backend`.
 
+**Test class convention** — `validate-tests` categorizes by class name:
+- Classes containing `P2P` (e.g. `AnvilTask1P2PTests`) — **pass-to-pass** (must pass on base)
+- All other classes — **fail-to-pass** (must fail on base)
+
 | Task | Tests | What they validate |
 |------|-------|--------------------|
 | task-1 | `AnvilTask1Tests.swift` | `isActiveThisMonth()`, `isActiveAtThisHour()`, `filterActiveThisMonth()`, `formattedTimes()` |
