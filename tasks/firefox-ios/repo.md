@@ -48,13 +48,16 @@ anvil warm-xcode-cache --dataset datasets/firefox-ios
 # Step 2: Convert dataset (reads tasks/, writes to datasets/)
 anvil convert-dataset --dataset tasks/firefox-ios
 
-# Step 3: Verify gold patches compile (no Modal/Docker needed)
+# Step 3: Validate task tests fail on unpatched base commits
+anvil validate-tests --dataset datasets/firefox-ios
+
+# Step 4: Verify gold patches compile (no Modal/Docker needed)
 anvil run-evals --dataset datasets/firefox-ios --agent oracle --compile-only --no-continue
 
-# Step 4: Publish Docker images (required for LLM agent runs — agents run in Modal)
+# Step 5: Publish Docker images (required for LLM agent runs — agents run in Modal)
 anvil publish-images --dataset datasets/firefox-ios
 
-# Step 5: Run against models (agent rollout via Modal, eval via local Xcode)
+# Step 6: Run against models (agent rollout via Modal, eval via local Xcode)
 anvil run-evals --dataset datasets/firefox-ios --agent mini-swe-agent --model openrouter/anthropic/claude-opus-4.6 --n-attempts 4 --no-continue
 
 anvil run-evals --dataset datasets/firefox-ios --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --n-attempts 4 --no-continue

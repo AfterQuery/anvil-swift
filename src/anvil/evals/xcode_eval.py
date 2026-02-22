@@ -465,3 +465,97 @@ def run_xcode_evals(
     typer.echo(f"Xcode eval complete: {sum(eval_results.values())}/{len(eval_results)} passed")
 
     return eval_results
+
+
+def validate_task_tests(
+    dataset_id: str,
+) -> int:
+    """Validate that task tests fail on the unpatched base commit.
+
+    Returns 0 if every task's tests correctly fail, 1 otherwise.
+    """
+    from ..config import source_tasks_dir as _src_tasks_dir, repo_root
+
+    dataset_tasks_dir = repo_root() / dataset_id / "tasks"
+    src_tasks = _src_tasks_dir(dataset_id)
+
+    if not dataset_tasks_dir.exists():
+        typer.echo(f"Error: dataset tasks dir not found: {dataset_tasks_dir}")
+        return 1
+
+    xcode_config = load_xcode_config(dataset_tasks_dir, dataset_id=dataset_id)
+    cache = XcodeBuildCache()
+
+    instances = _load_instances_yaml(dataset_tasks_dir / "instances.yaml")
+
+    tasks_with_tests = []
+    for inst in instances:
+        iid = inst["instance_id"]
+        task_name = iid.split(".")[-1]
+        if (src_tasks / task_name / "tests.swift").is_file():
+            tasks_with_tests.append(inst)
+
+    if not tasks_with_tests:
+        typer.echo("No tasks with tests.swift found — nothing to validate.")
+        return 0
+
+    typer.echo(f"Validating {len(tasks_with_tests)} task(s): tests must FAIL on unpatched base commit\n")
+
+    output_dir = Path(tempfile.mkdtemp(prefix="anvil-validate-"))
+    all_ok = True
+
+    for inst in tasks_with_tests:
+        iid = inst["instance_id"]
+        task_name = iid.split(".")[-1]
+
+        result = eval_single_patch(
+            patch="",
+            instance_id=iid,
+            base_commit=inst["base_commit"],
+            repo_name=inst["repo_name"],
+            xcode_config=xcode_config,
+            cache=cache,
+            output_dir=output_dir,
+            eval_id="validate-base",
+            attempt=None,
+            compile_only=False,
+            source_tasks_dir=src_tasks,
+        )
+        tests = result.get("tests", []) if result else []
+        failed = [t for t in tests if t["status"] == "FAILED"]
+        all_pass = len(tests) > 0 and len(failed) == 0
+
+        if all_pass:
+            typer.secho(
+                f"  {task_name}: PROBLEM — tests PASS on base commit (they should fail)",
+                fg=typer.colors.RED,
+            )
+            all_ok = False
+        elif not tests:
+            typer.secho(
+                f"  {task_name}: WARNING — no test results (infrastructure issue?)",
+                fg=typer.colors.YELLOW,
+            )
+            all_ok = False
+        else:
+            typer.secho(
+                f"  {task_name}: OK — tests fail as expected ({len(failed)}/{len(tests)} failed)",
+                fg=typer.colors.GREEN,
+            )
+
+    typer.echo("")
+    shutil.rmtree(output_dir, ignore_errors=True)
+
+    if all_ok:
+        typer.secho("All task tests correctly fail on the base commit.", fg=typer.colors.GREEN)
+        return 0
+    else:
+        typer.secho("Some tasks failed validation — see above.", fg=typer.colors.RED)
+        return 1
+
+
+def _load_instances_yaml(path: Path) -> list[dict]:
+    """Load instances from instances.yaml."""
+    from ruamel.yaml import YAML
+    yaml = YAML()
+    return list(yaml.load(path))
