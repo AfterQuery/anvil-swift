@@ -28,6 +28,36 @@ def _apfs_clone(src: Path, dst: Path) -> None:
         logger.debug("cp -c failed, falling back to shutil.copytree: %s", result.stderr)
     shutil.copytree(str(src), str(dst), symlinks=True)
 
+
+def _dd_is_populated(path: Path) -> bool:
+    """Return True if *path* exists and contains at least one entry."""
+    return path.exists() and any(path.iterdir())
+
+
+def _clone_dd_if_populated(src: Path, dst: Path) -> None:
+    """APFS-clone a DerivedData directory if it has content."""
+    if _dd_is_populated(src):
+        _apfs_clone(src, dst)
+
+
+def _remove_worktree(clone_dir: Path, work_dir: Path) -> None:
+    """Remove a git worktree, falling back to rmtree if git fails."""
+    _run_cmd(
+        ["git", "-C", str(clone_dir), "worktree", "remove", "--force", str(work_dir)],
+        check=False,
+    )
+    if work_dir.exists():
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def _format_build_errors(stderr: str, max_lines: int = 10, fallback_chars: int = 500) -> str:
+    """Extract error lines from xcodebuild stderr, with a fallback tail."""
+    error_lines = [ln for ln in stderr.splitlines() if "error:" in ln.lower()]
+    if error_lines:
+        return "\n".join(error_lines[:max_lines])
+    return stderr[-fallback_chars:]
+
+
 def _default_cache_root() -> Path:
     from ..config import repo_root
     return repo_root() / ".xcode-cache"
@@ -77,8 +107,7 @@ class XcodeBuildCache:
         return self._commit_cache_dir(repo_name, base_commit) / "DerivedData-app-tests"
 
     def is_warm(self, repo_name: str, base_commit: str) -> bool:
-        dd = self._derived_data_dir(repo_name, base_commit)
-        return dd.exists() and any(dd.iterdir())
+        return _dd_is_populated(self._derived_data_dir(repo_name, base_commit))
 
     def warm(
         self,
@@ -112,10 +141,7 @@ class XcodeBuildCache:
 
         work_dir = commit_dir / "worktree"
         if work_dir.exists():
-            _run_cmd(["git", "-C", str(clone_dir), "worktree", "remove", "--force", str(work_dir)],
-                     check=False)
-            if work_dir.exists():
-                shutil.rmtree(work_dir)
+            _remove_worktree(clone_dir, work_dir)
 
         typer.echo(f"  Creating worktree at {base_commit[:8]}...")
         _run_cmd(["git", "-C", str(clone_dir), "fetch", "--all"], check=False)
@@ -125,8 +151,9 @@ class XcodeBuildCache:
             typer.echo(f"  Building {repo_name} (full clean build)...")
             dd_dir.mkdir(parents=True, exist_ok=True)
 
-            build_cmd = _build_xcodebuild_cmd(xcode_config, work_dir, dd_dir, clean=True)
-            build_cmd = [c for c in build_cmd if c != "-disableAutomaticPackageResolution"]
+            build_cmd = _build_xcodebuild_cmd(
+                xcode_config, work_dir, dd_dir, clean=True, allow_pkg_resolution=True,
+            )
             result = subprocess.run(
                 build_cmd,
                 cwd=str(work_dir),
@@ -136,11 +163,7 @@ class XcodeBuildCache:
             )
 
             if result.returncode != 0:
-                error_lines = [
-                    line for line in result.stderr.splitlines()
-                    if "error:" in line.lower()
-                ]
-                summary = "\n".join(error_lines[:10]) if error_lines else result.stderr[-500:]
+                summary = _format_build_errors(result.stderr)
                 typer.echo(f"  Build failed for {repo_name}@{base_commit[:8]}:\n{summary}", err=True)
                 shutil.rmtree(dd_dir, ignore_errors=True)
                 raise RuntimeError(f"xcodebuild failed for {repo_name}@{base_commit[:8]}")
@@ -148,10 +171,7 @@ class XcodeBuildCache:
         self._warm_test_dd(xcode_config, work_dir, repo_name, base_commit)
         self._save_package_resolved(xcode_config, work_dir, repo_name, base_commit)
 
-        _run_cmd(["git", "-C", str(clone_dir), "worktree", "remove", "--force", str(work_dir)],
-                 check=False)
-        if work_dir.exists():
-            shutil.rmtree(work_dir, ignore_errors=True)
+        _remove_worktree(clone_dir, work_dir)
 
         typer.echo(f"  Cached DerivedData for {repo_name}@{base_commit[:8]}")
         return dd_dir
@@ -207,12 +227,10 @@ class XcodeBuildCache:
     def _needs_test_warm(self, xcode_config: dict, repo_name: str, base_commit: str) -> bool:
         """Check if any test DerivedData directories need warming."""
         if xcode_config.get("test_scheme"):
-            test_dd = self._test_derived_data_dir(repo_name, base_commit)
-            if not test_dd.exists() or not any(test_dd.iterdir()):
+            if not _dd_is_populated(self._test_derived_data_dir(repo_name, base_commit)):
                 return True
         if xcode_config.get("app_test_scheme"):
-            app_dd = self._app_test_derived_data_dir(repo_name, base_commit)
-            if not app_dd.exists() or not any(app_dd.iterdir()):
+            if not _dd_is_populated(self._app_test_derived_data_dir(repo_name, base_commit)):
                 return True
         return False
 
@@ -240,7 +258,7 @@ class XcodeBuildCache:
             return
 
         test_dd_dir = self._test_derived_data_dir(repo_name, base_commit)
-        if test_dd_dir.exists() and any(test_dd_dir.iterdir()):
+        if _dd_is_populated(test_dd_dir):
             return
 
         resolved_pkg = resolve_test_package_path(xcode_config, work_dir)
@@ -278,10 +296,7 @@ class XcodeBuildCache:
         dummy_file.unlink(missing_ok=True)
 
         if result.returncode != 0:
-            error_lines = [
-                ln for ln in result.stderr.splitlines() if "error:" in ln.lower()
-            ]
-            summary = "\n".join(error_lines[:5]) if error_lines else result.stderr[-300:]
+            summary = _format_build_errors(result.stderr, max_lines=5, fallback_chars=300)
             typer.echo(f"  Test warm failed (non-fatal): {summary}", err=True)
             shutil.rmtree(test_dd_dir, ignore_errors=True)
 
@@ -298,7 +313,7 @@ class XcodeBuildCache:
             return
 
         app_test_dd = self._app_test_derived_data_dir(repo_name, base_commit)
-        if app_test_dd.exists() and any(app_test_dd.iterdir()):
+        if _dd_is_populated(app_test_dd):
             return
 
         app_test_target = xcode_config.get("app_test_target", "")
@@ -317,15 +332,15 @@ class XcodeBuildCache:
         )
 
         app_test_dd.mkdir(parents=True, exist_ok=True)
-        cmd_info = _build_xcodebuild_app_test_cmd(xcode_config, work_dir, app_test_dd)
+        cmd_info = _build_xcodebuild_app_test_cmd(
+            xcode_config, work_dir, app_test_dd, allow_pkg_resolution=True,
+        )
         if not cmd_info:
             dummy_file.unlink(missing_ok=True)
             return
 
         cmd, cwd = cmd_info
         cmd = ["build-for-testing" if c == "test" else c for c in cmd]
-        # Allow package resolution during warm (runs once per commit)
-        cmd = [c for c in cmd if c != "-disableAutomaticPackageResolution"]
 
         typer.echo(f"  Warming app-test DerivedData for {repo_name}@{base_commit[:8]}...")
         result = subprocess.run(
@@ -338,10 +353,7 @@ class XcodeBuildCache:
         dummy_file.unlink(missing_ok=True)
 
         if result.returncode != 0:
-            error_lines = [
-                ln for ln in result.stderr.splitlines() if "error:" in ln.lower()
-            ]
-            summary = "\n".join(error_lines[:5]) if error_lines else result.stderr[-300:]
+            summary = _format_build_errors(result.stderr, max_lines=5, fallback_chars=300)
             typer.echo(f"  App-test warm failed (non-fatal): {summary}", err=True)
             shutil.rmtree(app_test_dd, ignore_errors=True)
 
@@ -370,20 +382,18 @@ class XcodeBuildCache:
             "worktree", "add", "--detach", str(target_dir), base_commit,
         ])
 
-        dd_src = self._derived_data_dir(repo_name, base_commit)
-        dd_dst = target_dir / "DerivedData"
-        if dd_src.exists() and any(dd_src.iterdir()):
-            _apfs_clone(dd_src, dd_dst)
-
-        test_dd_src = self._test_derived_data_dir(repo_name, base_commit)
-        test_dd_dst = target_dir / "DerivedData-tests"
-        if test_dd_src.exists() and any(test_dd_src.iterdir()):
-            _apfs_clone(test_dd_src, test_dd_dst)
-
-        app_test_dd_src = self._app_test_derived_data_dir(repo_name, base_commit)
-        app_test_dd_dst = target_dir / "DerivedData-app-tests"
-        if app_test_dd_src.exists() and any(app_test_dd_src.iterdir()):
-            _apfs_clone(app_test_dd_src, app_test_dd_dst)
+        _clone_dd_if_populated(
+            self._derived_data_dir(repo_name, base_commit),
+            target_dir / "DerivedData",
+        )
+        _clone_dd_if_populated(
+            self._test_derived_data_dir(repo_name, base_commit),
+            target_dir / "DerivedData-tests",
+        )
+        _clone_dd_if_populated(
+            self._app_test_derived_data_dir(repo_name, base_commit),
+            target_dir / "DerivedData-app-tests",
+        )
 
         if xcode_config:
             self._restore_package_resolved(
@@ -428,7 +438,7 @@ def _build_xcodebuild_cmd(
     work_dir: Path,
     derived_data_dir: Path,
     clean: bool = False,
-    compile_only: bool = False,
+    allow_pkg_resolution: bool = False,
 ) -> list[str]:
     """Build the xcodebuild compile command from config."""
     scheme = xcode_config["scheme"]
@@ -449,12 +459,13 @@ def _build_xcodebuild_cmd(
         "-derivedDataPath", str(derived_data_dir),
         "-quiet",
         "-skipPackagePluginValidation",
-        "-disableAutomaticPackageResolution",
         "ONLY_ACTIVE_ARCH=YES",
         "CODE_SIGNING_ALLOWED=NO",
         "CODE_SIGN_IDENTITY=",
         "COMPILER_INDEX_STORE_ENABLE=NO",
     ])
+    if not allow_pkg_resolution:
+        cmd.append("-disableAutomaticPackageResolution")
 
     return cmd
 
@@ -464,6 +475,7 @@ def _build_xcodebuild_test_cmd(
     work_dir: Path,
     derived_data_dir: Path,
     test_only: list[str] | None = None,
+    allow_pkg_resolution: bool = False,
 ) -> tuple[list[str], Path] | None:
     """Build the xcodebuild test command.
 
@@ -475,9 +487,9 @@ def _build_xcodebuild_test_cmd(
     ``cwd`` is the worktree root.
 
     Args:
-        test_only: Optional list of test identifiers to run, e.g.
-            ["BackendTests/ItemsTests", "BackendTests/CrittersTests/testFishDecoding"]
-            Uses xcodebuild's -only-testing: flag.
+        test_only: Optional list of test identifiers to run.
+        allow_pkg_resolution: If True, omit ``-disableAutomaticPackageResolution``
+            (used during cache warming).
     """
     test_scheme = xcode_config.get("test_scheme", "")
     if not test_scheme:
@@ -511,12 +523,13 @@ def _build_xcodebuild_test_cmd(
         "-destination", test_destination,
         "-derivedDataPath", str(derived_data_dir),
         "-skipPackagePluginValidation",
-        "-disableAutomaticPackageResolution",
         "ONLY_ACTIVE_ARCH=YES",
         "CODE_SIGNING_ALLOWED=NO",
         "CODE_SIGN_IDENTITY=",
         "COMPILER_INDEX_STORE_ENABLE=NO",
     ])
+    if not allow_pkg_resolution:
+        cmd.append("-disableAutomaticPackageResolution")
 
     only = test_only or xcode_config.get("test_only", [])
     for target in only:
@@ -888,6 +901,7 @@ def _build_xcodebuild_app_test_cmd(
     xcode_config: dict,
     work_dir: Path,
     derived_data_dir: Path,
+    allow_pkg_resolution: bool = False,
 ) -> tuple[list[str], Path] | None:
     """Build the xcodebuild test command for **app-level** unit tests.
 
@@ -895,7 +909,8 @@ def _build_xcodebuild_app_test_cmd(
 
     Unlike :func:`_build_xcodebuild_test_cmd` (SPM package tests), this
     targets the main Xcode project using ``app_test_scheme`` and runs tests
-    hosted inside the app bundle.
+    hosted inside the app bundle.  Uses ad-hoc signing (``CODE_SIGN_IDENTITY=-``)
+    so that entitlements (e.g. CloudKit container) are preserved on simulator.
     """
     app_test_scheme = xcode_config.get("app_test_scheme", "")
     if not app_test_scheme:
@@ -915,12 +930,13 @@ def _build_xcodebuild_app_test_cmd(
         "-destination", dest,
         "-derivedDataPath", str(derived_data_dir),
         "-skipPackagePluginValidation",
-        "-disableAutomaticPackageResolution",
         "ONLY_ACTIVE_ARCH=YES",
-        "CODE_SIGNING_ALLOWED=NO",
-        "CODE_SIGN_IDENTITY=",
+        "CODE_SIGNING_ALLOWED=YES",
+        "CODE_SIGN_IDENTITY=-",
         "COMPILER_INDEX_STORE_ENABLE=NO",
     ])
+    if not allow_pkg_resolution:
+        cmd.append("-disableAutomaticPackageResolution")
 
     return cmd, work_dir
 
