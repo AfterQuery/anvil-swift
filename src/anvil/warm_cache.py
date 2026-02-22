@@ -56,6 +56,7 @@ def warm_xcode_cache(
     cache = XcodeBuildCache()
 
     import shutil
+    import subprocess
 
     for key in seen_commits:
         repo_name, base_commit = key.split(":", 1)
@@ -63,6 +64,16 @@ def warm_xcode_cache(
         if commit_dir.exists():
             shutil.rmtree(commit_dir)
             typer.echo(f"  Deleted cache for {repo_name}@{base_commit[:8]}")
+
+    for key in seen_commits:
+        repo_name = key.split(":", 1)[0]
+        clone_dir = cache._repo_clone_dir(repo_name)
+        if clone_dir.exists():
+            subprocess.run(
+                ["git", "-C", str(clone_dir), "worktree", "prune"],
+                capture_output=True,
+            )
+            break
 
     repos_root = repo_root() / "repos"
     for key, example_iid in seen_commits.items():
