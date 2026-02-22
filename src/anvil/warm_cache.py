@@ -55,6 +55,15 @@ def warm_xcode_cache(
 
     cache = XcodeBuildCache()
 
+    import shutil
+
+    for key in seen_commits:
+        repo_name, base_commit = key.split(":", 1)
+        commit_dir = cache._commit_cache_dir(repo_name, base_commit)
+        if commit_dir.exists():
+            shutil.rmtree(commit_dir)
+            typer.echo(f"  Deleted cache for {repo_name}@{base_commit[:8]}")
+
     repos_root = repo_root() / "repos"
     for key, example_iid in seen_commits.items():
         repo_name, base_commit = key.split(":", 1)
