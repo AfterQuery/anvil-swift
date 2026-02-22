@@ -15,3 +15,4 @@ This makes it difficult to track per-variant collection progress.
 5. Liking the first variant of an item must automatically add the parent item to the collection. Unliking the last variant must automatically remove it.
 6. The icon state must update immediately when variants are toggled.
 7. Items with zero or one variant must retain the existing binary like behavior and not show partial states.
+8. The Backend must expose a `hasSomeVariations` computed property on `Item` (true when more than one variant exists), a `VariantsCompletionStatus` enum with `.unstarted`/`.partial`/`.complete` cases, and a `completionStatus(for:)` method on the variant dictionary to compute it.

@@ -14,3 +14,4 @@ This makes it difficult to quickly plan a catching session.
 4. Both fish and bugs should be handled consistently.
 5. French localization strings must be provided for the new section titles.
 6. The existing behavior for other sections (e.g., "New this month", "Leaving this month", "Caught") must remain unchanged.
+7. The `CritterInfo` struct in `ActiveCrittersViewModel` should expose separate arrays for critters catchable now vs. later instead of a single combined list.

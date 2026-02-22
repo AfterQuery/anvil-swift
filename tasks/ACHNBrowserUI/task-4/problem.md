@@ -15,3 +15,4 @@ In the **ACHNBrowserUI** app, the Villagers list view displays all villagers but
 7. When searching, search results must take priority over sorting.
 8. French localization must be added for any new user-facing sort strings.
 9. The existing search functionality and villager detail view must remain unchanged.
+10. Add sort state to `VillagersViewModel` (e.g., a `Sort` enum and a `sortedVillagers` array) so the view can bind to it.

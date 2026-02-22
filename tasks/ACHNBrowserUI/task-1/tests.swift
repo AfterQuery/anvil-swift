@@ -1,20 +1,11 @@
 import XCTest
-@testable import Backend
+import SwiftUI
+@testable import AC_Helper
+import Backend
 
 final class AnvilTask1F2PTests: XCTestCase {
 
-    // MARK: - isActiveThisMonth (renamed from isActive)
-
-    func testIsActiveThisMonthReturnsFalseWithoutActiveMonths() {
-        let json = """
-        {"name":"Test","category":"Fish","filename":"test"}
-        """
-        let item = try! JSONDecoder().decode(Item.self, from: json.data(using: .utf8)!)
-        XCTAssertFalse(item.isActiveThisMonth(),
-                       "Item without activeMonths data should not be active this month")
-    }
-
-    // MARK: - isActiveAtThisHour
+    // MARK: - Backend: core new method
 
     func testIsActiveAtThisHourReturnsFalseWithoutActiveMonths() {
         let json = """
@@ -25,26 +16,28 @@ final class AnvilTask1F2PTests: XCTestCase {
                        "Item without active hours data should not be active this hour")
     }
 
-    // MARK: - filterActiveThisMonth
+    // MARK: - App ViewModel: CritterInfo integration point
 
-    func testFilterActiveThisMonthExcludesInactiveItems() {
-        let json = """
-        {"name":"Test","category":"Fish","filename":"test"}
-        """
-        let item = try! JSONDecoder().decode(Item.self, from: json.data(using: .utf8)!)
-        let result = [item].filterActiveThisMonth()
-        XCTAssertTrue(result.isEmpty,
-                      "Item without active months should be excluded by filterActiveThisMonth")
+    func testCritterInfoHasToCatchNowAndToCatchLater() {
+        let info = ActiveCrittersViewModel.CritterInfo(
+            new: [], leaving: [], caught: [],
+            toCatchNow: [], toCatchLater: []
+        )
+        XCTAssertTrue(info.toCatchNow.isEmpty)
+        XCTAssertTrue(info.toCatchLater.isEmpty)
     }
 
-    // MARK: - formattedTimes
-
-    func testFormattedTimesReturnsNilWithoutActiveMonths() {
+    func testCritterInfoStoresNowAndLaterItems() {
         let json = """
-        {"name":"Test","category":"Fish","filename":"test"}
+        {"name":"TestFish","category":"Fish","filename":"test_fish"}
         """
         let item = try! JSONDecoder().decode(Item.self, from: json.data(using: .utf8)!)
-        XCTAssertNil(item.formattedTimes(),
-                     "formattedTimes should return nil without active month data")
+
+        let info = ActiveCrittersViewModel.CritterInfo(
+            new: [], leaving: [], caught: [],
+            toCatchNow: [item], toCatchLater: []
+        )
+        XCTAssertEqual(info.toCatchNow.count, 1)
+        XCTAssertTrue(info.toCatchLater.isEmpty)
     }
 }

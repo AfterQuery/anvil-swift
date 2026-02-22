@@ -41,19 +41,24 @@ Animal Crossing Helper: https://github.com/Dimillian/ACHNBrowserUI
 ### Per-task evaluation tests
 
 Task-specific unit tests live in `tasks/ACHNBrowserUI/task-N/tests.swift`. During
-evaluation they are copied into the BackendTests SPM test target and run via
-`xcodebuild test -scheme Backend`.
+evaluation they are routed to the SPM backend or app test target based on their
+`@testable import` (see `_detect_test_type` in `xcode_eval.py`).
 
 **Test class convention** — `validate-tests` categorizes by class name:
 - Classes containing `F2P` (e.g. `AnvilTask1F2PTests`) — **fail-to-pass** (must fail on base)
 - All other classes (repo tests, P2P classes, etc.) — **pass-to-pass** (must pass on base)
 
-| Task | Tests | What they validate |
-|------|-------|--------------------|
-| task-1 | `AnvilTask1Tests.swift` | `isActiveThisMonth()`, `isActiveAtThisHour()`, `filterActiveThisMonth()`, `formattedTimes()` |
-| task-2 | *(compile-only)* | App-layer changes (GridStack, TurnipsView) — no Backend code modified |
-| task-3 | `AnvilTask3Tests.swift` | `hasSomeVariations`, `VariantsCompletionStatus`, `completionStatus(for:)`, variant toggle auto-manages parent |
-| task-4 | *(compile-only)* | App-layer changes (VillagersSortView, VillagersViewModel) — no Backend code modified |
+**Design principle** — tests target *integration points* (ViewModel structs, view
+components the rest of the app binds to) and *behavioral outcomes* rather than
+internal API names. Compilation already enforces that the model's internal naming
+is consistent across the codebase.
+
+| Task | Tests | Route | What they validate |
+|------|-------|-------|--------------------|
+| task-1 | `AnvilTask1F2PTests` | app | Backend: `isActiveAtThisHour()` exists and returns false without data. App: `CritterInfo` struct has `toCatchNow`/`toCatchLater` |
+| task-2 | `AnvilTask2F2PTests` | app | `GridStack` view existence, `rows`/`columns`/`spacing` properties |
+| task-3 | `AnvilTask3F2PTests` | spm | `hasSomeVariations`, `VariantsCompletionStatus` enum, `completionStatus(for:)`. Behavioral: `toggleVariant` auto-manages parent item |
+| task-4 | `AnvilTask4F2PTests` | app | `VillagersViewModel.Sort` enum with `.name`/`.species`, `sortedVillagers` empty with no data, clearing sort empties results |
 
 ## Commands
 

@@ -80,7 +80,7 @@ final class AnvilTask3F2PTests: XCTestCase {
         XCTAssertEqual(dict.completionStatus(for: item), .complete)
     }
 
-    // MARK: - toggleVariant auto-manages parent item
+    // MARK: - toggleVariant auto-manages parent item (acceptance criterion 5)
 
     func testToggleVariantAutoAddsParentItem() {
         let collection = UserCollection(iCloudDisabled: true)
@@ -107,5 +107,20 @@ final class AnvilTask3F2PTests: XCTestCase {
         _ = collection.toggleVariant(item: item, variant: variant)
         XCTAssertFalse(collection.items.contains(item),
                         "Removing the last liked variant should auto-remove the parent item")
+    }
+
+    func testParentRemainsWhenSomeVariantsStillLiked() {
+        let collection = UserCollection(iCloudDisabled: true)
+        let item = makeItem(variationCount: 3)
+        let v0 = item.variations![0]
+        let v1 = item.variations![1]
+
+        _ = collection.toggleVariant(item: item, variant: v0)
+        _ = collection.toggleVariant(item: item, variant: v1)
+        XCTAssertTrue(collection.items.contains(item))
+
+        _ = collection.toggleVariant(item: item, variant: v0)
+        XCTAssertTrue(collection.items.contains(item),
+                       "Parent should remain in collection while at least one variant is still liked")
     }
 }
