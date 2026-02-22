@@ -294,13 +294,13 @@ def _build_xcodebuild_cmd(
         "-destination", destination,
         "-derivedDataPath", str(derived_data_dir),
         "-quiet",
+        "-skipPackagePluginValidation",
+        "-disableAutomaticPackageResolution",
         "ONLY_ACTIVE_ARCH=YES",
         "CODE_SIGNING_ALLOWED=NO",
         "CODE_SIGN_IDENTITY=",
+        "COMPILER_INDEX_STORE_ENABLE=NO",
     ])
-
-    if compile_only:
-        cmd.append("COMPILER_INDEX_STORE_ENABLE=NO")
 
     return cmd
 
@@ -356,9 +356,12 @@ def _build_xcodebuild_test_cmd(
         "-scheme", test_scheme,
         "-destination", test_destination,
         "-derivedDataPath", str(derived_data_dir),
+        "-skipPackagePluginValidation",
+        "-disableAutomaticPackageResolution",
         "ONLY_ACTIVE_ARCH=YES",
         "CODE_SIGNING_ALLOWED=NO",
         "CODE_SIGN_IDENTITY=",
+        "COMPILER_INDEX_STORE_ENABLE=NO",
     ])
 
     only = test_only or xcode_config.get("test_only", [])

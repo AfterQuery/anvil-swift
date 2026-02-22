@@ -45,8 +45,8 @@ def _create_simulator_pool(n: int, test_destination: str) -> list[str]:
     Returns a list of simulator UDIDs.
     """
     device_name = _parse_device_name(test_destination)
-    udids: list[str] = []
-    for i in range(n):
+
+    def _create_one(i: int) -> str:
         sim_name = f"anvil-eval-{i}"
         subprocess.run(
             ["xcrun", "simctl", "delete", sim_name],
@@ -57,11 +57,14 @@ def _create_simulator_pool(n: int, test_destination: str) -> list[str]:
             capture_output=True, text=True,
         )
         if result.returncode != 0:
-            logger.error("Failed to create simulator %s: %s", sim_name, result.stderr.strip())
             raise RuntimeError(f"xcrun simctl create failed for '{sim_name}': {result.stderr.strip()}")
         udid = result.stdout.strip()
-        udids.append(udid)
         logger.info("Created simulator %s (%s) based on '%s'", sim_name, udid, device_name)
+        return udid
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=n) as pool:
+        udids = list(pool.map(_create_one, range(n)))
     return udids
 
 
@@ -177,26 +180,27 @@ def eval_single_patch(
         cache.checkout(repo_name, base_commit, worktree_dir)
 
         if patch and patch.strip():
-            patch_file = worktree_dir / "_anvil_patch.diff"
-            patch_file.write_text(patch)
             apply_result = subprocess.run(
-                ["git", "apply", "--allow-empty", str(patch_file)],
+                ["git", "apply", "--allow-empty"],
                 cwd=str(worktree_dir),
+                input=patch,
                 capture_output=True,
                 text=True,
             )
             if apply_result.returncode != 0:
+                patch_file = worktree_dir / "_anvil_patch.diff"
+                patch_file.write_text(patch)
                 fallback = subprocess.run(
                     ["patch", "-p1", "-i", str(patch_file)],
                     cwd=str(worktree_dir),
                     capture_output=True,
                     text=True,
                 )
+                patch_file.unlink(missing_ok=True)
                 if fallback.returncode != 0:
                     logger.warning("Patch apply failed for %s: %s", tag, fallback.stderr[:200])
                     return {"tests": [{"name": "patch_apply", "status": "FAILED",
                                        "message": fallback.stderr[:200]}]}
-            patch_file.unlink(missing_ok=True)
 
         has_task_tests = _copy_task_tests(
             instance_id, source_tasks_dir, xcode_config, worktree_dir,
@@ -355,7 +359,7 @@ def run_xcode_evals(
 
     if max_workers is None:
         cpu_count = os.cpu_count() or 4
-        max_workers = max(1, min(cpu_count // 4, 3))
+        max_workers = max(1, min(cpu_count // 2, 8))
 
     eval_results: dict[str, bool] = {}
 
