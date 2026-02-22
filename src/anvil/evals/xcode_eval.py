@@ -14,7 +14,15 @@ from pathlib import Path
 import typer
 from tqdm import tqdm
 
-from .xcode_cache import XcodeBuildCache, _build_xcodebuild_cmd, _build_xcodebuild_test_cmd, load_xcode_config, resolve_test_package_path
+from .xcode_cache import (
+    XcodeBuildCache,
+    _build_xcodebuild_app_test_cmd,
+    _build_xcodebuild_cmd,
+    _build_xcodebuild_test_cmd,
+    inject_app_test_target,
+    load_xcode_config,
+    resolve_test_package_path,
+)
 from .xcode_parser import merge_test_results, parse_build_result, parse_xcodebuild_output
 
 logger = logging.getLogger(__name__)
@@ -77,37 +85,82 @@ def _destroy_simulator_pool(udids: list[str]) -> None:
         )
 
 
+def _detect_test_type(tests_file: Path, xcode_config: dict) -> str:
+    """Detect whether a ``tests.swift`` targets the app module or SPM backend.
+
+    Reads the first 10 lines looking for ``@testable import <module>``.
+    Checks against ``app_test_module`` (the app's Swift module name) and
+    ``app_test_scheme`` as fallback.  Returns ``"app"`` on match,
+    ``"spm"`` otherwise (or when no app test config exists).
+    """
+    app_modules = set()
+    for key in ("app_test_module", "app_test_scheme"):
+        val = xcode_config.get(key, "")
+        if val:
+            app_modules.add(val)
+    if not app_modules:
+        return "spm"
+
+    try:
+        head = tests_file.read_text()[:500]
+    except OSError:
+        return "spm"
+
+    for line in head.splitlines()[:10]:
+        stripped = line.strip()
+        if stripped.startswith("@testable import"):
+            for mod in app_modules:
+                if mod in stripped:
+                    return "app"
+    return "spm"
+
+
 def _copy_task_tests(
     instance_id: str,
     source_tasks_dir: Path | None,
     xcode_config: dict,
     worktree_dir: Path,
-) -> bool:
-    """Copy the task's ``tests.swift`` into the worktree's test target directory.
+) -> str:
+    """Copy the task's ``tests.swift`` into the correct test target directory.
 
-    Each task can define a single ``tests.swift`` file at
-    ``tasks/<repo>/task-N/tests.swift``.  It is copied into the directory
-    given by ``test_files_dest`` in xcode_config.
+    Auto-detects whether the test targets the app module (``@testable import
+    ACHNBrowserUI``) or the SPM backend (``@testable import Backend``) and
+    routes accordingly.
 
-    For SPM-based test targets (``test_package_path`` set), the file is
-    auto-discovered.  For Xcode-project test targets (``test_target`` set),
-    the file is also added to the target's compile sources via pbxproj.
+    For app-level tests, also injects the ``ACHNBrowserUITests`` target into
+    the Xcode project via :func:`inject_app_test_target` and adds the test
+    file to the target's compile sources via ``pbxproj``.
 
-    Returns True if the test file was copied.
+    Returns ``"app"`` or ``"spm"`` if tests were copied, ``""`` if none.
     """
     if not source_tasks_dir:
-        return False
-
-    test_files_dest = xcode_config.get("test_files_dest", "")
-    if not test_files_dest:
-        return False
+        return ""
 
     parts = instance_id.split(".")
     task_name = parts[-1] if len(parts) > 1 else instance_id
     tests_file = source_tasks_dir / task_name / "tests.swift"
 
     if not tests_file.is_file():
-        return False
+        return ""
+
+    test_type = _detect_test_type(tests_file, xcode_config)
+
+    if test_type == "app":
+        return _copy_app_tests(instance_id, tests_file, xcode_config, worktree_dir)
+    else:
+        return _copy_spm_tests(instance_id, tests_file, xcode_config, worktree_dir)
+
+
+def _copy_spm_tests(
+    instance_id: str,
+    tests_file: Path,
+    xcode_config: dict,
+    worktree_dir: Path,
+) -> str:
+    """Copy tests into the SPM test target (existing Backend path)."""
+    test_files_dest = xcode_config.get("test_files_dest", "")
+    if not test_files_dest:
+        return ""
 
     resolved_pkg = resolve_test_package_path(xcode_config, worktree_dir)
     has_pkg_config = bool(xcode_config.get("test_package_path"))
@@ -117,7 +170,7 @@ def _copy_task_tests(
             "No test_package_path candidate found at worktree — skipping test copy for %s",
             instance_id,
         )
-        return False
+        return ""
 
     if resolved_pkg:
         dest_dir = worktree_dir / resolved_pkg / test_files_dest
@@ -127,7 +180,7 @@ def _copy_task_tests(
 
     dst = dest_dir / tests_file.name
     shutil.copy2(str(tests_file), str(dst))
-    logger.info("Copied test file %s → %s", tests_file.name, dest_dir)
+    logger.info("Copied test file %s → %s (spm)", tests_file.name, dest_dir)
 
     test_target = xcode_config.get("test_target", "")
     if test_target and not xcode_config.get("test_package_path"):
@@ -146,7 +199,108 @@ def _copy_task_tests(
                 except Exception as exc:
                     logger.warning("pbxproj injection failed for %s: %s", test_target, exc)
 
-    return True
+    return "spm"
+
+
+def _copy_app_tests(
+    instance_id: str,
+    tests_file: Path,
+    xcode_config: dict,
+    worktree_dir: Path,
+) -> str:
+    """Copy tests into the app-level test target.
+
+    Injects the ``ACHNBrowserUITests`` target into the project if it doesn't
+    exist, then copies the test file and adds it to the target's Sources
+    build phase via ``pbxproj``.
+    """
+    app_test_target = xcode_config.get("app_test_target", "")
+    app_test_files_dest = xcode_config.get("app_test_files_dest", "")
+    if not app_test_target or not app_test_files_dest:
+        logger.warning("app_test_target/app_test_files_dest not configured — falling back to spm")
+        return _copy_spm_tests(instance_id, tests_file, xcode_config, worktree_dir)
+
+    inject_app_test_target(xcode_config, worktree_dir)
+
+    dest_dir = worktree_dir / app_test_files_dest
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    dst = dest_dir / tests_file.name
+    shutil.copy2(str(tests_file), str(dst))
+    logger.info("Copied test file %s → %s (app)", tests_file.name, dest_dir)
+
+    project_rel = xcode_config.get("project", "")
+    if project_rel:
+        pbxproj_path = worktree_dir / project_rel / "project.pbxproj"
+        if pbxproj_path.exists():
+            try:
+                from pbxproj import XcodeProject
+
+                project = XcodeProject.load(str(pbxproj_path))
+                rel_path = str(dst.relative_to(worktree_dir))
+                project.add_file(rel_path, target_name=app_test_target)
+                project.save()
+                logger.info("Added %s to target %s in pbxproj", rel_path, app_test_target)
+            except Exception as exc:
+                logger.warning("pbxproj injection failed for %s: %s", app_test_target, exc)
+
+    return "app"
+
+
+def _run_spm_tests(
+    xcode_config: dict,
+    worktree_dir: Path,
+    dd_dir: Path,
+    all_stdout: str = "",
+    all_stderr: str = "",
+) -> dict | None:
+    """Run SPM-based backend tests. Returns test output dict or None."""
+    test_dd = dd_dir
+    if resolve_test_package_path(xcode_config, worktree_dir):
+        test_dd = worktree_dir / "DerivedData-tests"
+
+    test_info = _build_xcodebuild_test_cmd(xcode_config, worktree_dir, test_dd)
+    if not test_info:
+        return None
+
+    test_cmd, test_cwd = test_info
+    test_result = subprocess.run(
+        test_cmd, cwd=str(test_cwd),
+        capture_output=True, text=True, timeout=600,
+    )
+    output = parse_xcodebuild_output(test_result.stdout, test_result.stderr)
+    if test_result.returncode != 0 and not output["tests"]:
+        output = {"tests": [{"name": "xctest_run", "status": "FAILED",
+                             "message": "xcodebuild test exited with non-zero"}]}
+    output["_stdout"] = test_result.stdout
+    output["_stderr"] = test_result.stderr
+    return output
+
+
+def _run_app_tests(
+    xcode_config: dict,
+    worktree_dir: Path,
+    all_stdout: str = "",
+    all_stderr: str = "",
+) -> dict | None:
+    """Run app-level unit tests. Returns test output dict or None."""
+    app_test_dd = worktree_dir / "DerivedData-app-tests"
+    cmd_info = _build_xcodebuild_app_test_cmd(xcode_config, worktree_dir, app_test_dd)
+    if not cmd_info:
+        return None
+
+    test_cmd, test_cwd = cmd_info
+    test_result = subprocess.run(
+        test_cmd, cwd=str(test_cwd),
+        capture_output=True, text=True, timeout=600,
+    )
+    output = parse_xcodebuild_output(test_result.stdout, test_result.stderr)
+    if test_result.returncode != 0 and not output["tests"]:
+        output = {"tests": [{"name": "xctest_run", "status": "FAILED",
+                             "message": "xcodebuild test exited with non-zero"}]}
+    output["_stdout"] = test_result.stdout
+    output["_stderr"] = test_result.stderr
+    return output
 
 
 def eval_single_patch(
@@ -202,9 +356,10 @@ def eval_single_patch(
                     return {"tests": [{"name": "patch_apply", "status": "FAILED",
                                        "message": fallback.stderr[:200]}]}
 
-        has_task_tests = _copy_task_tests(
+        test_type = _copy_task_tests(
             instance_id, source_tasks_dir, xcode_config, worktree_dir,
         )
+        has_task_tests = bool(test_type)
 
         dd_dir = worktree_dir / "DerivedData"
         build_cmd = _build_xcodebuild_cmd(
@@ -230,41 +385,35 @@ def eval_single_patch(
 
         run_tests = has_task_tests or not compile_only
 
+        # Override test_destination with per-worker simulator when running
+        # inside a pool with dedicated simulators (avoids boot conflicts).
+        test_xcode_config = xcode_config
+        if _worker_sim_udid:
+            test_xcode_config = {
+                **xcode_config,
+                "test_destination": f"platform=iOS Simulator,id={_worker_sim_udid}",
+                "app_test_destination": f"platform=iOS Simulator,id={_worker_sim_udid}",
+            }
+
         xctest_output = None
         if run_tests:
-            # Use a separate DerivedData for the test step when targeting an
-            # SPM package.  The main build resolves the package as a project
-            # dependency (library only); reusing the same DerivedData causes
-            # xcodebuild to miss the auto-generated test scheme.
-            test_dd = dd_dir
-            if resolve_test_package_path(xcode_config, worktree_dir):
-                test_dd = worktree_dir / "DerivedData-tests"
-
-            # Override test_destination with per-worker simulator when running
-            # inside a pool with dedicated simulators (avoids boot conflicts).
-            test_xcode_config = xcode_config
-            if _worker_sim_udid:
-                test_xcode_config = {**xcode_config, "test_destination": f"platform=iOS Simulator,id={_worker_sim_udid}"}
-
-            test_info = _build_xcodebuild_test_cmd(test_xcode_config, worktree_dir, test_dd)
-            if test_info:
-                test_cmd, test_cwd = test_info
-                test_result = subprocess.run(
-                    test_cmd,
-                    cwd=str(test_cwd),
-                    capture_output=True,
-                    text=True,
-                    timeout=600,
+            if test_type == "app":
+                xctest_output = _run_app_tests(
+                    test_xcode_config, worktree_dir, all_stdout, all_stderr,
                 )
-                all_stdout += "\n" + test_result.stdout
-                all_stderr += "\n" + test_result.stderr
-                xctest_output = parse_xcodebuild_output(test_result.stdout, test_result.stderr)
-                if test_result.returncode != 0 and not xctest_output["tests"]:
-                    xctest_output = {"tests": [{"name": "xctest_run", "status": "FAILED",
-                                                "message": "xcodebuild test exited with non-zero"}]}
-            elif has_task_tests:
+            else:
+                xctest_output = _run_spm_tests(
+                    test_xcode_config, worktree_dir, dd_dir, all_stdout, all_stderr,
+                )
+
+            if xctest_output and "_stdout" in xctest_output:
+                all_stdout += "\n" + xctest_output.pop("_stdout")
+            if xctest_output and "_stderr" in xctest_output:
+                all_stderr += "\n" + xctest_output.pop("_stderr")
+
+            if xctest_output is None and has_task_tests:
                 xctest_output = {"tests": [{"name": "unit_test_setup", "status": "FAILED",
-                                            "message": "Task tests found but test_scheme/test_destination "
+                                            "message": "Task tests found but test config "
                                                        "not configured in xcode_config.yaml"}]}
 
         if xctest_output:
