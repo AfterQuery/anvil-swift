@@ -141,7 +141,7 @@ final class AnvilTask3F2PTests: XCTestCase {
 
     func testToggleVariantReturnValues() {
         let collection = UserCollection(iCloudDisabled: true)
-        let item = makeItem(variationCount: 3)
+        let item = makeItem(name: "ReturnTest", filename: "anvil_return_test", variationCount: 3)
         let variant = item.variations![0]
 
         let addResult = collection.toggleVariant(item: item, variant: variant)

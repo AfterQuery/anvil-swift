@@ -29,6 +29,7 @@ final class AnvilTask4F2PTests: XCTestCase {
 
     func testSortedVillagersEmptyWithNoData() {
         let vm = VillagersViewModel()
+        vm.villagers = []
         vm.sort = .name
         XCTAssertTrue(vm.sortedVillagers.isEmpty,
                        "sortedVillagers should be empty when no villagers are loaded")

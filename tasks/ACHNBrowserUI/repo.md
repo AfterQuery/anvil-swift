@@ -30,6 +30,13 @@ Animal Crossing Helper: https://github.com/Dimillian/ACHNBrowserUI
 - Patch Commit: 0bfd982
 - Base Commit: 89ac53bfe6d0769411f4005060e8974fa8fd35d4
 
+5. Add Custom Chores and To-Dos: https://github.com/Dimillian/ACHNBrowserUI/pull/210
+
+- Type: Feature
+- Patch: curl -L https://github.com/Dimillian/ACHNBrowserUI/pull/210.diff -o solution.diff
+- Patch Commit: fae875a
+- Base Commit: 848a1589eb08f89f6badfde10d3b10ea592157a5
+
 ## Unit Tests
 
 ### Existing repo tests (BackendTests)
@@ -59,6 +66,7 @@ is consistent across the codebase.
 | task-2 | `AnvilTask2F2PTests` | app | `GridStack` view existence, `rows`/`columns`/`spacing` properties |
 | task-3 | `AnvilTask3F2PTests` | spm | `hasSomeVariations`, `VariantsCompletionStatus` enum, `completionStatus(for:)`. Behavioral: `toggleVariant` auto-manages parent item |
 | task-4 | `AnvilTask4F2PTests` | app | `VillagersViewModel.Sort` enum with `.name`/`.species`, `sortedVillagers` empty with no data, clearing sort empties results |
+| task-5 | `AnvilTask5F2PTests` | app | `Chore` model, `UserCollection` chore operations, `ChoreFormViewModel`, `ChoreListViewModel`, `TodayChoresSectionViewModel`, `TodaySection.chores` default |
 
 ## Commands
 

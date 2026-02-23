@@ -415,16 +415,15 @@ def eval_single_patch(
 
         all_stdout = ""
         all_stderr = ""
+        dd_dir = worktree_dir / "DerivedData"
 
-        if test_type == "app":
-            # App-level xcodebuild test compiles and tests in one pass using
-            # DerivedData-app-tests (warmed separately).  Running a separate
-            # xcodebuild build into DerivedData would compile the same changed
-            # files a second time into a directory the test step never reads.
-            # Skip the build step — compile errors surface through test output.
+        spm_standalone = test_type == "spm" and resolve_test_package_path(
+            xcode_config, worktree_dir
+        )
+
+        if test_type == "app" or spm_standalone:
             build_output = {"tests": []}
         else:
-            dd_dir = worktree_dir / "DerivedData"
             build_cmd = _build_xcodebuild_cmd(
                 xcode_config, worktree_dir, dd_dir, clean=False,
             )

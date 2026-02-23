@@ -175,12 +175,20 @@ def _load_xcode_task(task_dir: Path, repo_name: str, base_commit: str) -> Task |
     )
 
 
+def _load_task_metadata(task_dir: Path) -> dict:
+    """Load per-task metadata from ``metadata.yaml`` inside a task directory."""
+    meta_path = task_dir / "metadata.yaml"
+    if not meta_path.exists():
+        return {}
+    return yaml.safe_load(meta_path.read_text()) or {}
+
+
 def load_all_tasks(dataset_path: Path) -> list[Task]:
     """Load all tasks from a dataset directory.
 
     Tries the Docker/Modal format first (instance_info.txt + tasks.csv +
     task_tests.py).  Falls back to the Xcode format (problem.md +
-    solution.diff) using repo.md for base commits.
+    solution.diff) with per-task ``metadata.yaml`` for base commits.
     """
     tasks = []
 
@@ -198,21 +206,24 @@ def load_all_tasks(dataset_path: Path) -> list[Task]:
     if tasks:
         return tasks
 
-    # Fall back to Xcode format (problem.md + solution.diff + repo.md)
-    repo_md = dataset_path / "repo.md"
-    if not repo_md.exists():
-        return []
-
+    # Xcode format: each task-N/ has problem.md, solution.diff, metadata.yaml
     repo_name = dataset_path.name
-    task_meta = _parse_repo_md(repo_md)
+
+    # Fall back to repo.md for tasks missing metadata.yaml (backward compat)
+    repo_md = dataset_path / "repo.md"
+    repo_md_meta = _parse_repo_md(repo_md) if repo_md.exists() else {}
 
     for item in task_dirs:
-        task_num = item.name.split("-")[1]
-        meta = task_meta.get(task_num, {})
+        meta = _load_task_metadata(item)
         base_commit = meta.get("base_commit", "")
+
+        if not base_commit:
+            task_num = item.name.split("-")[1]
+            base_commit = repo_md_meta.get(task_num, {}).get("base_commit", "")
+
         if not base_commit:
             import sys
-            print(f"Warning: {item.name}: no base_commit in repo.md for task {task_num}", file=sys.stderr)
+            print(f"Warning: {item.name}: no base_commit in metadata.yaml or repo.md", file=sys.stderr)
             continue
 
         task = _load_xcode_task(item, repo_name, base_commit)

@@ -30,7 +30,7 @@ final class AnvilTask1F2PTests: XCTestCase {
 
     func testCritterInfoHasToCatchNowAndToCatchLater() {
         let info = ActiveCrittersViewModel.CritterInfo(
-            new: [], leaving: [], caught: [],
+            active: [], new: [], leaving: [], caught: [],
             toCatchNow: [], toCatchLater: []
         )
         XCTAssertTrue(info.toCatchNow.isEmpty)
@@ -44,7 +44,7 @@ final class AnvilTask1F2PTests: XCTestCase {
         let item = try! JSONDecoder().decode(Item.self, from: json.data(using: .utf8)!)
 
         let info = ActiveCrittersViewModel.CritterInfo(
-            new: [], leaving: [], caught: [],
+            active: [], new: [], leaving: [], caught: [],
             toCatchNow: [item], toCatchLater: []
         )
         XCTAssertEqual(info.toCatchNow.count, 1)
