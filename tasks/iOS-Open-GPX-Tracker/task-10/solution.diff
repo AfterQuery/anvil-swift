@@ -1,0 +1,314 @@
+diff --git a/OpenGpxTracker/GPXFileManager.swift b/OpenGpxTracker/GPXFileManager.swift
+index 0a372eb2..f0d72661 100644
+--- a/OpenGpxTracker/GPXFileManager.swift
++++ b/OpenGpxTracker/GPXFileManager.swift
+@@ -21,7 +21,10 @@ class GPXFileManager: NSObject {
+     /// Folder that where all GPX files are stored
+     ///
+     class var GPXFilesFolderURL: URL {
+-        let documentsUrl =  FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0] as URL
++        if let customFolderURL = Preferences.shared.gpxFilesFolderURL {
++            return customFolderURL
++        }
++        let documentsUrl = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0] as URL
+         return documentsUrl
+     }
+     
+@@ -29,36 +32,17 @@ class GPXFileManager: NSObject {
+     /// Gets the list of `.gpx` files in Documents directory ordered by modified date
+     ///
+     class var fileList: [GPXFileInfo] {
+-        var GPXFiles: [GPXFileInfo] = []
+         let fileManager = FileManager.default
+         let documentsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+-        do {
+-            // Get all files from the directory .documentsURL. Of each file get the URL (~path)
+-            // last modification date and file size
+-            if let directoryURLs = try? fileManager.contentsOfDirectory(at: documentsURL,
+-                includingPropertiesForKeys: [.attributeModificationDateKey, .fileSizeKey],
+-                options: .skipsSubdirectoryDescendants) {
+-                //Order files based on the date
+-                // This map creates a tuple (url: URL, modificationDate: String, filesize: Int)
+-                // and then orders it by modificationDate
+-                let sortedURLs = directoryURLs.map { url in
+-                    (url: url,
+-                     modificationDate: (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date.distantPast,
+-                     fileSize: (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+-                    }
+-                    .sorted(by: { $0.1 > $1.1 }) // sort descending modification dates
+-                print(sortedURLs)
+-                //Now we filter GPX Files
+-                for (url, modificationDate, fileSize) in sortedURLs {
+-                    if kFileExt.contains(url.pathExtension) {
+-                        GPXFiles.append(GPXFileInfo(fileURL: url))
+-                        let lastPathComponent = url.deletingPathExtension().lastPathComponent
+-                        print("\(modificationDate) \(modificationDate.timeAgo(numericDates: true)) \(fileSize)bytes -- \(lastPathComponent)")
+-                    }
+-                }
+-            }
++        var files = self.fetchFilesList(from: documentsURL)
++        if let customFolderURL = Preferences.shared.gpxFilesFolderURL {
++            _ = customFolderURL.startAccessingSecurityScopedResource()
++            files += self.fetchFilesList(from: customFolderURL)
++            customFolderURL.stopAccessingSecurityScopedResource()
++        }
++        return files.sorted { lhs, rhs in
++            return lhs.modifiedDate > rhs.modifiedDate
+         }
+-        return GPXFiles
+     }
+     
+     ///
+@@ -199,4 +183,38 @@ class GPXFileManager: NSObject {
+             print(error)
+         }
+     }
++    
++    // MARK: - Private
++    
++    private class func fetchFilesList(from rootURL: URL) -> [GPXFileInfo] {
++        var GPXFiles: [GPXFileInfo] = []
++        let fileManager = FileManager.default
++        do {
++            // Get all files from the directory .documentsURL. Of each file get the URL (~path)
++            // last modification date and file size
++            if let directoryURLs = try? fileManager.contentsOfDirectory(at: rootURL,
++                includingPropertiesForKeys: [.attributeModificationDateKey, .fileSizeKey],
++                options: .skipsSubdirectoryDescendants) {
++                //Order files based on the date
++                // This map creates a tuple (url: URL, modificationDate: String, filesize: Int)
++                // and then orders it by modificationDate
++                let sortedURLs = directoryURLs.map { url in
++                    (url: url,
++                     modificationDate: (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date.distantPast,
++                     fileSize: (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
++                    }
++                    .sorted(by: { $0.1 > $1.1 }) // sort descending modification dates
++                print(sortedURLs)
++                //Now we filter GPX Files
++                for (url, modificationDate, fileSize) in sortedURLs {
++                    if kFileExt.contains(url.pathExtension) {
++                        GPXFiles.append(GPXFileInfo(fileURL: url))
++                        let lastPathComponent = url.deletingPathExtension().lastPathComponent
++                        print("\(modificationDate) \(modificationDate.timeAgo(numericDates: true)) \(fileSize)bytes -- \(lastPathComponent)")
++                    }
++                }
++            }
++        }
++        return GPXFiles
++    }
+ }
+diff --git a/OpenGpxTracker/Preferences.swift b/OpenGpxTracker/Preferences.swift
+index 0f203a75..4c5ffc3b 100644
+--- a/OpenGpxTracker/Preferences.swift
++++ b/OpenGpxTracker/Preferences.swift
+@@ -37,6 +37,9 @@ let kDefaultsKeyDateFormatUseUTC: String = "DateFormatPresetUseUTC"
+ /// Key on Defaults for the current selected date format, to use local Locale or `en_US_POSIX`
+ let kDefaultsKeyDateFormatUseEN: String = "DateFormatPresetUseEN"
+ 
++/// Key on Defaults for the folder where GPX files are store, `nil` means default folder
++let kDefaultsKeyGPXFilesFolder: String = "GPXFilesFolder"
++
+ /// A class to handle app preferences in one single place.
+ /// When the app starts for the first time the following preferences are set:
+ ///
+@@ -80,6 +83,9 @@ class Preferences: NSObject {
+     ///
+     private var _dateFormatUseEN: Bool = false
+     
++    ///
++    private var _gpxFilesFolderBookmark: Data? = nil
++    
+     /// UserDefaults.standard shortcut
+     private let defaults = UserDefaults.standard
+     
+@@ -148,6 +154,12 @@ class Preferences: NSObject {
+             _dateFormatUseEN = dateFormatENBool
+             print("** Preferences:: loaded preference from defaults dateFormatPresetENBool \(dateFormatENBool)")
+         }
++        
++        // load previous gpx files folder bookmark
++        if let gpxFilesFolderBookmark = defaults.object(forKey: kDefaultsKeyGPXFilesFolder) as? Data {
++            _gpxFilesFolderBookmark = gpxFilesFolderBookmark
++            print("** Preferences:: loaded preference from defaults gpxFilesFolderBookmark \(gpxFilesFolderBookmark)")
++        }
+     }
+     
+     /// If true, user prefers to display imperial units (miles, feets). Otherwise metric units
+@@ -280,4 +292,46 @@ class Preferences: NSObject {
+              defaults.set(newValue, forKey: kDefaultsKeyDateFormatUseEN)
+         }
+     }
++    
++    var gpxFilesFolderURL: URL? {
++        get {
++            guard let bookmarkData = self._gpxFilesFolderBookmark else {
++                return nil
++            }
++            do {
++                var isStale: Bool = false
++                let url = try URL(resolvingBookmarkData: bookmarkData, bookmarkDataIsStale: &isStale)
++                if isStale {
++                    _ = url.startAccessingSecurityScopedResource()
++                    defer {
++                        url.stopAccessingSecurityScopedResource()
++                    }
++                    let newBookmark = try url.bookmarkData()
++                    _gpxFilesFolderBookmark = newBookmark
++                    defaults.set(newBookmark, forKey: kDefaultsKeyGPXFilesFolder)
++                }
++                return url
++            } catch {
++                print("** Preferences:: failed to retrieve url from bookmark data: \(String(describing: error))")
++                return nil
++            }
++        }
++        set {
++            guard let newValue else {
++                defaults.removeObject(forKey: kDefaultsKeyGPXFilesFolder)
++                return
++            }
++            do {
++                _ = newValue.startAccessingSecurityScopedResource()
++                defer {
++                    newValue.stopAccessingSecurityScopedResource()
++                }
++                let newBookmark = try newValue.bookmarkData()
++                _gpxFilesFolderBookmark = newBookmark
++                defaults.set(newBookmark, forKey: kDefaultsKeyGPXFilesFolder)
++            } catch {
++                print("** Preferences:: failed to generate bookmark data for url: \(String(describing: error))")
++            }
++        }
++    }
+ }
+diff --git a/OpenGpxTracker/PreferencesTableViewController.swift b/OpenGpxTracker/PreferencesTableViewController.swift
+index 32e056e3..b213610a 100644
+--- a/OpenGpxTracker/PreferencesTableViewController.swift
++++ b/OpenGpxTracker/PreferencesTableViewController.swift
+@@ -11,6 +11,7 @@ import Foundation
+ import UIKit
+ import CoreLocation
+ import MapCache
++import CoreServices
+ 
+ /// Units Section Id in PreferencesTableViewController
+ let kUnitsSection = 0
+@@ -27,6 +28,9 @@ let kActivityTypeSection = 3
+ /// Default Name Section Id in PreferencesTableViewController
+ let kDefaultNameSection = 4
+ 
++/// GPX Files Location Section Id in PreferencesTableViewController
++let kGPXFilesLocationSection = 5
++
+ /// Cell Id of the Use Imperial units in UnitsSection
+ let kUseImperialUnitsCell = 0
+ 
+@@ -44,7 +48,7 @@ let kClearCacheCell = 1
+ /// Preferences are kept on UserDefaults with the keys `kDefaultKeyTileServerInt` (Int)
+ /// and `kDefaultUseCache`` (Bool)
+ ///
+-class PreferencesTableViewController: UITableViewController, UINavigationBarDelegate {
++class PreferencesTableViewController: UITableViewController, UINavigationBarDelegate, UIDocumentPickerDelegate {
+     
+     /// Delegate for this table view controller.
+     weak var delegate: PreferencesTableViewControllerDelegate?
+@@ -102,7 +106,7 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+     /// Returns 4 sections: Units, Cache, Map Source, Activity Type
+     override func numberOfSections(in tableView: UITableView?) -> Int {
+         // Return the number of sections.
+-        return 5
++        return 6
+     }
+     
+     /// Returns the title of the existing sections.
+@@ -115,6 +119,7 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+         case kMapSourceSection: return NSLocalizedString("MAP_SOURCE", comment: "no comment")
+         case kActivityTypeSection: return NSLocalizedString("ACTIVITY_TYPE", comment: "no comment")
+         case kDefaultNameSection: return NSLocalizedString("DEFAULT_NAME_SECTION", comment: "no comment")
++        case kGPXFilesLocationSection: return NSLocalizedString("GPX_FILES_LOCATION_SECTION", comment: "no comment")
+         default: fatalError("Unknown section")
+         }
+     }
+@@ -129,6 +134,7 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+         case kMapSourceSection: return GPXTileServer.count
+         case kActivityTypeSection: return CLActivityType.count
+         case kDefaultNameSection: return 1
++        case kGPXFilesLocationSection: return 1
+         default: fatalError("Unknown section")
+         }
+     }
+@@ -214,6 +220,18 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+             cell.accessoryType = .disclosureIndicator
+         }
+         
++        if indexPath.section == kGPXFilesLocationSection {
++            cell = UITableViewCell(style: .subtitle, reuseIdentifier: "GPXFilesLocation")
++            cell.textLabel?.text = NSLocalizedString("PRESS_TO_SELECT_FOLDER", comment: "no comment")
++            if let url = preferences.gpxFilesFolderURL {
++                cell.detailTextLabel?.lineBreakMode = .byTruncatingHead
++                cell.detailTextLabel?.text = url.lastPathComponent
++            } else {
++                cell.detailTextLabel?.text = NSLocalizedString("USING_DEFAULT_FOLDER", comment: "no comment")
++            }
++            cell.accessoryType = .disclosureIndicator
++        }
++        
+         return cell
+     }
+     
+@@ -312,7 +330,26 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+             self.navigationController?.pushViewController(DefaultNameSetupViewController(style: .grouped), animated: true)
+         }
+         
++        if indexPath.section == kGPXFilesLocationSection {
++            print("PreferencesTableView GPX Files Location cell clicked")
++            let documentVC = UIDocumentPickerViewController(documentTypes: [kUTTypeFolder as String], in: .open)
++            documentVC.allowsMultipleSelection = false
++            documentVC.delegate = self
++            self.present(documentVC, animated: true)
++        }
++        
+         //unselect row
+         tableView.deselectRow(at: indexPath, animated: true)
+     }
++    
++    // MARK: - UIDocumentPickerDelegate
++    
++    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
++        guard let folderURL = urls.first else {
++            print("Didn't select any folder")
++            return
++        }
++        preferences.gpxFilesFolderURL = folderURL
++        tableView.reloadData()
++    }
+ }
+diff --git a/OpenGpxTracker/en.lproj/Localizable.strings b/OpenGpxTracker/en.lproj/Localizable.strings
+index b2ef9356..fffad78e 100644
+--- a/OpenGpxTracker/en.lproj/Localizable.strings
++++ b/OpenGpxTracker/en.lproj/Localizable.strings
+@@ -44,6 +44,9 @@
+ "CACHE_IS_EMPTY" = "Cache is now empty";
+ "EDIT_WAYPOINT_NAME_TITLE" = "Edit waypoint name";
+ "EDIT_WAYPOINT_NAME_MESSAGE" = "Hint: To change the waypoint location drag and drop the pin";
++"GPX_FILES_LOCATION_SECTION" = "GPX files location";
++"PRESS_TO_SELECT_FOLDER" = "Press to select folder";
++"USING_DEFAULT_FOLDER" = "Using default folder";
+ 
+ // Watch
+ "SENDING" = "Sending:";
+diff --git a/OpenGpxTracker/ru.lproj/Localizable.strings b/OpenGpxTracker/ru.lproj/Localizable.strings
+index 6a982238..412d28ea 100644
+--- a/OpenGpxTracker/ru.lproj/Localizable.strings
++++ b/OpenGpxTracker/ru.lproj/Localizable.strings
+@@ -44,6 +44,9 @@
+ "CACHE_IS_EMPTY" = "Кэш очищен";
+ "EDIT_WAYPOINT_NAME_TITLE" = "Введите имя метки";
+ "EDIT_WAYPOINT_NAME_MESSAGE" = "Подсказка: Чтобы изменить положение метки на карте, перетащите ее";
++"GPX_FILES_LOCATION_SECTION" = "Расположение GPX файлов";
++"PRESS_TO_SELECT_FOLDER" = "Нажмите, чтобы выбрать";
++"USING_DEFAULT_FOLDER" = "Исп. папка по-умолчанию";
+ 
+ // Watch
+ "SENDING" = "Отправка:";

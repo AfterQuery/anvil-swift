@@ -37,6 +37,41 @@ Animal Crossing Helper: https://github.com/Dimillian/ACHNBrowserUI
 - Patch Commit: fae875a
 - Base Commit: 848a1589eb08f89f6badfde10d3b10ea592157a5
 
+6. ACHN Dashboard: https://github.com/Dimillian/ACHNBrowserUI/pull/22
+
+- Type: Feature
+- Patch: curl -L https://github.com/Dimillian/ACHNBrowserUI/pull/22.diff -o solution.diff
+- Patch Commit: 64a3eee
+- Base Commit: 80994d6ffa112b654312aa4922897de92e986ba3
+
+7. Turnip Exchange Listing: https://github.com/Dimillian/ACHNBrowserUI/pull/15
+
+- Type: Feature
+- Patch: curl -L https://github.com/Dimillian/ACHNBrowserUI/pull/15.diff -o solution.diff
+- Patch Commit: 7114243
+- Base Commit: 87dace0a0d0a120fd81d651e36bd45c4cc95470b
+
+8. Turnip Prices Min Max Average: https://github.com/Dimillian/ACHNBrowserUI/pull/175
+
+- Type: Feature
+- Patch: curl -L https://github.com/Dimillian/ACHNBrowserUI/pull/175.diff -o solution.diff
+- Patch Commit: 4af12fb
+- Base Commit: ceba2fddea5304b2b248e5de72568d3afdfbb97a
+
+9. Localization Cleanup: https://github.com/Dimillian/ACHNBrowserUI/pull/219
+
+- Type: Fix
+- Patch: curl -L https://github.com/Dimillian/ACHNBrowserUI/pull/219.diff -o solution.diff
+- Patch Commit: a26c0ab
+- Base Commit: 2d57ebf5f23c3676756debf5dfdc481ebdea79e8
+
+10. Add Creator / Custom Design Items: https://github.com/Dimillian/ACHNBrowserUI/pull/189
+
+- Type: Feature
+- Patch: curl -L https://github.com/Dimillian/ACHNBrowserUI/pull/189.diff -o solution.diff
+- Patch Commit: 9d33500
+- Base Commit: e4c80e95cc9ac5a0870c7e749d1c7c9b219bb360
+
 ## Unit Tests
 
 ### Existing repo tests (BackendTests)
@@ -44,29 +79,6 @@ Animal Crossing Helper: https://github.com/Dimillian/ACHNBrowserUI
 - `Packages/Backend/Tests/BackendTests/ItemsTests.swift` — JSON decoding for ItemResponse
 - `Packages/Backend/Tests/BackendTests/CrittersTests.swift` — critter/fish decoding, active months, categories
 - `Packages/Backend/Tests/BackendTests/CollectionTest.swift` — UserCollection toggle functionality
-
-### Per-task evaluation tests
-
-Task-specific unit tests live in `tasks/ACHNBrowserUI/task-N/tests.swift`. During
-evaluation they are routed to the SPM backend or app test target based on their
-`@testable import` (see `_detect_test_type` in `xcode_eval.py`).
-
-**Test class convention** — `validate-tests` categorizes by class name:
-- Classes containing `F2P` (e.g. `AnvilTask1F2PTests`) — **fail-to-pass** (must fail on base)
-- All other classes (repo tests, P2P classes, etc.) — **pass-to-pass** (must pass on base)
-
-**Design principle** — tests target *integration points* (ViewModel structs, view
-components the rest of the app binds to) and *behavioral outcomes* rather than
-internal API names. Compilation already enforces that the model's internal naming
-is consistent across the codebase.
-
-| Task | Tests | Route | What they validate |
-|------|-------|-------|--------------------|
-| task-1 | `AnvilTask1F2PTests` | app | Backend: `isActiveAtThisHour()` exists and returns false without data. App: `CritterInfo` struct has `toCatchNow`/`toCatchLater` |
-| task-2 | `AnvilTask2F2PTests` | app | `GridStack` view existence, `rows`/`columns`/`spacing` properties |
-| task-3 | `AnvilTask3F2PTests` | spm | `hasSomeVariations`, `VariantsCompletionStatus` enum, `completionStatus(for:)`. Behavioral: `toggleVariant` auto-manages parent item |
-| task-4 | `AnvilTask4F2PTests` | app | `VillagersViewModel.Sort` enum with `.name`/`.species`, `sortedVillagers` empty with no data, clearing sort empties results |
-| task-5 | `AnvilTask5F2PTests` | app | `Chore` model, `UserCollection` chore operations, `ChoreFormViewModel`, `ChoreListViewModel`, `TodayChoresSectionViewModel`, `TodaySection.chores` default |
 
 ## Commands
 

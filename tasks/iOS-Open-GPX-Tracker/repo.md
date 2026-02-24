@@ -16,19 +16,55 @@ Mobile GPS Logger: https://github.com/merlos/iOS-Open-GPX-Tracker
 - Patch Commit: 7072e70
 - Base Commit: 19f7c55db93c8526649b783c7bd8a3e480bf5628
 
-3. Add ScaleView on map: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/285
+3. Add Scale View on Map: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/285
 
-- Type: Feature + Fix
+- Type: Feature
 - Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/285.diff -o solution.diff
 - Patch Commit: 93e20d4
 - Base Commit: 72c1e361d4ab27c71e46d1384dcaa29dea667f3c
 
-4. Fix IPad Orientation: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/111
+4. Fix Width Height IPad Orientation: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/111
 
 - Type: Fix
 - Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/111.diff -o solution.diff
 - Patch Commit: 1d3f1b7
 - Base Commit: fa320f1cc5cfe1e58ac538c22e5165a08dc34b8a
+
+5. Custom Default Names: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/157
+
+- Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/157.diff -o solution.diff
+- Patch Commit: 887bef7
+- Base Commit: 8e87edced43cb8292475510587b8dc82cb6e9e5c
+
+6. Auto Reload Table When File Received: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/99
+
+- Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/99.diff -o solution.diff
+- Patch Commit: 4dbc1aa
+- Base Commit: df8dd1e25fbd28bd5496f3bc23d06922474396e3
+
+7. Screen Always on and Loading Toast: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/275
+
+- Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/275.diff -o solution.diff
+- Patch Commit: 971954b
+- Base Commit: fbd582ed6af1ca637097ede12078c8ef2be88c60
+
+8. Auto Recover Last Track: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/249
+
+- Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/249.diff -o solution.diff
+- Patch Commit: 548e8ff
+- Base Commit: b63c5109ee5a3a6c6e93703d26e5b5255b68205f
+
+9. Trial Activity Type: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/113
+
+- Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/113.diff -o solution.diff
+- Patch Commit: 6aa30ba
+- Base Commit: 1d3f1b7199639ceaee5491d696f27dc7c22e44e8
+
+10. Custom Output File: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/239
+
+- Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/239.diff -o solution.diff
+- Patch Commit: 398ab75
+- Base Commit: a9aa34ff04091f0111d978f5b206f682a8a92566
 
 ## Existing Unit Tests
 

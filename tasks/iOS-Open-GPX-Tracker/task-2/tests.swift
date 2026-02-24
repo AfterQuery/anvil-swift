@@ -4,20 +4,17 @@ import UIKit
 
 final class AnvilTask2F2PTests: XCTestCase {
 
-    // The solution removes all UIAlertView / UIAlertViewDelegate usage and
-    // replaces them with UIAlertController.  These tests verify the migration
-    // by checking that deprecated types are no longer used.
-
-    func testMapViewDelegateNotUIAlertViewDelegate() {
+    func testMapViewDelegateNoLongerImplementsAlertViewCallback() {
         let delegate = MapViewDelegate()
-        XCTAssertNotNil(delegate, "MapViewDelegate should compile without UIAlertViewDelegate")
+        let sel = NSSelectorFromString("alertView:clickedButtonAtIndex:")
+        XCTAssertFalse(delegate.responds(to: sel),
+                       "MapViewDelegate should not implement UIAlertViewDelegate methods after migration")
     }
 
-    func testAlertViewTagConstantsRemoved() {
-        // The solution deletes kSaveSessionAlertViewTag, kEditWaypointAlertViewTag,
-        // kLocationServicesDeniedAlertViewTag, kLocationServicesDisabledAlertViewTag.
-        // If this test file compiles it confirms none of the removed constants
-        // are referenced by the test target.
-        XCTAssertTrue(true)
+    func testViewControllerNoLongerImplementsAlertViewCallback() {
+        let vc = ViewController()
+        let sel = NSSelectorFromString("alertView:clickedButtonAtIndex:")
+        XCTAssertFalse(vc.responds(to: sel),
+                       "ViewController should not implement UIAlertViewDelegate methods after migration")
     }
 }

@@ -1,0 +1,532 @@
+diff --git a/OpenGpxTracker/Preferences.swift b/OpenGpxTracker/Preferences.swift
+index 8870695..4c773db 100644
+--- a/OpenGpxTracker/Preferences.swift
++++ b/OpenGpxTracker/Preferences.swift
+@@ -40,6 +40,8 @@ let kDefaultsKeyDateFormatUseEN: String = "DateFormatPresetUseEN"
+ /// Key on Defaults for the folder where GPX files are store, `nil` means default folder
+ let kDefaultsKeyGPXFilesFolder: String = "GPXFilesFolder"
+ 
++let kDefaultsKeyKeepScreenAlwaysOn: String = "KeepScreenAlwaysOn"
++
+ /// A class to handle app preferences in one single place.
+ /// When the app starts for the first time the following preferences are set:
+ ///
+@@ -86,6 +88,9 @@ class Preferences: NSObject {
+     ///
+     private var _gpxFilesFolderBookmark: Data?
+     
++    ///
++    private var _keepScreenAlwaysOn: Bool = false
++    
+     /// UserDefaults.standard shortcut
+     private let defaults = UserDefaults.standard
+     
+@@ -160,6 +165,13 @@ class Preferences: NSObject {
+             _gpxFilesFolderBookmark = gpxFilesFolderBookmark
+             print("** Preferences:: loaded preference from defaults gpxFilesFolderBookmark \(gpxFilesFolderBookmark)")
+         }
++        
++        // load previous date format, to use EN locale instead of local locale
++        if let keepScreenAlwaysOnBool = defaults.object(forKey: kDefaultsKeyKeepScreenAlwaysOn) as? Bool {
++            _keepScreenAlwaysOn = keepScreenAlwaysOnBool
++            print("** Preferences:: loaded preference from defaults keepScreenAlwaysOn \(keepScreenAlwaysOnBool)")
++        }
++        
+     }
+     
+     /// If true, user prefers to display imperial units (miles, feets). Otherwise metric units
+@@ -293,6 +305,18 @@ class Preferences: NSObject {
+         }
+     }
+     
++    /// Get and sets whether to set the screen always On or not
++    var keepScreenAlwaysOn: Bool {
++        get {
++            return _keepScreenAlwaysOn
++        }
++        set {
++            _keepScreenAlwaysOn = newValue
++            defaults.set(newValue, forKey: kDefaultsKeyKeepScreenAlwaysOn)
++            print("** Preferences:: setting keepScreenAlwaysOn: \(newValue)")
++        }
++    }
++    
+     var gpxFilesFolderURL: URL? {
+         get {
+             guard let bookmarkData = self._gpxFilesFolderBookmark else {
+diff --git a/OpenGpxTracker/PreferencesTableViewController.swift b/OpenGpxTracker/PreferencesTableViewController.swift
+index ca6c1cd..dc757ad 100644
+--- a/OpenGpxTracker/PreferencesTableViewController.swift
++++ b/OpenGpxTracker/PreferencesTableViewController.swift
+@@ -16,24 +16,33 @@ import CoreServices
+ /// Units Section Id in PreferencesTableViewController
+ let kUnitsSection = 0
+ 
++/// Screen always on section id
++let kScreenSection = 1
++
+ /// Cache Section Id in PreferencesTableViewController
+-let kCacheSection = 1
++let kCacheSection = 2
+ 
+ /// Map Source Section Id in PreferencesTableViewController
+-let kMapSourceSection = 2
++let kMapSourceSection = 3
+ 
+ /// Activity Type Section Id in PreferencesTableViewController
+-let kActivityTypeSection = 3
++let kActivityTypeSection = 4
+ 
+ /// Default Name Section Id in PreferencesTableViewController
+-let kDefaultNameSection = 4
++let kDefaultNameSection = 5
+ 
+ /// GPX Files Location Section Id in PreferencesTableViewController
+-let kGPXFilesLocationSection = 5
++let kGPXFilesLocationSection = 6
+ 
+ /// Cell Id of the Use Imperial units in UnitsSection
+ let kUseImperialUnitsCell = 0
+ 
++
++/// Cell Id of the keepScreenAlwaysOnl units in ScreenSection
++let kKeepScreenAlwaysOnCell = 0
++
++
++
+ /// Cell Id for Use offline cache in CacheSection of PreferencesTableViewController
+ let kUseOfflineCacheCell = 0
+ 
+@@ -119,6 +128,7 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+         case kActivityTypeSection: return NSLocalizedString("ACTIVITY_TYPE", comment: "no comment")
+         case kDefaultNameSection: return NSLocalizedString("DEFAULT_NAME_SECTION", comment: "no comment")
+         case kGPXFilesLocationSection: return NSLocalizedString("GPX_FILES_FOLDER", comment: "no comment")
++        case kScreenSection: return NSLocalizedString("SCREEN", comment: "no comment")
+         default: fatalError("Unknown section")
+         }
+     }
+@@ -134,6 +144,7 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+         case kActivityTypeSection: return CLActivityType.count
+         case kDefaultNameSection: return 1
+         case kGPXFilesLocationSection: return 1
++        case kScreenSection: return 1
+         default: fatalError("Unknown section")
+         }
+     }
+@@ -166,6 +177,19 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+             }
+         }
+         
++        // Units section
++        if indexPath.section == kScreenSection {
++             switch indexPath.row {
++             case kKeepScreenAlwaysOnCell:
++                 cell = UITableViewCell(style: .value1, reuseIdentifier: "CacheCell")
++                 cell.textLabel?.text = NSLocalizedString("KEEP_SCREEN_ALWAYS_ON", comment: "no comment")
++                 if preferences.keepScreenAlwaysOn {
++                    cell.accessoryType = .checkmark
++                 }
++             default: fatalError("Unknown section")
++            }
++        }
++        
+         // Cache Section
+         if indexPath.section == kCacheSection {
+             switch indexPath.row {
+@@ -264,6 +288,22 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+             }
+         }
+         
++        if indexPath.section == kScreenSection {
++            switch indexPath.row {
++            case kKeepScreenAlwaysOnCell:
++                let newKeepScreenAlwaysOn = !preferences.keepScreenAlwaysOn
++                preferences.keepScreenAlwaysOn = newKeepScreenAlwaysOn
++                print("PreferencesTableViewController: toggle keep screen always on to \(newKeepScreenAlwaysOn)")
++                // Update cell UI
++                tableView.cellForRow(at: indexPath)?.accessoryType = newKeepScreenAlwaysOn ? .checkmark : .none
++                // Notify the map
++                self.delegate?.didUpdateKeepScreenAlwaysOn(newKeepScreenAlwaysOn)
++            default:
++                fatalError("didSelectRowAt: Unknown cell")
++            }
++        }
++        
++        
+         if indexPath.section == kCacheSection {  // 0 -> sets and unsets cache
+             switch indexPath.row {
+             case kUseOfflineCacheCell:
+diff --git a/OpenGpxTracker/PreferencesTableViewControllerDelegate.swift b/OpenGpxTracker/PreferencesTableViewControllerDelegate.swift
+index 8f12a4c..f859711 100644
+--- a/OpenGpxTracker/PreferencesTableViewControllerDelegate.swift
++++ b/OpenGpxTracker/PreferencesTableViewControllerDelegate.swift
+@@ -22,6 +22,9 @@ protocol PreferencesTableViewControllerDelegate: AnyObject {
+     /// User updated the usage of imperial units
+     func didUpdateUseImperial(_ newUseImperial: Bool)
+     
++    /// User updated the keep screen always on option
++    func didUpdateKeepScreenAlwaysOn(_ newKeepScreenAlwaysOn: Bool)
++  
+     /// User updated the activity type
+     func didUpdateActivityType(_ newActivityType: Int)
+     
+diff --git a/OpenGpxTracker/Toast.swift b/OpenGpxTracker/Toast.swift
+index 244d933..219aa72 100644
+--- a/OpenGpxTracker/Toast.swift
++++ b/OpenGpxTracker/Toast.swift
+@@ -75,6 +75,7 @@ class Toast {
+     /// Long delay
+     static let kDelayLong = 5.0
+     
++    static let kDisabledDelay = -1.0
+     /// Background opacity
+     static let kBackgroundOpacity: Double = 0.9
+     
+@@ -118,7 +119,10 @@ class Toast {
+         case center
+         case top
+     }
+-    
++
++    /// Singleton instance of the loading toast
++    private static var manualToast: UIView?
++
+     ///
+     /// Generic implementation to show toast
+     /// - Parameters:
+@@ -169,16 +173,24 @@ class Toast {
+         }
+         label.center.x = window.center.x
+         
+-        window.addSubview(label)
+-        UIView.animate(withDuration: 0.5, delay: 0, options: .curveEaseIn,
+-                       animations: { label.alpha = 1 },
+-                       completion: { _ in
+-                            UIView.animate(withDuration: 0.5, delay: delay,
+-                            options: .curveEaseOut,
+-                            animations: {label.alpha = 0 },
+-                            completion: {_ in label.removeFromSuperview()
+-                            })
+-                        })
++        if delay == kDisabledDelay {
++            manualToast = label
++            window.addSubview(manualToast!)
++            UIView.animate(withDuration: 0.3) {
++                manualToast!.alpha = 1
++            }
++        } else {
++            window.addSubview(label)
++            UIView.animate(withDuration: 0.5, delay: 0, options: .curveEaseIn,
++                           animations: { label.alpha = 1 },
++                           completion: { _ in
++                UIView.animate(withDuration: 0.5, delay: delay,
++                               options: .curveEaseOut,
++                               animations: {label.alpha = 0 },
++                               completion: {_ in label.removeFromSuperview()
++                })
++            })
++        }
+     }
+     
+     ///
+@@ -248,4 +260,30 @@ class Toast {
+                   position: position,
+                   delay: delay)
+     }
+-}
++    ///
++    /// Shows a persistent loading toast with a spinner
++    /// - Parameters:
++    ///   - message: Text message to display alongside the spinner
++    ///   - position: Position within the screen (.bottom, .center, .top)
++    ///
++    class func showLoading(_ message: String = "Loading...", position: Position = .center) {
++        showToast(String("⌛️")+"  "+message,
++                  textColor: kRegularTextColor,
++                  backgroundColor: kRegularBackgroundColor,
++                  position: position,
++                  delay: kDisabledDelay)
++    }
++        
++    ///
++    /// Hides the persistent loading toast
++    ///
++    class func hideLoading() {
++          guard let toast = manualToast else { return }
++          UIView.animate(withDuration: 0.3, animations: {
++              toast.alpha = 0
++          }, completion: { _ in
++              toast.removeFromSuperview()
++              manualToast = nil
++          })
++      }
++  }
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index 98d8728..46ab891 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -433,6 +433,9 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+         useImperial = Preferences.shared.useImperial
+         // LocationManager.activityType = Preferences.shared.locationActivityType
+         
++        // Shall it keep the screen always on?
++        UIApplication.shared.isIdleTimerDisabled = Preferences.shared.keepScreenAlwaysOn
++        
+         //
+         // Config user interface
+         //
+@@ -974,13 +977,28 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+     ///
+     @objc func openPreferencesTableViewController() {
+         print("openPreferencesTableViewController")
+-        let vc = PreferencesTableViewController(style: .grouped)
+-        vc.delegate = self
+-        let navController = UINavigationController(rootViewController: vc)
+-        self.present(navController, animated: true) { () -> Void in }
++
++        // Show loading toast
++        Toast.showLoading("Loading Preferences...")
++
++        // Perform all operations on the main thread
++        DispatchQueue.main.async {
++            // Simulate a delay for testing (remove in production)
++            //Thread.sleep(forTimeInterval: 4.5)
++
++            let vc = PreferencesTableViewController(style: .grouped)
++            vc.delegate = self
++            let navController = UINavigationController(rootViewController: vc)
++
++            // Hide the loading toast and present the view controller
++            Toast.hideLoading()
++            self.present(navController, animated: true)
++        }
+     }
+-    
++
++    ///
+     /// Opens an Activity View Controller to share the file
++    /// 
+     @objc func openShare() {
+         print("ViewController: Share Button tapped")
+         
+@@ -1313,6 +1331,7 @@ extension ViewController: StopWatchDelegate {
+ 
+ extension ViewController: PreferencesTableViewControllerDelegate {
+     
++    
+     /// Update the activity type that the location manager is using.
+     ///
+     /// When user changes the activity type in preferences, this function is invoked to update the activity type of the location manager.
+@@ -1356,7 +1375,14 @@ extension ViewController: PreferencesTableViewControllerDelegate {
+         // In regular circunstances it will go to the new units relatively fast.
+         speedLabel.text = kUnknownSpeedText
+         signalAccuracyLabel.text = kUnknownAccuracyText
+-    }}
++    }
++    
++    // User changed the setting of use imperial units.
++    func didUpdateKeepScreenAlwaysOn(_ newKeepScreenAlwaysOn: Bool) {
++        print("PreferencesTableViewControllerDelegate:: didUpdateKeepScreenAlwaysOn: \(newKeepScreenAlwaysOn)")
++        UIApplication.shared.isIdleTimerDisabled = newKeepScreenAlwaysOn
++    }
++}
+ 
+ /// Extends `ViewController`` to support `GPXFilesTableViewControllerDelegate` function
+ /// that loads into the map a the file selected by the user.
+diff --git a/OpenGpxTracker/de.lproj/Localizable.strings b/OpenGpxTracker/de.lproj/Localizable.strings
+index 6855f88..6a13311 100644
+--- a/OpenGpxTracker/de.lproj/Localizable.strings
++++ b/OpenGpxTracker/de.lproj/Localizable.strings
+@@ -32,9 +32,13 @@
+ "SHARE" = "Teilen";
+ "LOADING_FILE" = "Lade GPX Datei...";
+ "ABOUT" = "Über";
++
++// Preferences
+ "PREFERENCES" = "Einstellungen";
+ "UNITS" = "Einheiten";
+ "CACHE" = "Cache";
++"SCREEN" = "Bildschirm";
++"KEEP_SCREEN_ALWAYS_ON" = "Bildschirm immer eingeschaltet lassen?";
+ "MAP_SOURCE" = "Kartentyp";
+ "ACTIVITY_TYPE" = "Aktivitätstyp";
+ "USE_IMPERIAL_UNITS" = "Meilen verwenden";
+diff --git a/OpenGpxTracker/en.lproj/Localizable.strings b/OpenGpxTracker/en.lproj/Localizable.strings
+index 4531b44..2272e37 100644
+--- a/OpenGpxTracker/en.lproj/Localizable.strings
++++ b/OpenGpxTracker/en.lproj/Localizable.strings
+@@ -33,8 +33,12 @@
+ "SHARE" = "Share";
+ "LOADING_FILE" = "Loading GPX File...";
+ "ABOUT" = "About";
++
++// Preferences
+ "PREFERENCES" = "Preferences";
+ "UNITS" = "Units";
++"SCREEN" = "Screen";
++"KEEP_SCREEN_ALWAYS_ON" = "Keep screen always on?";
+ "CACHE" = "Cache";
+ "MAP_SOURCE" = "Map Source";
+ "ACTIVITY_TYPE" = "Activity Type";
+diff --git a/OpenGpxTracker/es.lproj/Localizable.strings b/OpenGpxTracker/es.lproj/Localizable.strings
+index 2e2e53b..de65edd 100644
+--- a/OpenGpxTracker/es.lproj/Localizable.strings
++++ b/OpenGpxTracker/es.lproj/Localizable.strings
+@@ -33,9 +33,13 @@
+ "SHARE" = "Compartir";
+ "LOADING_FILE" = "Cargando ...";
+ "ABOUT" = "Acerca de";
++
++//Preferences
+ "PREFERENCES" = "Preferencias";
+ "UNITS" = "Unidades";
+ "CACHE" = "Caché";
++"SCREEN" = "Pantalla";
++"KEEP_SCREEN_ALWAYS_ON" = "¿Mantener la pantalla siempre encendida?";
+ "MAP_SOURCE" = "Mapas";
+ "ACTIVITY_TYPE" = "Tipo de actividad";
+ "USE_IMPERIAL_UNITS" = "¿Usar sistema imperial?";
+diff --git a/OpenGpxTracker/fi-FI.lproj/Localizable.strings b/OpenGpxTracker/fi-FI.lproj/Localizable.strings
+index d1c7543..755263d 100644
+--- a/OpenGpxTracker/fi-FI.lproj/Localizable.strings
++++ b/OpenGpxTracker/fi-FI.lproj/Localizable.strings
+@@ -33,9 +33,13 @@ Created by Phiilman on 28.03.20.
+ "SHARE" = "Jaa";
+ "LOADING_FILE" = "Lataa GPX tiedostoa";
+ "ABOUT" = "Tietoja";
++
++// Preferences
+ "PREFERENCES" = "Asetukset";
+ "UNITS" = "Yksiköt";
+ "CACHE" = "Välimuisti";
++"SCREEN" = "Näyttö";
++"KEEP_SCREEN_ALWAYS_ON" = "Pidä näyttö aina päällä?";
+ "MAP_SOURCE" = "Kartan lähde";
+ "ACTIVITY_TYPE" = "Aktiviteetti";
+ "USE_IMPERIAL_UNITS" = "Käytä Britti-mittoja?";
+diff --git a/OpenGpxTracker/fr.lproj/Localizable.strings b/OpenGpxTracker/fr.lproj/Localizable.strings
+index 8c15665..e75a6bf 100644
+--- a/OpenGpxTracker/fr.lproj/Localizable.strings
++++ b/OpenGpxTracker/fr.lproj/Localizable.strings
+@@ -34,9 +34,13 @@
+ "SHARE" = "Partager";
+ "LOADING_FILE" = "Chargement du fichier GPX...";
+ "ABOUT" = "A propos";
++
++// Preferences
+ "PREFERENCES" = "Préférences";
+ "UNITS" = "Unités";
+ "CACHE" = "Cache";
++"SCREEN" = "Écran";
++"KEEP_SCREEN_ALWAYS_ON" = "Garder l'écran toujours allumé ?";
+ "MAP_SOURCE" = "Source de la carte";
+ "ACTIVITY_TYPE" = "Type d'activité";
+ "USE_IMPERIAL_UNITS" = "Utiliser les unités impériales?";
+diff --git a/OpenGpxTracker/it.lproj/Localizable.strings b/OpenGpxTracker/it.lproj/Localizable.strings
+index 8fbd97c..8aa3cb9 100644
+--- a/OpenGpxTracker/it.lproj/Localizable.strings
++++ b/OpenGpxTracker/it.lproj/Localizable.strings
+@@ -32,9 +32,13 @@
+ "SHARE" = "Condividere";
+ "LOADING_FILE" = "Caricare Documento GPX...";
+ "ABOUT" = "a proposito";
++
++// Preferences
+ "PREFERENCES" = "Impostazioni";
+ "UNITS" = "Unità";
+ "CACHE" = "Cache";
++"SCREEN" = "Schermo";
++"KEEP_SCREEN_ALWAYS_ON" = "Mantenere lo schermo sempre acceso?";
+ "MAP_SOURCE" = "Tipo Mappe";
+ "ACTIVITY_TYPE" = "Tipo di attività";
+ "USE_IMPERIAL_UNITS" = "Usare Miglia";
+diff --git a/OpenGpxTracker/nl.lproj/Localizable.strings b/OpenGpxTracker/nl.lproj/Localizable.strings
+index 28fc1cf..56e3024 100644
+--- a/OpenGpxTracker/nl.lproj/Localizable.strings
++++ b/OpenGpxTracker/nl.lproj/Localizable.strings
+@@ -33,9 +33,13 @@
+ "SHARE" = "Delen";
+ "LOADING_FILE" = "GPX bestand aan het laden...";
+ "ABOUT" = "Over";
++
++// Preferences
+ "PREFERENCES" = "Voorkeuren";
+ "UNITS" = "Eenheden";
+ "CACHE" = "Cache";
++"SCREEN" = "Scherm";
++"KEEP_SCREEN_ALWAYS_ON" = "Scherm altijd aanhouden?";
+ "MAP_SOURCE" = "Kaartbron";
+ "ACTIVITY_TYPE" = "Soort activiteit";
+ "USE_IMPERIAL_UNITS" = "Gebruik imperiale eenheden?";
+diff --git a/OpenGpxTracker/pt-BR.lproj/Localizable.strings b/OpenGpxTracker/pt-BR.lproj/Localizable.strings
+index 4ca5587..c90adc4 100644
+--- a/OpenGpxTracker/pt-BR.lproj/Localizable.strings
++++ b/OpenGpxTracker/pt-BR.lproj/Localizable.strings
+@@ -34,9 +34,13 @@
+ "SHARE" = "Compartilhar";
+ "LOADING_FILE" = "Abrindo arquivo GPX...";
+ "ABOUT" = "Sobre";
++
++// Preferences
+ "PREFERENCES" = "Preferências";
+ "UNITS" = "Unidades";
+ "CACHE" = "Cache";
++"SCREEN" = "Tela";
++"KEEP_SCREEN_ALWAYS_ON" = "Manter a tela sempre ligada?";
+ "MAP_SOURCE" = "Origem do mapa";
+ "ACTIVITY_TYPE" = "Tipo de atividade";
+ "USE_IMPERIAL_UNITS" = "Usar unidades imperiais?";
+diff --git a/OpenGpxTracker/ru.lproj/Localizable.strings b/OpenGpxTracker/ru.lproj/Localizable.strings
+index 412d28e..98a525d 100644
+--- a/OpenGpxTracker/ru.lproj/Localizable.strings
++++ b/OpenGpxTracker/ru.lproj/Localizable.strings
+@@ -33,9 +33,13 @@
+ "SHARE" = "Поделиться";
+ "LOADING_FILE" = "Загрузка GPX-файла...";
+ "ABOUT" = "О программе";
++
++// Preferences
+ "PREFERENCES" = "Настройки";
+ "UNITS" = "Единицы измерения";
+ "CACHE" = "Кэш";
++"SCREEN" = "Экран";
++"KEEP_SCREEN_ALWAYS_ON" = "Всегда оставлять экран включенным?";
+ "MAP_SOURCE" = "Поставщик карт";
+ "ACTIVITY_TYPE" = "Тип активности";
+ "USE_IMPERIAL_UNITS" = "Использовать английскую систему мер?";
+diff --git a/OpenGpxTracker/uk.lproj/Localizable.strings b/OpenGpxTracker/uk.lproj/Localizable.strings
+index b628618..a23630b 100644
+--- a/OpenGpxTracker/uk.lproj/Localizable.strings
++++ b/OpenGpxTracker/uk.lproj/Localizable.strings
+@@ -33,9 +33,13 @@
+ "SHARE" = "Поширити";
+ "LOADING_FILE" = "Завантаження GPX-файлу...";
+ "ABOUT" = "Про програму";
++
++//Preferences
+ "PREFERENCES" = "Налаштування";
+ "UNITS" = "Одиниці вимірювання";
+ "CACHE" = "Кеш";
++"SCREEN" = "Екран";
++"KEEP_SCREEN_ALWAYS_ON" = "Завжди залишати екран увімкненим?";
+ "MAP_SOURCE" = "Джерело мапи";
+ "ACTIVITY_TYPE" = "Тип активності";
+ "USE_IMPERIAL_UNITS" = "Використовувати англійську систему мір?";
+diff --git a/OpenGpxTracker/zh-Hans.lproj/Localizable.strings b/OpenGpxTracker/zh-Hans.lproj/Localizable.strings
+index 069b936..466b02c 100644
+--- a/OpenGpxTracker/zh-Hans.lproj/Localizable.strings
++++ b/OpenGpxTracker/zh-Hans.lproj/Localizable.strings
+@@ -37,9 +37,13 @@
+ "SHARE" = "分享";
+ "LOADING_FILE" = "在处理 GPX 文件中...";
+ "ABOUT" = "资料";
++
++//Preferences
+ "PREFERENCES" = "设置";
+ "UNITS" = "计量单位";
+ "CACHE" = "地图高速缓存系统"; // not quite confident in translation. Have never heard of anyone used “cache” in Chinese before.
++"SCREEN" = "屏幕";
++"KEEP_SCREEN_ALWAYS_ON" = "始终保持屏幕开启？";
+ "MAP_SOURCE" = "地图款式";
+ "ACTIVITY_TYPE" = "活动类别";
+ "USE_IMPERIAL_UNITS" = "要用英制吗？";
