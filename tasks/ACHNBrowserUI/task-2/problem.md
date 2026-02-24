@@ -14,3 +14,7 @@ The misalignment affects all three display modes: average prices, min/max prices
 4. Any workarounds that existed solely to support the old row-based layout should be removed.
 5. Do not change the chart views, island views, or other unrelated sections of the turnip price screen.
 6. Implement the unified layout as a reusable `GridStack` view in the shared views directory, with `rows`, `columns`, and a `spacing` parameter that is nil by default (only applied when the caller provides an explicit value).
+
+### Xcode Project Note
+
+This is a traditional Xcode project (not SwiftPM). When you add or remove `.swift` files, you must also update `project.pbxproj` to register/unregister them in the build target. Files that exist on disk but are not listed in the Xcode project will not be compiled.

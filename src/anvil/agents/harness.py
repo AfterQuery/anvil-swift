@@ -89,6 +89,11 @@ def _build_agent_script(
 ) -> str:
     """Build the bash script to run inside the Modal sandbox."""
     task = instance.get("problem_statement", "")
+    task += (
+        "\n\n## Important constraints\n"
+        "- Do NOT create, modify, or delete any test files or test cases. "
+        "The existing test suite will be used to verify your implementation.\n"
+    )
     before_cmd = instance.get("before_repo_set_cmd", "")
     base_commit = instance.get("base_commit", "")
     output_dir = "/workspace/output"
@@ -242,7 +247,9 @@ async def run_agent_in_modal(
     sandbox = None
 
     try:
-        img = modal.Image.from_registry(image_name, secret=registry_secret)
+        img = modal.Image.from_registry(
+            image_name, secret=registry_secret, add_python="3.12"
+        )
         script = _build_agent_script(agent_config, instance, model, provider_env_var)
 
         env_secrets = []

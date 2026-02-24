@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import traceback
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -17,6 +18,7 @@ from tqdm import tqdm
 
 from .xcode_cache import (
     XcodeBuildCache,
+    _as_build_for_testing,
     _build_xcodebuild_app_test_cmd,
     _build_xcodebuild_cmd,
     _build_xcodebuild_test_cmd,
@@ -32,17 +34,23 @@ from .xcode_parser import (
 
 logger = logging.getLogger(__name__)
 
-# Per-worker simulator UDID, set by _init_sim_worker in child processes.
+# Per-worker simulator UDID and index, set by _init_sim_worker in child processes.
 _worker_sim_udid: str | None = None
+_worker_index: int = 0
+
+# Stagger delay between parallel xcodebuild launches to prevent the Xcode
+# build-service daemon from deadlocking when multiple builds start at once.
+_WORKER_STAGGER_SECONDS = 15
 
 
 def _init_sim_worker(sim_udids: list[str], counter: multiprocessing.Value) -> None:
     """ProcessPoolExecutor initializer: assign each worker a unique simulator."""
-    global _worker_sim_udid
+    global _worker_sim_udid, _worker_index
     with counter.get_lock():
         idx = counter.value
         counter.value += 1
     _worker_sim_udid = sim_udids[idx]
+    _worker_index = idx
 
 
 def _parse_device_name(test_destination: str) -> str:
@@ -333,12 +341,76 @@ def _run_app_tests(
     xcode_config: dict,
     worktree_dir: Path,
 ) -> dict | None:
-    """Run app-level unit tests. Returns test output dict or None."""
+    """Run app-level unit tests via build-for-testing then test-without-building.
+
+    Splitting the monolithic ``xcodebuild test`` into two phases avoids
+    deadlocks when multiple parallel workers hit the Xcode build-service
+    daemon simultaneously, and gives each phase its own timeout.
+    """
     app_test_dd = worktree_dir / "DerivedData-app-tests"
-    return _run_xcodebuild_tests(
-        _build_xcodebuild_app_test_cmd(xcode_config, worktree_dir, app_test_dd),
-        timeout=1200,
+    cmd_info = _build_xcodebuild_app_test_cmd(
+        xcode_config, worktree_dir, app_test_dd,
     )
+    if not cmd_info:
+        return None
+
+    test_cmd, test_cwd = cmd_info
+
+    # Phase 1: build-for-testing with stagger to avoid daemon deadlocks.
+    if _worker_index > 0:
+        stagger = _worker_index * _WORKER_STAGGER_SECONDS
+        logger.info("Worker %d staggering app build by %ds", _worker_index, stagger)
+        time.sleep(stagger)
+
+    build_cmd = _as_build_for_testing(test_cmd)
+    build_result = subprocess.run(
+        build_cmd,
+        cwd=str(test_cwd),
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+
+    if build_result.returncode != 0:
+        output = parse_xcodebuild_output(build_result.stdout, build_result.stderr)
+        if not output["tests"]:
+            output = {
+                "tests": [
+                    {
+                        "name": "xctest_run",
+                        "status": "FAILED",
+                        "message": "xcodebuild build-for-testing failed",
+                    }
+                ]
+            }
+        output["_stdout"] = build_result.stdout
+        output["_stderr"] = build_result.stderr
+        return output
+
+    # Phase 2: test-without-building (fast, no build contention).
+    run_cmd = ["test-without-building" if c == "test" else c for c in test_cmd]
+    test_result = subprocess.run(
+        run_cmd,
+        cwd=str(test_cwd),
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+
+    output = parse_xcodebuild_output(test_result.stdout, test_result.stderr)
+    if test_result.returncode != 0 and not output["tests"]:
+        output = {
+            "tests": [
+                {
+                    "name": "xctest_run",
+                    "status": "FAILED",
+                    "message": "xcodebuild test exited with non-zero",
+                }
+            ]
+        }
+    output["_stdout"] = build_result.stdout + "\n" + test_result.stdout
+    output["_stderr"] = build_result.stderr + "\n" + test_result.stderr
+    return output
 
 
 def eval_single_patch(
@@ -424,6 +496,12 @@ def eval_single_patch(
         if test_type == "app" or spm_standalone:
             build_output = {"tests": []}
         else:
+            # Stagger parallel builds to avoid Xcode build-service deadlocks.
+            if _worker_index > 0:
+                stagger = _worker_index * _WORKER_STAGGER_SECONDS
+                logger.info("Worker %d staggering build by %ds", _worker_index, stagger)
+                time.sleep(stagger)
+
             build_cmd = _build_xcodebuild_cmd(
                 xcode_config, worktree_dir, dd_dir, clean=False,
             )
@@ -623,8 +701,7 @@ def run_xcode_evals(
             src_tasks = candidate
 
     if max_workers is None:
-        cpu_count = os.cpu_count() or 4
-        max_workers = max(1, min(cpu_count // 2, 8))
+        max_workers = 2
 
     eval_results: dict[str, bool] = {}
 

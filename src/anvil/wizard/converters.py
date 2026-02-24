@@ -423,14 +423,14 @@ def convert_to_anvil_structure(
             if remote_url:
                 base_dockerfile_content = (
                     "FROM ubuntu:24.04\n"
-                    "RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*\n"
+                    "RUN apt-get update && apt-get install -y git python3 python3-pip && rm -rf /var/lib/apt/lists/*\n"
                     f"RUN git clone {remote_url} /app\n"
                     "WORKDIR /app\n"
                 )
             else:
                 base_dockerfile_content = (
                     "FROM ubuntu:24.04\n"
-                    "RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*\n"
+                    "RUN apt-get update && apt-get install -y git python3 python3-pip && rm -rf /var/lib/apt/lists/*\n"
                     "WORKDIR /app\n"
                     "COPY . .\n"
                     "RUN git init\n"
