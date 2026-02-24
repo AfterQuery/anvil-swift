@@ -181,6 +181,49 @@ def _copy_task_tests(
         return _copy_spm_tests(instance_id, tests_file, xcode_config, worktree_dir)
 
 
+def _validate_pbxproj(worktree_dir: Path, project_rel: str) -> str | None:
+    """Quick-validate that project.pbxproj is parseable after patch application.
+
+    Returns an error message string if validation fails, or None if OK.
+    Tries the ``pbxproj`` library first (structured parse), then falls back
+    to ``plutil -lint`` (plist syntax check).
+    """
+    pbxproj_path = worktree_dir / project_rel / "project.pbxproj"
+    if not pbxproj_path.exists():
+        return None
+
+    # 1) Try the pbxproj library (catches structural issues like duplicate
+    #    UUIDs, bad group references, files in wrong build phases).
+    try:
+        from pbxproj import XcodeProject
+
+        XcodeProject.load(str(pbxproj_path))
+        return None
+    except ImportError:
+        pass
+    except Exception as exc:
+        return f"project.pbxproj parse error (pbxproj): {exc}"
+
+    # 2) Fallback: plutil validates the plist syntax (catches missing braces,
+    #    bad semicolons, etc. that make Xcode refuse to open the project).
+    try:
+        result = subprocess.run(
+            ["plutil", "-lint", str(pbxproj_path)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout).strip()
+            return f"project.pbxproj plist validation failed: {detail}"
+    except FileNotFoundError:
+        pass
+    except Exception as exc:
+        logger.debug("plutil validation skipped: %s", exc)
+
+    return None
+
+
 def _add_file_to_pbxproj(
     worktree_dir: Path,
     project_rel: str,
@@ -476,6 +519,28 @@ def eval_single_patch(
                             }
                         ]
                     }
+
+        # Fast-fail if the patch corrupted project.pbxproj (avoids a slow
+        # xcodebuild invocation that would fail with a cryptic parse error).
+        project_rel = xcode_config.get("project", "")
+        if project_rel:
+            pbxproj_error = _validate_pbxproj(worktree_dir, project_rel)
+            if pbxproj_error:
+                logger.warning("pbxproj validation failed for %s: %s", tag, pbxproj_error)
+                result = {
+                    "tests": [
+                        {
+                            "name": "pbxproj_validation",
+                            "status": "FAILED",
+                            "message": pbxproj_error[:500],
+                        }
+                    ]
+                }
+                _save_eval_output(
+                    output_dir, instance_id, attempt, eval_id,
+                    result, patch, "", pbxproj_error,
+                )
+                return result
 
         test_type = _copy_task_tests(
             instance_id,
