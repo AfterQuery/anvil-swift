@@ -9,7 +9,7 @@ The feature should allow users to create, view, complete, delete, and reset chor
 ### Acceptance Criteria
 
 1. Implement a `Chore` model with:
-   - Initializers: `Chore()` and `Chore(title:description:isFinished:)`
+   - Initializers: `Chore()` and `Chore(title:description:isFinished:)`. All parameters should be optional to the caller (i.e. `Chore(title: "X")` must compile).
    - Properties: `title: String`, `description: String`, `isFinished: Bool`, `id` used for identity-based equality
 
 2. Implement a `UserCollection` type with:
@@ -41,3 +41,7 @@ The feature should allow users to create, view, complete, delete, and reset chor
 9. View models handle all display logic and derived state; views do not directly access user data.
 
 10. The implementation integrates with existing dashboard/task functionality without altering Daily Tasks or other sections, and allows for future enhancements such as recurring chores or hiding completed items.
+
+### Xcode Project Note
+
+This is a traditional Xcode project (not SwiftPM). When you add new `.swift` files, you must also update `project.pbxproj` to register them in the appropriate build target. Files that exist on disk but are not listed in the Xcode project will not be compiled.
