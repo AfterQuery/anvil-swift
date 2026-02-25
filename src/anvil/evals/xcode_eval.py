@@ -64,15 +64,6 @@ def _gate_build_start() -> None:
         _last_build_start = time.monotonic()
 
 
-def _init_sim_worker(sim_udids: list[str], counter: multiprocessing.Value) -> None:
-    """ProcessPoolExecutor initializer: assign each worker a unique simulator."""
-    with counter.get_lock():
-        idx = counter.value
-        counter.value += 1
-    _tls.sim_udid = sim_udids[idx]
-    _tls.worker_index = idx
-
-
 def _parse_device_name(test_destination: str) -> str:
     """Extract device name from a destination string like
     ``platform=iOS Simulator,name=iPhone 17 Pro,OS=latest``."""
@@ -86,9 +77,11 @@ def _create_simulator_pool(n: int, test_destination: str) -> list[str]:
     Returns a list of simulator UDIDs.
     """
     device_name = _parse_device_name(test_destination)
-    created = multiprocessing.Value("i", 0)
+    created = 0
+    created_lock = threading.Lock()
 
     def _create_one(i: int) -> str:
+        nonlocal created
         sim_name = f"anvil-eval-{i}"
         subprocess.run(
             ["xcrun", "simctl", "delete", sim_name],
@@ -111,11 +104,17 @@ def _create_simulator_pool(n: int, test_destination: str) -> list[str]:
             capture_output=True,
             text=True,
         )
-        with created.get_lock():
-            created.value += 1
+        # Wait for the simulator to finish booting before handing it to workers.
+        subprocess.run(
+            ["xcrun", "simctl", "bootstatus", udid, "-b"],
+            capture_output=True,
+            text=True,
+        )
+        with created_lock:
+            created += 1
             logger.info(
                 "Created & booted simulator %s (%s) [%d/%d]",
-                sim_name, udid, created.value, n,
+                sim_name, udid, created, n,
             )
         return udid
 
@@ -127,18 +126,20 @@ def _create_simulator_pool(n: int, test_destination: str) -> list[str]:
 def _destroy_simulator_pool(udids: list[str]) -> None:
     """Delete simulators created by :func:`_create_simulator_pool`."""
     total = len(udids)
-    destroyed = multiprocessing.Value("i", 0)
+    destroyed = 0
+    destroyed_lock = threading.Lock()
 
     def _delete_one(udid: str) -> None:
+        nonlocal destroyed
         subprocess.run(
             ["xcrun", "simctl", "shutdown", udid], capture_output=True, text=True
         )
         subprocess.run(
             ["xcrun", "simctl", "delete", udid], capture_output=True, text=True
         )
-        with destroyed.get_lock():
-            destroyed.value += 1
-            logger.info("Destroyed simulator %s (%d/%d)", udid, destroyed.value, total)
+        with destroyed_lock:
+            destroyed += 1
+            logger.info("Destroyed simulator %s (%d/%d)", udid, destroyed, total)
 
     with ThreadPoolExecutor(max_workers=total) as pool:
         list(pool.map(_delete_one, udids))
@@ -989,7 +990,7 @@ def run_xcode_evals(
     if not real_patches:
         (output_dir / "eval_results.json").write_text(json.dumps(eval_results))
         typer.echo(
-            f"Xcode eval complete: {sum(eval_results.values())}/{len(eval_results)} passed"
+            f"Xcode eval complete: {passed_count}/{len(eval_results)} passed"
         )
         return eval_results
 
@@ -1008,6 +1009,7 @@ def run_xcode_evals(
     # Initialise the build-start gate for this run.
     _build_start_lock = threading.Lock()
 
+    passed_count = 0
     sim_udids: list[str] = []
     try:
         if needs_sim_pool:
@@ -1047,7 +1049,6 @@ def run_xcode_evals(
                 _thread_idx += 1
             threading.current_thread()._anvil_idx = idx_val  # type: ignore[attr-defined]
 
-        passed_count = 0
         actual_workers = min(max_workers, len(real_patches))
         with ThreadPoolExecutor(
             max_workers=actual_workers, initializer=_thread_initializer,
@@ -1138,7 +1139,7 @@ def run_xcode_evals(
 
     (output_dir / "eval_results.json").write_text(json.dumps(eval_results))
     typer.echo(
-        f"Xcode eval complete: {sum(eval_results.values())}/{len(eval_results)} passed"
+        f"Xcode eval complete: {passed_count}/{len(eval_results)} passed"
     )
 
     return eval_results
