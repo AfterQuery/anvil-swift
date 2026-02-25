@@ -13,3 +13,9 @@ Additionally, the location authorization check uses the deprecated `CLLocationMa
 3. All calls to the deprecated `CLLocationManager.authorizationStatus()` class method must be replaced with the instance-level `locationManager.authorizationStatus` property.
 4. Obsolete `#available(iOS 10, *)` checks that are no longer needed given the app's current minimum deployment target must be removed.
 5. The user-facing alert behavior must remain the same.
+
+### Required API Surface
+
+The implementation must expose these specific names (tests depend on them):
+
+- `ViewController.scaleBar` — stored property of type `MKScaleView` on `ViewController`.

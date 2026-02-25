@@ -21,3 +21,13 @@ Additionally, the app has no lightweight, non-intrusive notification system for 
 3. The toast system supports multiple severity levels with distinct styling.
 4. The app title label reflects the current session filename.
 5. The app builds and runs without regressions.
+
+### Required API Surface
+
+The implementation must expose these names (tests depend on them to compile):
+
+- `Toast` — class with static methods `regular(_: String)`, `info(_: String)`, `warning(_: String)`, `success(_: String)`, `error(_: String)`.
+- `Toast.Position` — nested enum with cases `.bottom`, `.center`, `.top`.
+- `Toast.kDelayShort`, `Toast.kDelayLong` — static `Double` constants.
+- `ToastLabel` — `UILabel` subclass with convenience initializer `init(text: String)`.
+- `kAppTitle` — string constant.

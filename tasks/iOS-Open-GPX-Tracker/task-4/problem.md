@@ -19,3 +19,9 @@ In the **iOS-Open-GPX-Tracker** app, there is a bug regarding how the UI handles
 4. The view controller must respond to orientation transitions and update the layout accordingly, without requiring arbitrary delays.
 5. The compass must reposition correctly when the orientation changes, remaining in its designated location.
 6. The layout must work correctly across different screen sizes (including iPad Pro models and iPhone X+) without device-specific conditionals.
+
+### Required API Surface
+
+The implementation must expose this specific name (tests depend on it):
+
+- `ViewController.addConstraints(_ isIPhoneX: Bool)` — method on `ViewController` that accepts a `Bool` parameter and sets up Auto Layout constraints.

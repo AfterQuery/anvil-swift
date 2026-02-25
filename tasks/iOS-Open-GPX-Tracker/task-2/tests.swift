@@ -4,17 +4,64 @@ import UIKit
 
 final class AnvilTask2F2PTests: XCTestCase {
 
+    // MARK: - UIAlertViewDelegate conformance removed
+
+    func testMapViewDelegateDoesNotConformToUIAlertViewDelegate() {
+        guard let proto = NSProtocolFromString("UIAlertViewDelegate") else { return }
+        XCTAssertFalse(MapViewDelegate.conforms(to: proto),
+                       "MapViewDelegate should no longer declare UIAlertViewDelegate conformance")
+    }
+
+    func testViewControllerDoesNotConformToUIAlertViewDelegate() {
+        guard let proto = NSProtocolFromString("UIAlertViewDelegate") else { return }
+        XCTAssertFalse(ViewController.conforms(to: proto),
+                       "ViewController should no longer declare UIAlertViewDelegate conformance")
+    }
+
+    // MARK: - UIAlertViewDelegate callback methods removed
+
     func testMapViewDelegateNoLongerImplementsAlertViewCallback() {
-        let delegate = MapViewDelegate()
         let sel = NSSelectorFromString("alertView:clickedButtonAtIndex:")
-        XCTAssertFalse(delegate.responds(to: sel),
+        XCTAssertFalse(MapViewDelegate.instancesRespond(to: sel),
                        "MapViewDelegate should not implement UIAlertViewDelegate methods after migration")
     }
 
     func testViewControllerNoLongerImplementsAlertViewCallback() {
-        let vc = ViewController()
         let sel = NSSelectorFromString("alertView:clickedButtonAtIndex:")
-        XCTAssertFalse(vc.responds(to: sel),
+        XCTAssertFalse(ViewController.instancesRespond(to: sel),
                        "ViewController should not implement UIAlertViewDelegate methods after migration")
+    }
+
+    // MARK: - Alert presentation methods still functional after migration
+
+    func testViewControllerLoadsAfterMigration() {
+        let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
+        guard let vc = storyboard.instantiateInitialViewController() as? ViewController else {
+            XCTFail("ViewController should still load from storyboard after migration")
+            return
+        }
+        vc.loadViewIfNeeded()
+        XCTAssertNotNil(vc.view, "ViewController view should load without UIAlertViewDelegate")
+    }
+
+    func testMapViewDelegateCanBeInstantiated() {
+        let delegate = MapViewDelegate()
+        XCTAssertNotNil(delegate)
+    }
+
+    func testViewControllerStillHasLocationAlertMethods() {
+        let deniedSel = NSSelectorFromString("displayLocationServicesDeniedAlert")
+        XCTAssertTrue(ViewController.instancesRespond(to: deniedSel),
+                      "displayLocationServicesDeniedAlert should still exist after migration")
+
+        let disabledSel = NSSelectorFromString("displayLocationServicesDisabledAlert")
+        XCTAssertTrue(ViewController.instancesRespond(to: disabledSel),
+                      "displayLocationServicesDisabledAlert should still exist after migration")
+    }
+
+    func testMapViewDelegateStillHandlesCalloutAccessory() {
+        let sel = NSSelectorFromString("mapView:annotationView:calloutAccessoryControlTapped:")
+        XCTAssertTrue(MapViewDelegate.instancesRespond(to: sel),
+                      "MapViewDelegate should still handle callout accessory taps after migration")
     }
 }

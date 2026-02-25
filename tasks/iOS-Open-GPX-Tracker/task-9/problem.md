@@ -19,3 +19,14 @@ The **iOS-Open-GPX-Tracker** app uses `CLLocationManager` for GPS tracking but d
 3. Tapping a row updates the checkmark and persists the selection.
 4. The location manager uses the selected activity type for tracking.
 5. The app builds and runs without regressions.
+
+### Required API Surface
+
+The implementation must expose these names (tests depend on them to compile):
+
+- `CLActivityType.name` — computed `String` property via extension.
+- `CLActivityType.description` — computed `String` property via extension.
+- `CLActivityType.count` — static `Int` property.
+- `kActivityTypeSection` — integer constant.
+- `kDefaultsKeyActivityType` — string constant.
+- `Preferences.shared.locationActivityType` — `CLActivityType` property.

@@ -21,32 +21,27 @@ final class AnvilTask7F2PTests: XCTestCase {
     }
 
     func testKeepScreenAlwaysOnDefaultsKey() {
-        XCTAssertEqual(kDefaultsKeyKeepScreenAlwaysOn, "KeepScreenAlwaysOn",
-                       "UserDefaults key should be 'KeepScreenAlwaysOn'")
+        XCTAssertFalse(kDefaultsKeyKeepScreenAlwaysOn.isEmpty,
+                       "UserDefaults key should be a non-empty string")
     }
 
     // MARK: - Preferences table section constants
 
     func testScreenSectionExists() {
-        XCTAssertEqual(kScreenSection, 1,
-                       "Screen section should be at index 1")
+        XCTAssertGreaterThanOrEqual(kScreenSection, 0,
+                                    "Screen section should be a valid section index")
     }
 
-    func testCacheSectionShiftedToIndex2() {
-        XCTAssertEqual(kCacheSection, 2,
-                       "Cache section should shift to index 2 after screen section insertion")
-    }
-
-    func testMapSourceSectionShiftedToIndex3() {
-        XCTAssertEqual(kMapSourceSection, 3,
-                       "Map source section should shift to index 3")
+    func testScreenSectionPrecedesCacheSection() {
+        XCTAssertLessThan(kScreenSection, kCacheSection,
+                          "Screen section should appear before cache section")
     }
 
     // MARK: - Toast loading API
 
     func testToastDisabledDelayConstant() {
-        XCTAssertEqual(Toast.kDisabledDelay, -1.0,
-                       "kDisabledDelay should be -1.0 for persistent toasts")
+        XCTAssertLessThan(Toast.kDisabledDelay, 0,
+                          "kDisabledDelay should be negative to signal a persistent toast")
     }
 
     func testToastShowLoadingExists() {

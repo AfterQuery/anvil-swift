@@ -18,3 +18,11 @@ In the **iOS-Open-GPX-Tracker** app, when a user receives a GPX file via AirDrop
 2. WCSession delegation is handled by the AppDelegate, not the ViewController.
 3. The ViewController displays an alert when a file is received from Apple Watch.
 4. The app builds and runs without regressions.
+
+### Required API Surface
+
+The implementation must expose these names (tests depend on them to compile):
+
+- `Notification.Name.didReceiveFileFromURL` — static extension on `Notification.Name`.
+- `Notification.Name.didReceiveFileFromAppleWatch` — static extension on `Notification.Name`.
+- `GPXFilesTableViewController.reloadTableData()` — instance method to refresh the file list table.

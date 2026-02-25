@@ -33,8 +33,9 @@ final class AnvilTask8F2PTests: XCTestCase {
     }
 
     func testToastDelayConstants() {
-        XCTAssertEqual(Toast.kDelayShort, 2.0)
-        XCTAssertEqual(Toast.kDelayLong, 5.0)
+        XCTAssertGreaterThan(Toast.kDelayShort, 0)
+        XCTAssertGreaterThan(Toast.kDelayLong, Toast.kDelayShort,
+                             "Long delay should be greater than short delay")
     }
 
     // MARK: - ToastLabel

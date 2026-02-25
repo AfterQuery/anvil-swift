@@ -15,3 +15,11 @@ For example:
 3. Dark-themed tile servers (e.g., Apple Satellite) must use white overlay elements (scalebar, labels).
 4. Light-themed tile servers (e.g., OpenStreetMap) must use black overlay elements.
 5. The default Apple map tile server should continue to follow the system appearance mode.
+
+### Required API Surface
+
+The implementation must expose these names (tests depend on them to compile):
+
+- `GPXTileServer.GPXTileServerColorMode` — nested enum with cases `.lightMode`, `.system`, `.darkMode`.
+- `GPXTileServer.colorMode` — computed property returning `GPXTileServerColorMode`.
+- `GPXScaleBar.forcedColor` — optional `UIColor?` property.
