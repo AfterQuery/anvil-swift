@@ -40,7 +40,7 @@ _worker_index: int = 0
 
 # Stagger delay between parallel xcodebuild launches to prevent the Xcode
 # build-service daemon from deadlocking when multiple builds start at once.
-_WORKER_STAGGER_SECONDS = 15
+_WORKER_STAGGER_SECONDS = 5
 
 
 def _init_sim_worker(sim_udids: list[str], counter: multiprocessing.Value) -> None:
@@ -609,7 +609,7 @@ def eval_single_patch(
 
         if patch and patch.strip():
             apply_result = subprocess.run(
-                ["git", "apply", "--allow-empty"],
+                ["git", "apply", "--allow-empty", "--ignore-whitespace"],
                 cwd=str(worktree_dir),
                 input=patch,
                 capture_output=True,
@@ -626,15 +626,16 @@ def eval_single_patch(
                 )
                 patch_file.unlink(missing_ok=True)
                 if fallback.returncode != 0:
+                    err_detail = fallback.stderr[:200] or fallback.stdout[:200]
                     logger.warning(
-                        "Patch apply failed for %s: %s", tag, fallback.stderr[:200]
+                        "Patch apply failed for %s: %s", tag, err_detail
                     )
                     return {
                         "tests": [
                             {
                                 "name": "patch_apply",
                                 "status": "FAILED",
-                                "message": fallback.stderr[:200],
+                                "message": err_detail,
                             }
                         ]
                     }
@@ -885,7 +886,7 @@ def run_xcode_evals(
             src_tasks = candidate
 
     if max_workers is None:
-        max_workers = 2
+        max_workers = 3
 
     eval_results: dict[str, bool] = {}
 
