@@ -8,9 +8,10 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import traceback
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import typer
@@ -34,23 +35,42 @@ from .xcode_parser import (
 
 logger = logging.getLogger(__name__)
 
-# Per-worker simulator UDID and index, set by _init_sim_worker in child processes.
-_worker_sim_udid: str | None = None
-_worker_index: int = 0
+# Per-worker simulator UDID and index (thread-local for ThreadPoolExecutor).
+_tls = threading.local()
 
-# Stagger delay between parallel xcodebuild launches to prevent the Xcode
-# build-service daemon from deadlocking when multiple builds start at once.
-_WORKER_STAGGER_SECONDS = 5
+# Lock that serialises the *start* of xcodebuild invocations so only one
+# begins at a time (avoids Xcode build-service daemon deadlocks). Once the
+# build is past the initial handshake (~2 s), the lock is released and the
+# next worker can start. Much faster than the old fixed-delay stagger.
+_build_start_lock: threading.Lock | None = None
+
+# Minimum gap between successive xcodebuild launches (seconds).
+_BUILD_GATE_SECONDS = 2
+
+# Timestamp of last xcodebuild launch (used with the lock above).
+_last_build_start: float = 0.0
+
+
+def _gate_build_start() -> None:
+    """Acquire the build gate, ensuring a minimum gap between xcodebuild starts."""
+    global _last_build_start
+    if _build_start_lock is None:
+        return
+    with _build_start_lock:
+        now = time.monotonic()
+        wait = _BUILD_GATE_SECONDS - (now - _last_build_start)
+        if wait > 0:
+            time.sleep(wait)
+        _last_build_start = time.monotonic()
 
 
 def _init_sim_worker(sim_udids: list[str], counter: multiprocessing.Value) -> None:
     """ProcessPoolExecutor initializer: assign each worker a unique simulator."""
-    global _worker_sim_udid, _worker_index
     with counter.get_lock():
         idx = counter.value
         counter.value += 1
-    _worker_sim_udid = sim_udids[idx]
-    _worker_index = idx
+    _tls.sim_udid = sim_udids[idx]
+    _tls.worker_index = idx
 
 
 def _parse_device_name(test_destination: str) -> str:
@@ -518,11 +538,8 @@ def _run_app_tests(
 
     test_cmd, test_cwd = cmd_info
 
-    # Phase 1: build-for-testing with stagger to avoid daemon deadlocks.
-    if _worker_index > 0:
-        stagger = _worker_index * _WORKER_STAGGER_SECONDS
-        logger.info("Worker %d staggering app build by %ds", _worker_index, stagger)
-        time.sleep(stagger)
+    # Phase 1: build-for-testing — gate the start to avoid daemon deadlocks.
+    _gate_build_start()
 
     build_cmd = _as_build_for_testing(test_cmd)
     build_result = subprocess.run(
@@ -642,8 +659,10 @@ def eval_single_patch(
 
         # Fast-fail if the patch corrupted project.pbxproj (avoids a slow
         # xcodebuild invocation that would fail with a cryptic parse error).
+        # Only validate when the patch actually touches the project file —
+        # an unmodified pbxproj from the cache is always valid.
         project_rel = xcode_config.get("project", "")
-        if project_rel:
+        if project_rel and "project.pbxproj" in patch:
             pbxproj_error = _validate_pbxproj(worktree_dir, project_rel)
             if pbxproj_error:
                 logger.warning("pbxproj validation failed for %s: %s", tag, pbxproj_error)
@@ -681,11 +700,7 @@ def eval_single_patch(
         if test_type == "app" or spm_standalone:
             build_output = {"tests": []}
         else:
-            # Stagger parallel builds to avoid Xcode build-service deadlocks.
-            if _worker_index > 0:
-                stagger = _worker_index * _WORKER_STAGGER_SECONDS
-                logger.info("Worker %d staggering build by %ds", _worker_index, stagger)
-                time.sleep(stagger)
+            _gate_build_start()
 
             build_cmd = _build_xcodebuild_cmd(
                 xcode_config, worktree_dir, dd_dir, clean=False,
@@ -723,11 +738,12 @@ def eval_single_patch(
         # Override test_destination with per-worker simulator when running
         # inside a pool with dedicated simulators (avoids boot conflicts).
         test_xcode_config = xcode_config
-        if _worker_sim_udid:
+        sim_udid = getattr(_tls, "sim_udid", None)
+        if sim_udid:
             test_xcode_config = {
                 **xcode_config,
-                "test_destination": f"platform=iOS Simulator,id={_worker_sim_udid}",
-                "app_test_destination": f"platform=iOS Simulator,id={_worker_sim_udid}",
+                "test_destination": f"platform=iOS Simulator,id={sim_udid}",
+                "app_test_destination": f"platform=iOS Simulator,id={sim_udid}",
             }
 
         xctest_output = None
@@ -846,6 +862,29 @@ def _save_eval_output(
         (eval_dir / f"{prefix}_stderr.log").write_text(stderr)
 
 
+def _make_empty_patch_result(has_tests: bool) -> dict:
+    """Return a synthetic FAILED result for an empty/blank patch."""
+    if has_tests:
+        return {
+            "tests": [
+                {
+                    "name": "patch_content",
+                    "status": "FAILED",
+                    "message": "Empty patch — skipped build (tests would fail on unpatched base)",
+                }
+            ]
+        }
+    return {
+        "tests": [
+            {
+                "name": "patch_content",
+                "status": "FAILED",
+                "message": "Empty patch — nothing to evaluate",
+            }
+        ]
+    }
+
+
 def run_xcode_evals(
     patches: list[dict],
     instances: list[dict],
@@ -872,6 +911,8 @@ def run_xcode_evals(
     Returns:
         Dict mapping "instance_id:attempt_N" to bool pass/fail.
     """
+    global _build_start_lock
+
     xcode_config = load_xcode_config(dataset_tasks_dir, dataset_id=dataset_id)
     cache = XcodeBuildCache()
 
@@ -890,17 +931,67 @@ def run_xcode_evals(
 
     eval_results: dict[str, bool] = {}
 
-    def _has_tests(iid: str) -> bool:
-        if src_tasks is None:
-            return False
-        task_name = iid.split(".")[-1]
-        return (src_tasks / task_name / "tests.swift").is_file()
+    # Pre-compute which instance IDs have tests to avoid repeated filesystem stats.
+    _has_tests_cache: dict[str, bool] = {}
+    if src_tasks is not None:
+        for ps in patches:
+            iid = ps["instance_id"]
+            if iid not in _has_tests_cache:
+                task_name = iid.split(".")[-1]
+                _has_tests_cache[iid] = (src_tasks / task_name / "tests.swift").is_file()
 
-    n_with_tests = sum(1 for p in patches if _has_tests(p["instance_id"]))
+    def _has_tests(iid: str) -> bool:
+        return _has_tests_cache.get(iid, False)
+
+    real_patches: list[dict] = []
+    skipped = 0
+    dedup_map: dict[tuple, list[dict]] = {}  # (iid, patch_hash) -> [samples]
+
+    for ps in patches:
+        iid = ps["instance_id"]
+        patch_text = ps.get("patch", ps.get("model_patch", ""))
+        if not patch_text or not patch_text.strip():
+            attempt = ps.get("attempt")
+            result_key = f"{iid}:attempt_{attempt}" if attempt else iid
+            eval_results[result_key] = False
+            has_tests = _has_tests(iid)
+            output = _make_empty_patch_result(has_tests)
+            _save_eval_output(
+                output_dir, iid, attempt, eval_id, output, "", "", ""
+            )
+            if attempt is not None:
+                task_results_dir = (
+                    output_dir / iid / f"attempt_{attempt}" / "eval_results"
+                )
+                task_results_dir.mkdir(parents=True, exist_ok=True)
+                (task_results_dir / "eval_results.json").write_text(
+                    json.dumps({iid: False})
+                )
+            skipped += 1
+            continue
+
+        key = (iid, hash(patch_text))
+        if key in dedup_map:
+            dedup_map[key].append(ps)
+        else:
+            dedup_map[key] = [ps]
+            real_patches.append(ps)
+
+    if skipped:
+        typer.echo(f"Skipped {skipped} empty patches (instant fail)")
+
+    n_with_tests = sum(1 for p in real_patches if _has_tests(p["instance_id"]))
     typer.echo(
-        f"Running Xcode evals ({len(patches)} patches, {max_workers} workers, "
+        f"Running Xcode evals ({len(real_patches)} patches, {max_workers} workers, "
         f"compile_only={compile_only}, {n_with_tests} with unit tests)"
     )
+
+    if not real_patches:
+        (output_dir / "eval_results.json").write_text(json.dumps(eval_results))
+        typer.echo(
+            f"Xcode eval complete: {sum(eval_results.values())}/{len(eval_results)} passed"
+        )
+        return eval_results
 
     needs_tests = n_with_tests > 0 or not compile_only
     test_destination = xcode_config.get(
@@ -914,43 +1005,56 @@ def run_xcode_evals(
         and "generic/" not in test_destination
     )
 
+    # Initialise the build-start gate for this run.
+    _build_start_lock = threading.Lock()
+
     sim_udids: list[str] = []
     try:
-        pool_kwargs: dict = {}
         if needs_sim_pool:
             typer.echo(
                 f"Creating {max_workers} simulators for parallel test execution..."
             )
             sim_udids = _create_simulator_pool(max_workers, test_destination)
-            sim_counter = multiprocessing.Value("i", 0)
-            pool_kwargs["initializer"] = _init_sim_worker
-            pool_kwargs["initargs"] = (sim_udids, sim_counter)
 
-        with ProcessPoolExecutor(max_workers=max_workers, **pool_kwargs) as pool:
+        def _assign_sim_and_run(patch_sample: dict) -> dict:
+            """Thread-pool wrapper that assigns a per-thread simulator."""
+            if sim_udids:
+                idx = threading.current_thread()._anvil_idx  # type: ignore[attr-defined]
+                _tls.sim_udid = sim_udids[idx]
+                _tls.worker_index = idx
+            return eval_single_patch(
+                patch=patch_sample.get("patch", patch_sample.get("model_patch", "")),
+                instance_id=patch_sample["instance_id"],
+                base_commit=instance_map[patch_sample["instance_id"]]["base_commit"],
+                repo_name=instance_map[patch_sample["instance_id"]]["repo_name"],
+                xcode_config=xcode_config,
+                cache=cache,
+                output_dir=output_dir,
+                eval_id=eval_id,
+                attempt=patch_sample.get("attempt"),
+                compile_only=compile_only,
+                source_tasks_dir=src_tasks,
+            )
+
+        # Assign stable simulator indices to thread-pool threads.
+        _thread_idx = 0
+        _thread_idx_lock = threading.Lock()
+
+        def _thread_initializer():
+            nonlocal _thread_idx
+            with _thread_idx_lock:
+                idx_val = _thread_idx
+                _thread_idx += 1
+            threading.current_thread()._anvil_idx = idx_val  # type: ignore[attr-defined]
+
+        passed_count = 0
+        actual_workers = min(max_workers, len(real_patches))
+        with ThreadPoolExecutor(
+            max_workers=actual_workers, initializer=_thread_initializer,
+        ) as pool:
             future_to_patch = {}
-            for patch_sample in patches:
-                iid = patch_sample["instance_id"]
-                attempt = patch_sample.get("attempt")
-                inst = instance_map.get(iid)
-                if not inst:
-                    continue
-
-                future = pool.submit(
-                    eval_single_patch,
-                    patch=patch_sample.get(
-                        "patch", patch_sample.get("model_patch", "")
-                    ),
-                    instance_id=iid,
-                    base_commit=inst["base_commit"],
-                    repo_name=inst["repo_name"],
-                    xcode_config=xcode_config,
-                    cache=cache,
-                    output_dir=output_dir,
-                    eval_id=eval_id,
-                    attempt=attempt,
-                    compile_only=compile_only,
-                    source_tasks_dir=src_tasks,
-                )
+            for patch_sample in real_patches:
+                future = pool.submit(_assign_sim_and_run, patch_sample)
                 future_to_patch[future] = patch_sample
 
             pbar = tqdm(
@@ -983,7 +1087,30 @@ def run_xcode_evals(
 
                 tests = output.get("tests", [])
                 failed = [t for t in tests if t["status"] == "FAILED"]
-                eval_results[result_key] = len(tests) > 0 and len(failed) == 0
+                passed_this = len(tests) > 0 and len(failed) == 0
+                eval_results[result_key] = passed_this
+                if passed_this:
+                    passed_count += 1
+
+                # Propagate result to deduplicated siblings.
+                patch_text = patch_sample.get(
+                    "patch", patch_sample.get("model_patch", "")
+                )
+                dup_key = (iid, hash(patch_text))
+                for sibling in dedup_map.get(dup_key, [])[1:]:
+                    sib_attempt = sibling.get("attempt")
+                    sib_key = f"{iid}:attempt_{sib_attempt}" if sib_attempt else iid
+                    eval_results[sib_key] = passed_this
+                    if passed_this:
+                        passed_count += 1
+                    if sib_attempt is not None:
+                        sib_dir = (
+                            output_dir / iid / f"attempt_{sib_attempt}" / "eval_results"
+                        )
+                        sib_dir.mkdir(parents=True, exist_ok=True)
+                        (sib_dir / "eval_results.json").write_text(
+                            json.dumps({iid: passed_this})
+                        )
 
                 if attempt is not None:
                     task_results_dir = (
@@ -998,12 +1125,13 @@ def run_xcode_evals(
                             json.dumps(output, indent=2)
                         )
 
-                passed = sum(eval_results.values())
+                passed = passed_count
                 total = len(eval_results)
                 tag = f"{iid}:{attempt}" if attempt else iid
                 status = "pass" if eval_results.get(result_key) else "fail"
                 pbar.set_postfix_str(f"{passed}/{total} passed, {tag} {status}")
     finally:
+        _build_start_lock = None
         if sim_udids:
             typer.echo(f"Cleaning up {len(sim_udids)} eval simulators...")
             _destroy_simulator_pool(sim_udids)
@@ -1060,7 +1188,7 @@ def validate_task_tests(
         return 0
 
     if max_workers is None:
-        max_workers = min(len(tasks_with_tests), 2)
+        max_workers = min(len(tasks_with_tests), 3)
     max_workers = min(max_workers, len(tasks_with_tests))
 
     typer.echo(
@@ -1084,27 +1212,38 @@ def validate_task_tests(
         and "generic/" not in test_destination
     )
 
+    global _build_start_lock
+
     sim_udids: list[str] = []
     collected: list[tuple[str, dict | None]] = []
+    _build_start_lock = threading.Lock()
 
     try:
-        pool_kwargs: dict = {}
         if needs_sim_pool:
             typer.echo(
                 f"Creating {max_workers} simulators for parallel validation..."
             )
             sim_udids = _create_simulator_pool(max_workers, test_destination)
-            sim_counter = multiprocessing.Value("i", 0)
-            pool_kwargs["initializer"] = _init_sim_worker
-            pool_kwargs["initargs"] = (sim_udids, sim_counter)
 
-        with ProcessPoolExecutor(max_workers=max_workers, **pool_kwargs) as pool:
-            future_to_task: dict = {}
-            for inst in tasks_with_tests:
-                iid = inst["instance_id"]
-                task_name = iid.split(".")[-1]
-                future = pool.submit(
-                    eval_single_patch,
+        _thread_idx = 0
+        _thread_idx_lock = threading.Lock()
+
+        def _thread_init():
+            nonlocal _thread_idx
+            with _thread_idx_lock:
+                idx = _thread_idx
+                _thread_idx += 1
+            threading.current_thread()._anvil_idx = idx  # type: ignore[attr-defined]
+
+        def _validate_one(inst: dict) -> tuple[str, dict | None]:
+            iid = inst["instance_id"]
+            task_name = iid.split(".")[-1]
+            if sim_udids:
+                idx = threading.current_thread()._anvil_idx  # type: ignore[attr-defined]
+                _tls.sim_udid = sim_udids[idx]
+                _tls.worker_index = idx
+            try:
+                result = eval_single_patch(
                     patch="",
                     instance_id=iid,
                     base_commit=inst["base_commit"],
@@ -1117,7 +1256,18 @@ def validate_task_tests(
                     compile_only=False,
                     source_tasks_dir=src_tasks,
                 )
-                future_to_task[future] = task_name
+            except Exception as e:
+                logger.error("Validation failed for %s: %s", task_name, e)
+                result = None
+            return (task_name, result)
+
+        with ThreadPoolExecutor(
+            max_workers=max_workers, initializer=_thread_init,
+        ) as pool:
+            future_to_task: dict = {}
+            for inst in tasks_with_tests:
+                future = pool.submit(_validate_one, inst)
+                future_to_task[future] = inst["instance_id"].split(".")[-1]
 
             pbar = tqdm(
                 as_completed(future_to_task),
@@ -1126,15 +1276,11 @@ def validate_task_tests(
                 unit="task",
             )
             for future in pbar:
-                task_name = future_to_task[future]
-                try:
-                    result = future.result()
-                except Exception as e:
-                    logger.error("Validation failed for %s: %s", task_name, e)
-                    result = None
+                task_name, result = future.result()
                 collected.append((task_name, result))
                 pbar.set_postfix_str(task_name)
     finally:
+        _build_start_lock = None
         if sim_udids:
             typer.echo(f"Cleaning up {len(sim_udids)} validation simulators...")
             _destroy_simulator_pool(sim_udids)
