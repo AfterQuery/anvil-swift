@@ -502,6 +502,8 @@ def _build_xcodebuild_cmd(
     if not allow_pkg_resolution:
         cmd.append("-disableAutomaticPackageResolution")
 
+    cmd.extend(xcode_config.get("extra_build_flags", []))
+
     return cmd
 
 
@@ -561,6 +563,8 @@ def _build_xcodebuild_test_cmd(
     ])
     if not allow_pkg_resolution:
         cmd.append("-disableAutomaticPackageResolution")
+
+    cmd.extend(xcode_config.get("extra_build_flags", []))
 
     only = test_only or xcode_config.get("test_only", [])
     for target in only:
@@ -961,6 +965,8 @@ def _build_xcodebuild_app_test_cmd(
     ])
     if not allow_pkg_resolution:
         cmd.append("-disableAutomaticPackageResolution")
+
+    cmd.extend(xcode_config.get("extra_build_flags", []))
 
     return cmd, work_dir
 
