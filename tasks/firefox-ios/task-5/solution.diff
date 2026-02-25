@@ -1,0 +1,530 @@
+diff --git a/firefox-ios/Client/Coordinators/Browser/BrowserCoordinator.swift b/firefox-ios/Client/Coordinators/Browser/BrowserCoordinator.swift
+index 9f11cec8c4455..949f0c588c080 100644
+--- a/firefox-ios/Client/Coordinators/Browser/BrowserCoordinator.swift
++++ b/firefox-ios/Client/Coordinators/Browser/BrowserCoordinator.swift
+@@ -142,6 +142,7 @@ class BrowserCoordinator: BaseCoordinator,
+             statusBarScrollDelegate: statusBarScrollDelegate,
+             toastContainer: toastContainer
+         )
++        browserViewController.dispatchAvailableContentHeightChangedAction()
+         homepageController.termsOfUseDelegate = self
+         homepageController.view.accessibilityElementsHidden = false
+         dispatchActionForEmbeddingHomepage(with: isZeroSearch)
+@@ -155,24 +156,6 @@ class BrowserCoordinator: BaseCoordinator,
+         webviewController?.update(webView: nil)
+     }
+ 
+-    func homepageScreenshotTool() -> (any Screenshotable)? {
+-        let newTabSettings = browserViewController.newTabSettings
+-        switch newTabSettings {
+-        case .blankPage, .homePage:
+-            return nil
+-        case .topSites:
+-            if tabManager.selectedTab?.isPrivate == true {
+-                return privateHomepageViewController
+-            }
+-            return homepageViewController
+-        }
+-    }
+-
+-    func setHomepageVisibility(isVisible: Bool) {
+-        guard let homepage = homepageViewController else { return }
+-        homepage.view.isHidden = !isVisible
+-    }
+-
+     private func dispatchActionForEmbeddingHomepage(with isZeroSearch: Bool) {
+         store.dispatch(
+             HomepageAction(
+diff --git a/firefox-ios/Client/Coordinators/Browser/BrowserDelegate.swift b/firefox-ios/Client/Coordinators/Browser/BrowserDelegate.swift
+index 3acd5da5fb91f..fb079af6e514c 100644
+--- a/firefox-ios/Client/Coordinators/Browser/BrowserDelegate.swift
++++ b/firefox-ios/Client/Coordinators/Browser/BrowserDelegate.swift
+@@ -15,18 +15,6 @@ protocol BrowserDelegate: AnyObject {
+         toastContainer: UIView
+     )
+ 
+-    /// Returns a tool which can be used to get a snapshot of the homepage
+-    @MainActor
+-    func homepageScreenshotTool() -> Screenshotable?
+-
+-    /// Hides or shows the homepage.
+-    ///
+-    /// Homepage is added to hierarchy when opening the app when swiping tabs is enabled.
+-    /// This method hide or show the homepage and it's needed when opening the app
+-    /// to avoid an homepage flash on the background.
+-    @MainActor
+-    func setHomepageVisibility(isVisible: Bool)
+-
+     /// Show the private homepage to the user as part of felt privacy
+     @MainActor
+     func showPrivateHomepage(overlayManager: OverlayModeManager)
+diff --git a/firefox-ios/Client/Frontend/Browser/BrowserViewController/Views/BrowserViewController.swift b/firefox-ios/Client/Frontend/Browser/BrowserViewController/Views/BrowserViewController.swift
+index 6f6791f204b1f..f3850d3a35955 100644
+--- a/firefox-ios/Client/Frontend/Browser/BrowserViewController/Views/BrowserViewController.swift
++++ b/firefox-ios/Client/Frontend/Browser/BrowserViewController/Views/BrowserViewController.swift
+@@ -1452,12 +1452,6 @@ class BrowserViewController: UIViewController,
+         view.addSubview(overKeyboardContainer)
+ 
+         if isSwipingTabsEnabled {
+-            // Add Homepage to view hierarchy so it is possible to take screenshot from it
+-            showEmbeddedHomepage(inline: false, isPrivate: false)
+-            browserDelegate?.setHomepageVisibility(isVisible: false)
+-            addressBarPanGestureHandler?.homepageScreenshotToolProvider = { [weak self] in
+-                return self?.browserDelegate?.homepageScreenshotTool()
+-            }
+             addressBarPanGestureHandler?.newTabSettingsProvider = { [weak self] in
+                 return self?.newTabSettings
+             }
+@@ -2004,13 +1998,6 @@ class BrowserViewController: UIViewController,
+             toastContainer: contentContainer
+         )
+ 
+-        if isSwipingTabsEnabled {
+-            // show the homepage in case it was not visible, as it is needed for screenshot purpose.
+-            // note: the homepage is not going to be visible to user as in case a web view is there, it is going
+-            // to overlay the homepage.
+-            browserDelegate?.setHomepageVisibility(isVisible: true)
+-        }
+-
+         // embedContent(:) is called when showing the homepage and that is already making sure the shadow is not clipped
+         if !isToolbarTranslucencyRefactorEnabled {
+             updateToolbarDisplay()
+@@ -3183,7 +3170,7 @@ class BrowserViewController: UIViewController,
+         store.dispatch(action)
+     }
+ 
+-    private func dispatchAvailableContentHeightChangedAction() {
++    func dispatchAvailableContentHeightChangedAction() {
+         guard let browserViewControllerState,
+            browserViewControllerState.browserViewType == .normalHomepage,
+            let homepageState = store.state.screenState(HomepageState.self, for: .homepage, window: windowUUID),
+@@ -4736,13 +4723,6 @@ extension BrowserViewController: TabManagerDelegate {
+         if needsReload {
+             selectedTab.reloadPage()
+         }
+-
+-        if isSwipingTabsEnabled {
+-            // show the homepage in case it was not visible, as it is needed for screenshot purpose.
+-            // note: the homepage is not going to be visible to user as in case a web view is there, it is going
+-            // to overlay the homepage.
+-            browserDelegate?.setHomepageVisibility(isVisible: true)
+-        }
+     }
+ 
+     // TODO: FXIOS-14347 This function will be removed when toolbarTranslucencyRefactor is on for everyone
+diff --git a/firefox-ios/Client/Frontend/Browser/Toolbars/AddressBarPanGestureHandler.swift b/firefox-ios/Client/Frontend/Browser/Toolbars/AddressBarPanGestureHandler.swift
+index 27692763cf6f4..449f425c8b897 100644
+--- a/firefox-ios/Client/Frontend/Browser/Toolbars/AddressBarPanGestureHandler.swift
++++ b/firefox-ios/Client/Frontend/Browser/Toolbars/AddressBarPanGestureHandler.swift
+@@ -50,7 +50,6 @@ final class AddressBarPanGestureHandler: NSObject, StoreSubscriber {
+     private let tabManager: TabManager
+     private let windowUUID: WindowUUID
+     private let screenshotHelper: ScreenshotHelper?
+-    var homepageScreenshotToolProvider: (() -> Screenshotable?)?
+     var newTabSettingsProvider: (() -> NewTabPage?)?
+     weak var delegate: AddressBarPanGestureHandler.Delegate?
+     private var homepageScreenshot: UIImage?
+@@ -189,15 +188,6 @@ final class AddressBarPanGestureHandler: NSObject, StoreSubscriber {
+             statusBarOverlay.showOverlay(animated: !UIAccessibility.isReduceMotionEnabled)
+             delegate?.swipeGestureDidBegin()
+         case .changed:
+-            if nextTab == nil, homepageScreenshot == nil {
+-                let homepageScreenshotTool = homepageScreenshotToolProvider?()
+-                homepageScreenshot = homepageScreenshotTool?.screenshot(bounds: CGRect(
+-                    x: 0.0,
+-                    y: -contentContainer.frame.origin.y,
+-                    width: webPagePreview.frame.width,
+-                    height: webPagePreview.frame.height
+-                ))
+-            }
+             handleGestureChangedState(translation: translation, nextTab: nextTab)
+         case .ended, .cancelled, .failed:
+             let velocity = gesture.velocity(in: contentContainer)
+@@ -228,7 +218,7 @@ final class AddressBarPanGestureHandler: NSObject, StoreSubscriber {
+             case .homePage:
+                 webPagePreview.setScreenshot(url: NewTabHomePageAccessors.getHomePage(prefs))
+             case .topSites:
+-                webPagePreview.setScreenshot(homepageScreenshot)
++                webPagePreview.setScreenshot(nil)
+             case nil, .blankPage:
+                 webPagePreview.setScreenshot(url: nil)
+             }
+diff --git a/firefox-ios/Client/Frontend/Components/ContentContainer.swift b/firefox-ios/Client/Frontend/Components/ContentContainer.swift
+index 51da851fe5c05..f4cacd3d2dbeb 100644
+--- a/firefox-ios/Client/Frontend/Components/ContentContainer.swift
++++ b/firefox-ios/Client/Frontend/Components/ContentContainer.swift
+@@ -51,16 +51,6 @@ class ContentContainer: UIView, FeatureFlaggable {
+         return type == .nativeErrorPage
+     }
+ 
+-    /// Returns true if the previous content managed by the `ContentContainer` should be removed from screen.
+-    ///
+-    /// If the content shouldn't be removed then it's view hierarchy is kept on screen.
+-    private var shouldRemovePreviousContent: Bool {
+-        if isSwipingTabsEnabled {
+-            return !hasWebView && !hasHomepage && !hasPrivateHomepage
+-        }
+-        return !hasWebView
+-    }
+-
+     /// Determine if the content can be added, making sure we only add once
+     /// - Parameters:
+     ///   - viewController: The view controller to add to the container
+@@ -94,16 +84,16 @@ class ContentContainer: UIView, FeatureFlaggable {
+     /// - Parameter content: The content to update
+     func update(content: ContentContainable) {
+         removePreviousContent()
+-        if isSwipingTabsEnabled {
+-            bringSubviewToFront(content.view)
+-        }
+         saveContentType(content: content)
+     }
+ 
+     // MARK: - Private
+ 
+     private func removePreviousContent() {
+-        guard shouldRemovePreviousContent else { return }
++        // Only remove previous content when it's the homepage or native error page.
++        // We're not removing the webview controller for now since if it's not loaded, the
++        // webview doesn't layout it's WKCompositingView which result in black screen
++        guard !hasWebView else { return }
+         contentController?.willMove(toParent: nil)
+         contentController?.view.removeFromSuperview()
+         contentController?.removeFromParent()
+diff --git a/firefox-ios/Client/Frontend/Home/Homepage/Redux/HomepageMiddleware.swift b/firefox-ios/Client/Frontend/Home/Homepage/Redux/HomepageMiddleware.swift
+index 6704ebd938151..2c06126ddddf8 100644
+--- a/firefox-ios/Client/Frontend/Home/Homepage/Redux/HomepageMiddleware.swift
++++ b/firefox-ios/Client/Frontend/Home/Homepage/Redux/HomepageMiddleware.swift
+@@ -31,7 +31,7 @@ final class HomepageMiddleware: FeatureFlaggable, Notifiable {
+ 
+     lazy var homepageProvider: Middleware<AppState> = { state, action in
+         switch action.actionType {
+-        case HomepageActionType.viewDidAppear, GeneralBrowserActionType.didSelectedTabChangeToHomepage:
++        case HomepageActionType.viewDidAppear:
+             self.homepageTelemetry.sendHomepageImpressionEvent()
+ 
+         case NavigationBrowserActionType.tapOnBookmarksShowMoreButton:
+diff --git a/firefox-ios/Client/TabManagement/TabWebViewPreview.swift b/firefox-ios/Client/TabManagement/TabWebViewPreview.swift
+index cc71754b6f957..1d221808e7b10 100644
+--- a/firefox-ios/Client/TabManagement/TabWebViewPreview.swift
++++ b/firefox-ios/Client/TabManagement/TabWebViewPreview.swift
+@@ -68,10 +68,12 @@ final class TabWebViewPreview: UIView, ThemeApplicable {
+ 
+     func setScreenshot(_ tab: Tab?) {
+         guard let tab else {
+-            faviconImageView.isHidden = true
++            faviconImageView.isHidden = false
+             webPageScreenshotImageView.isHidden = true
++            faviconImageView.image = UIImage(resource: .faviconFox)
+             return
+         }
++
+         faviconImageView.isHidden = !layoutWasInvalidated
+         webPageScreenshotImageView.isHidden = layoutWasInvalidated
+ 
+@@ -99,12 +101,6 @@ final class TabWebViewPreview: UIView, ThemeApplicable {
+                                                           faviconCornerRadius: UX.faviconCornerRadius))
+     }
+ 
+-    func setScreenshot(_ image: UIImage?) {
+-        faviconImageView.isHidden = true
+-        webPageScreenshotImageView.isHidden = false
+-        webPageScreenshotImageView.image = image
+-    }
+-
+     func applyTransform(translationX: CGFloat) {
+         webPageScreenshotImageView.transform = CGAffineTransform(translationX: translationX, y: 0)
+     }
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewControllerTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewControllerTests.swift
+index 093e86e3e31ff..3227f3e1e0298 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewControllerTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewControllerTests.swift
+@@ -143,24 +143,6 @@ class BrowserViewControllerTests: XCTestCase, StoreTestUtility {
+         XCTAssertEqual(actionType, GeneralBrowserActionType.didSelectedTabChangeToHomepage)
+     }
+ 
+-    func testViewDidLoad_addsHomepage_whenSwipingTabsEnabled_onIphone() {
+-        let subject = createSubject(userInterfaceIdiom: .phone)
+-        setIsSwipingTabsEnabled(true)
+-
+-        subject.loadViewIfNeeded()
+-
+-        XCTAssertEqual(browserCoordinator.showHomepageCalled, 1)
+-    }
+-
+-    func testViewDidLoad_doesNotAddHomepage_whenSwipingTabsEnabled_onIpad() {
+-        let subject = createSubject(userInterfaceIdiom: .pad)
+-        setIsSwipingTabsEnabled(true)
+-
+-        subject.loadViewIfNeeded()
+-
+-        XCTAssertEqual(browserCoordinator.showHomepageCalled, 0)
+-    }
+-
+     func testUpdateReaderModeState_whenSummarizeFeatureOn_dispatchesToolbarMiddlewareAction() throws {
+         setIsHostedSummarizerEnabled(true)
+         let expectation = XCTestExpectation(description: "expect mock store to dispatch an action")
+@@ -542,8 +524,7 @@ class BrowserViewControllerTests: XCTestCase, StoreTestUtility {
+ 
+     // MARK: - Private
+ 
+-    private func createSubject(userInterfaceIdiom: UIUserInterfaceIdiom? = nil,
+-                               file: StaticString = #filePath,
++    private func createSubject(file: StaticString = #filePath,
+                                line: UInt = #line) -> BrowserViewController {
+         let subject = BrowserViewController(profile: profile,
+                                             tabManager: tabManager,
+@@ -554,11 +535,6 @@ class BrowserViewControllerTests: XCTestCase, StoreTestUtility {
+         subject.navigationHandler = browserCoordinator
+         subject.browserDelegate = browserCoordinator
+ 
+-        if let userInterfaceIdiom {
+-            let toolbarHelper: ToolbarHelperInterface = ToolbarHelper(userInterfaceIdiom: userInterfaceIdiom)
+-            subject.toolbarHelper = toolbarHelper
+-        }
+-
+         trackForMemoryLeaks(subject, file: file, line: line)
+         return subject
+     }
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/BrowserCoordinatorTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/BrowserCoordinatorTests.swift
+index 4237ed8efc0c7..d512e60ad2026 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/BrowserCoordinatorTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/BrowserCoordinatorTests.swift
+@@ -133,58 +133,6 @@ final class BrowserCoordinatorTests: XCTestCase, FeatureFlaggable {
+         XCTAssertEqual(firstHomepage, secondHomepage)
+     }
+ 
+-    func testHomepageScreenshotTool_returnsHomepage_forNormalTab() throws {
+-        let subject = createSubject()
+-        subject.browserViewController = browserViewController
+-        subject.showHomepage(
+-            overlayManager: overlayModeManager,
+-            isZeroSearch: false,
+-            statusBarScrollDelegate: scrollDelegate,
+-            toastContainer: UIView()
+-        )
+-
+-        let screenshotTool = try XCTUnwrap(subject.homepageScreenshotTool())
+-        XCTAssertTrue(screenshotTool is HomepageViewController)
+-    }
+-
+-    func testHomepageScreenshotTool_returnsNil_forNewBlankNewTab() throws {
+-        let subject = createSubject()
+-        subject.browserViewController = browserViewController
+-        browserViewController.overrideNewTabSettings = .blankPage
+-        subject.showHomepage(
+-            overlayManager: overlayModeManager,
+-            isZeroSearch: false,
+-            statusBarScrollDelegate: scrollDelegate,
+-            toastContainer: UIView()
+-        )
+-        XCTAssertNil(subject.homepageScreenshotTool())
+-    }
+-
+-    func testHomepageScreenshotTool_returnsNil_forNewCustomURLNewTab() throws {
+-        let subject = createSubject()
+-        subject.browserViewController = browserViewController
+-        browserViewController.overrideNewTabSettings = .homePage
+-        subject.showHomepage(
+-            overlayManager: overlayModeManager,
+-            isZeroSearch: false,
+-            statusBarScrollDelegate: scrollDelegate,
+-            toastContainer: UIView()
+-        )
+-
+-        XCTAssertNil(subject.homepageScreenshotTool())
+-    }
+-
+-    func testHomepageScreenshotTool_returnsPrivateHomepage_forPrivateTab() throws {
+-        let subject = createSubject()
+-        browserViewController.overrideNewTabSettings = .topSites
+-        let tab = tabManager.addTab(nil, afterTab: nil, zombie: false, isPrivate: true)
+-        tabManager.selectTab(tab)
+-        subject.showPrivateHomepage(overlayManager: overlayModeManager)
+-
+-        let screenshotTool = try XCTUnwrap(subject.homepageScreenshotTool())
+-        XCTAssertTrue(screenshotTool is PrivateHomepageViewController)
+-    }
+-
+     // MARK: - Show new homepage
+ 
+     func testShowNewHomepage_setsProperViewController() {
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/Mocks/MockBrowserCoordinator.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/Mocks/MockBrowserCoordinator.swift
+index ecbdf4ebec472..f739a99fddb79 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/Mocks/MockBrowserCoordinator.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/Mocks/MockBrowserCoordinator.swift
+@@ -39,7 +39,6 @@ class MockBrowserCoordinator: BrowserNavigationHandler,
+     var removeDocumentLoadingCalled = 0
+     var showHomepageCalled = 0
+     var browserHasLoadedCalled = 0
+-    var homepageScreenshotToolCalled = 0
+     var showNativeErrorPageCalled = 0
+     var showPrivateHomepageCalled = 0
+     var showWebViewCalled = 0
+@@ -181,11 +180,6 @@ class MockBrowserCoordinator: BrowserNavigationHandler,
+         showHomepageCalled += 1
+     }
+ 
+-    func homepageScreenshotTool() -> (any Client.Screenshotable)? {
+-        homepageScreenshotToolCalled += 1
+-        return nil
+-    }
+-
+     func setHomepageVisibility(isVisible: Bool) {
+         setHomepageVisibilityCalled += 1
+     }
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/ContentContainerTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/ContentContainerTests.swift
+index 83548ca5ce94b..9abbf51741073 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/ContentContainerTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/ContentContainerTests.swift
+@@ -14,7 +14,6 @@ final class ContentContainerTests: XCTestCase {
+ 
+     override func setUp() async throws {
+         try await super.setUp()
+-        setIsSwipingTabsEnabled(false)
+         self.profile = MockProfile()
+         DependencyHelperMock().bootstrapDependencies()
+         LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: profile)
+@@ -272,35 +271,8 @@ final class ContentContainerTests: XCTestCase {
+         XCTAssertFalse(subject.hasPrivateHomepage)
+     }
+ 
+-    // MARK: - Swiping Tabs Enabled
+-
+-    func testAdd_doesNotRemovePrivateHomepage_onIphone() {
+-        let subject = createSubject(userInterfaceIdiom: .phone)
+-        setIsSwipingTabsEnabled(true)
+-
+-        let privateHomepage = PrivateHomepageViewController(windowUUID: .XCTestDefaultUUID,
+-                                                            overlayManager: overlayModeManager)
+-        subject.add(content: privateHomepage)
+-        subject.add(content: WebviewViewController(webView: WKWebView()))
+-
+-        XCTAssertNotNil(privateHomepage.view.superview)
+-    }
+-
+-    func testAdd_doesRemovePrivateHomepage_onIpad() {
+-        let subject = createSubject(userInterfaceIdiom: .pad)
+-        setIsSwipingTabsEnabled(true)
+-
+-        let privateHomepage = PrivateHomepageViewController(windowUUID: .XCTestDefaultUUID,
+-                                                            overlayManager: overlayModeManager)
+-        subject.add(content: privateHomepage)
+-        subject.add(content: WebviewViewController(webView: WKWebView()))
+-
+-        XCTAssertNil(privateHomepage.view.superview)
+-    }
+-
+     func testAdd_doesNotRemoveWebView() {
+         let subject = createSubject()
+-        setIsSwipingTabsEnabled(true)
+ 
+         let webView = WebviewViewController(webView: WKWebView())
+         subject.add(content: webView)
+@@ -309,24 +281,8 @@ final class ContentContainerTests: XCTestCase {
+         XCTAssertNotNil(webView.view.superview)
+     }
+ 
+-    func testAdd_doesNotRemoveHomepage_onIphone() {
+-        let subject = createSubject(userInterfaceIdiom: .phone)
+-        setIsSwipingTabsEnabled(true)
+-
+-        let homepage = HomepageViewController(
+-            windowUUID: .XCTestDefaultUUID,
+-            overlayManager: overlayModeManager,
+-            toastContainer: UIView()
+-        )
+-        subject.add(content: homepage)
+-        subject.add(content: WebviewViewController(webView: WKWebView()))
+-
+-        XCTAssertNotNil(homepage.view.superview)
+-    }
+-
+-    func testAdd_doesRemoveHomepage_onIpad() {
+-        let subject = createSubject(userInterfaceIdiom: .pad)
+-        setIsSwipingTabsEnabled(true)
++    func testAdd_doesRemoveHomepage() {
++        let subject = createSubject()
+ 
+         let homepage = HomepageViewController(
+             windowUUID: .XCTestDefaultUUID,
+@@ -339,38 +295,8 @@ final class ContentContainerTests: XCTestCase {
+         XCTAssertNil(homepage.view.superview)
+     }
+ 
+-    func testUpdate_bringsSubviewToFront_onIphone() {
+-        let subject = createSubject(userInterfaceIdiom: .phone)
+-        setIsSwipingTabsEnabled(true)
+-
+-        let homepage = createHomepage()
+-
+-        subject.add(content: homepage)
+-        subject.add(content: WebviewViewController(webView: WKWebView()))
+-
+-        subject.update(content: homepage)
+-        XCTAssertEqual(subject.subviews.last, homepage.view)
+-    }
+-
+-    func testUpdate_bringsSubviewToFront_onIpad() {
+-        let subject = createSubject(userInterfaceIdiom: .pad)
+-        setIsSwipingTabsEnabled(true)
+-
+-        let homepage = createHomepage()
+-
+-        subject.add(content: homepage)
+-        subject.add(content: WebviewViewController(webView: WKWebView()))
+-
+-        subject.update(content: homepage)
+-        XCTAssertNotEqual(subject.subviews.last, homepage.view)
+-    }
+-
+-    private func createSubject(userInterfaceIdiom: UIUserInterfaceIdiom? = nil) -> ContentContainer {
++    private func createSubject() -> ContentContainer {
+         let subject = ContentContainer()
+-        if let userInterfaceIdiom {
+-            let toolbarHelper: ToolbarHelperInterface = ToolbarHelper(userInterfaceIdiom: userInterfaceIdiom)
+-            subject.toolbarHelper = toolbarHelper
+-        }
+         trackForMemoryLeaks(subject)
+         return subject
+     }
+@@ -382,10 +308,4 @@ final class ContentContainerTests: XCTestCase {
+             toastContainer: UIView()
+         )
+     }
+-
+-    private func setIsSwipingTabsEnabled(_ isEnabled: Bool) {
+-        FxNimbus.shared.features.toolbarRefactorFeature.with { _, _ in
+-            return ToolbarRefactorFeature(swipingTabs: isEnabled)
+-        }
+-    }
+ }
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/HomepageMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/HomepageMiddlewareTests.swift
+index 2a9cf90071849..fe74433d68296 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/HomepageMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/HomepageMiddlewareTests.swift
+@@ -77,24 +77,6 @@ final class HomepageMiddlewareTests: XCTestCase, StoreTestUtility {
+         XCTAssert(resultMetricType == expectedMetricType, debugMessage.text)
+     }
+ 
+-    func test_shouldShowImpressionTriggeredAction_sendsTelemetryData() throws {
+-        let subject = createSubject()
+-        let action = GeneralBrowserAction(
+-            windowUUID: .XCTestDefaultUUID,
+-            actionType: GeneralBrowserActionType.didSelectedTabChangeToHomepage
+-        )
+-
+-        subject.homepageProvider(AppState(), action)
+-
+-        let savedMetric = try XCTUnwrap(mockGleanWrapper.savedEvents.first as? EventMetricType<NoExtras>)
+-        let expectedMetricType = type(of: GleanMetrics.Homepage.viewed)
+-        let resultMetricType = type(of: savedMetric)
+-        let debugMessage = TelemetryDebugMessage(expectedMetric: expectedMetricType, resultMetric: resultMetricType)
+-
+-        XCTAssertEqual(mockGleanWrapper.recordEventNoExtraCalled, 1)
+-        XCTAssert(resultMetricType == expectedMetricType, debugMessage.text)
+-    }
+-
+     func test_tapOnBookmarksShowMoreButtonAction_sendTelemetryData() throws {
+         let subject = createSubject()
+         let action = NavigationBrowserAction(

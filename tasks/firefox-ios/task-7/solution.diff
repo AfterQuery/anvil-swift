@@ -1,0 +1,478 @@
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/Abstractions.swift b/BrowserKit/Sources/VoiceSearchKit/Backend/Abstractions.swift
+new file mode 100644
+index 0000000000000..16b63afb37ace
+--- /dev/null
++++ b/BrowserKit/Sources/VoiceSearchKit/Backend/Abstractions.swift
+@@ -0,0 +1,42 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import AVFoundation
++import Speech
++
++// MARK: - Abstractions
++// TODO: FXIOS-14878 - May need to refactor after integrating new speech framework as well
++extension AVAudioEngine: AudioEngineProvider { }
++extension AVAudioSession: AudioSessionProvider { }
++extension SFSpeechRecognizer: SpeechRecognizerProvider { }
++
++protocol AudioEngineProvider: Sendable {
++    var inputNode: AVAudioInputNode { get }
++    func prepare()
++    func start() throws
++    func stop()
++}
++
++protocol AudioSessionProvider: Sendable {
++    func requestRecordPermission(_ response: @escaping @Sendable (Bool) -> Void)
++    func setCategory(
++        _ category: AVAudioSession.Category,
++        mode: AVAudioSession.Mode,
++        options: AVAudioSession.CategoryOptions
++    ) throws
++    func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws
++}
++
++protocol SpeechRecognizerProvider: Sendable {
++    var isAvailable: Bool { get }
++    func recognitionTask(
++        with request: SFSpeechRecognitionRequest,
++        resultHandler: @escaping (SFSpeechRecognitionResult?, Error?) -> Void
++    ) -> SFSpeechRecognitionTask
++}
++
++protocol AuthorizeProvider: Sendable {
++    func isMicrophonePermissionAuthorized() async -> Bool
++    func isSpeechPermissionAuthorized() async -> Bool
++}
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/AuthorizationHandler.swift b/BrowserKit/Sources/VoiceSearchKit/Backend/AuthorizationHandler.swift
+new file mode 100644
+index 0000000000000..a32ba2e0974a3
+--- /dev/null
++++ b/BrowserKit/Sources/VoiceSearchKit/Backend/AuthorizationHandler.swift
+@@ -0,0 +1,26 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import Speech
++
++struct AuthorizationHandler: AuthorizeProvider {
++    let audioSession: AudioSessionProvider
++
++    func isMicrophonePermissionAuthorized() async -> Bool {
++        await withCheckedContinuation { continuation in
++            audioSession.requestRecordPermission { granted in
++                continuation.resume(returning: granted)
++            }
++        }
++    }
++
++    func isSpeechPermissionAuthorized() async -> Bool {
++        let status = await withCheckedContinuation { continuation in
++            SFSpeechRecognizer.requestAuthorization { status in
++                continuation.resume(returning: status)
++            }
++        }
++        return status == .authorized
++    }
++}
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/SFSpeechRecognizerEngine.swift b/BrowserKit/Sources/VoiceSearchKit/Backend/SFSpeechRecognizerEngine.swift
+new file mode 100644
+index 0000000000000..9ce21b0f5da72
+--- /dev/null
++++ b/BrowserKit/Sources/VoiceSearchKit/Backend/SFSpeechRecognizerEngine.swift
+@@ -0,0 +1,106 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import AVFoundation
++import Speech
++
++/// A speech transcription engine backed by `AVAudioEngine` and `SFSpeechRecognizer`.
++///
++/// Responsible for:
++/// - Managing permissions
++/// - Capturing microphone audio
++/// - Streaming transcription results
++final actor SFSpeechRecognizerEngine: TranscriptionEngine {
++    private let audioEngine: AudioEngineProvider
++    private let audioSession: AudioSessionProvider
++
++    private var recognitionTask: SFSpeechRecognitionTask?
++    private let speechRecognizer: SpeechRecognizerProvider?
++    private var request: SFSpeechAudioBufferRecognitionRequest?
++    private let authorizer: AuthorizeProvider
++
++    init(
++        locale: Locale = Locale.current,
++        audioEngine: AudioEngineProvider = AVAudioEngine(),
++        audioSession: AudioSessionProvider = AVAudioSession(),
++        speechRecognizer: SpeechRecognizerProvider? = nil,
++        authorizer: AuthorizeProvider? = nil
++    ) {
++        self.audioEngine = audioEngine
++        self.audioSession = audioSession
++        self.speechRecognizer = speechRecognizer ?? SFSpeechRecognizer(locale: locale)
++        self.authorizer = authorizer ?? AuthorizationHandler(audioSession: audioSession)
++    }
++
++    func prepare() async throws {
++        guard await isPermissionGranted() else {
++            throw SpeechError.permissionDenied
++        }
++        try configureAudioSession()
++    }
++
++    // TODO: FXIOS-14878 - Refactor and extract similar audio code for both speech framework
++    func start(continuation: AsyncThrowingStream<SpeechResult, any Error>.Continuation) async throws {
++        // Setup for formatting raw samples
++        let inputNode = audioEngine.inputNode
++        let format = inputNode.outputFormat(forBus: 0)
++
++        let recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
++        recognitionRequest.requiresOnDeviceRecognition = true
++        self.request = recognitionRequest
++
++        // Remove any previous input from microphone and capture audio
++        inputNode.removeTap(onBus: 0)
++        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
++            recognitionRequest.append(buffer)
++        }
++
++        audioEngine.prepare()
++        try audioEngine.start()
++
++        // Start recognizer task if available
++        guard let speechRecognizer, speechRecognizer.isAvailable else {
++            throw SpeechError.recognizerNotAvailable
++        }
++
++        recognitionTask = speechRecognizer.recognitionTask(with: recognitionRequest) { result, error in
++            // TODO: FXIOS-14878 - To refactor when we create the bridge
++            if let error {
++                continuation.finish(throwing: error)
++                return
++            }
++            guard let result else { return }
++            let chunk = result.bestTranscription.formattedString
++            let speechResult = SpeechResult(
++                text: chunk,
++                isFinal: result.isFinal
++            )
++            continuation.yield(speechResult)
++            // TODO: FXIOS-14893 - Improve detection
++            if result.isFinal || result.speechRecognitionMetadata != nil {
++                continuation.finish()
++            }
++        }
++    }
++
++    func stop() {
++        audioEngine.stop()
++        audioEngine.inputNode.removeTap(onBus: 0)
++        request?.endAudio()
++        recognitionTask?.finish()
++    }
++
++    private func isPermissionGranted() async -> Bool {
++        let isMicAuthorized = await authorizer.isMicrophonePermissionAuthorized()
++        let isSpeechAuthorized = await authorizer.isSpeechPermissionAuthorized()
++        return isMicAuthorized && isSpeechAuthorized
++    }
++
++    // MARK: - Audio Related
++    // TODO: FXIOS-14882 - Refactor audio portion to be in its own manager
++    private func configureAudioSession() throws {
++        try audioSession.setCategory(.record, mode: .measurement, options: [.duckOthers])
++        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
++    }
++}
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/SpeechError.swift b/BrowserKit/Sources/VoiceSearchKit/Backend/SpeechError.swift
+new file mode 100644
+index 0000000000000..7c120648a323d
+--- /dev/null
++++ b/BrowserKit/Sources/VoiceSearchKit/Backend/SpeechError.swift
+@@ -0,0 +1,9 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++enum SpeechError: Error, Equatable {
++    case recognizerNotAvailable
++    case permissionDenied
++    case unknown
++}
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/TranscriptionEngine.swift b/BrowserKit/Sources/VoiceSearchKit/Backend/TranscriptionEngine.swift
+new file mode 100644
+index 0000000000000..0125385ae1fe0
+--- /dev/null
++++ b/BrowserKit/Sources/VoiceSearchKit/Backend/TranscriptionEngine.swift
+@@ -0,0 +1,14 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++protocol TranscriptionEngine: Sendable {
++    /// Prepares the engine by validating permissions and configuring the audio session.
++    func prepare() async throws
++
++    /// Starts speech recognition and streams results via the provided continuation.
++    func start(continuation: AsyncThrowingStream<SpeechResult, any Error>.Continuation) async throws
++
++    /// Stops speech recognition and releases audio resources.
++    func stop() async
++}
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/VoiceSearchService.swift b/BrowserKit/Sources/VoiceSearchKit/Backend/VoiceSearchService.swift
+index 39de35c9bd01f..4bb81e99e7299 100644
+--- a/BrowserKit/Sources/VoiceSearchKit/Backend/VoiceSearchService.swift
++++ b/BrowserKit/Sources/VoiceSearchKit/Backend/VoiceSearchService.swift
+@@ -13,10 +13,6 @@ struct SpeechResult: Equatable {
+     }
+ }
+ 
+-enum SpeechError: Error, Equatable {
+-    case unknown
+-}
+-
+ struct SearchResult: Equatable {
+     let title: String
+     let body: String
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAudio.swift b/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAudio.swift
+new file mode 100644
+index 0000000000000..47e9d2efc3784
+--- /dev/null
++++ b/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAudio.swift
+@@ -0,0 +1,68 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import AVFoundation
++
++@testable import VoiceSearchKit
++
++final class MockAudioSession: AudioSessionProvider, @unchecked Sendable {
++    let micPermission = true
++    struct CategoryCallParams {
++        let category: AVAudioSession.Category
++        let mode: AVAudioSession.Mode
++        let options: AVAudioSession.CategoryOptions
++    }
++    var setCategoryCalls: [CategoryCallParams] = []
++    var setActiveCalls: [(Bool, AVAudioSession.SetActiveOptions)] = []
++
++    func requestRecordPermission(_ response: @escaping (Bool) -> Void) {
++        response(micPermission)
++    }
++
++    func setCategory(
++        _ category: AVAudioSession.Category,
++        mode: AVAudioSession.Mode,
++        options: AVAudioSession.CategoryOptions
++    ) throws {
++        setCategoryCalls.append(
++            CategoryCallParams(
++                category: category,
++                mode: mode,
++                options: options
++            )
++        )
++    }
++
++    func setActive(
++        _ active: Bool,
++        options: AVAudioSession.SetActiveOptions
++    ) throws {
++        setActiveCalls.append((active, options))
++    }
++}
++
++final class MockAudioEngine: AudioEngineProvider, @unchecked Sendable {
++    // Use a real AVAudioEngine only to provide a valid inputNode
++    private let engine = AVAudioEngine()
++
++    private(set) var prepareCallCount = 0
++    private(set) var startCallCount = 0
++    private(set) var stopCallCount = 0
++
++    var inputNode: AVAudioInputNode {
++        engine.inputNode
++    }
++
++    func prepare() {
++        prepareCallCount += 1
++    }
++
++    func start() throws {
++        startCallCount += 1
++    }
++
++    func stop() {
++        stopCallCount += 1
++    }
++}
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAuthorizer.swift b/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAuthorizer.swift
+new file mode 100644
+index 0000000000000..5f54dcefe7dcd
+--- /dev/null
++++ b/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAuthorizer.swift
+@@ -0,0 +1,22 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++@testable import VoiceSearchKit
++
++final class MockAuthorizer: AuthorizeProvider {
++    let micAuthorized: Bool
++    let speechAuthorized: Bool
++
++    init(micAuthorized: Bool = true, speechAuthorized: Bool = true) {
++        self.micAuthorized = micAuthorized
++        self.speechAuthorized = speechAuthorized
++    }
++
++    func isMicrophonePermissionAuthorized() async -> Bool {
++        micAuthorized
++    }
++
++    func isSpeechPermissionAuthorized() async -> Bool {
++        speechAuthorized
++    }
++}
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockSpeechRecognizer.swift b/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockSpeechRecognizer.swift
+new file mode 100644
+index 0000000000000..04c8d9edcf50e
+--- /dev/null
++++ b/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockSpeechRecognizer.swift
+@@ -0,0 +1,20 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import Speech
++
++@testable import VoiceSearchKit
++
++final class MockSpeechRecognizer: SpeechRecognizerProvider, @unchecked Sendable {
++    var isAvailable = true
++    private(set) var recognitionTaskCallCount = 0
++
++    func recognitionTask(
++        with request: SFSpeechRecognitionRequest,
++        resultHandler: @escaping (SFSpeechRecognitionResult?, Error?) -> Void
++    ) -> SFSpeechRecognitionTask {
++        recognitionTaskCallCount += 1
++        return SFSpeechRecognitionTask()
++    }
++}
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/MockTestVoiceSearchService.swift b/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockTestVoiceSearchService.swift
+similarity index 100%
+rename from BrowserKit/Tests/VoiceSearchKitTests/MockTestVoiceSearchService.swift
+rename to BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockTestVoiceSearchService.swift
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/SFSpeechRecognizerEngineTests.swift b/BrowserKit/Tests/VoiceSearchKitTests/SFSpeechRecognizerEngineTests.swift
+new file mode 100644
+index 0000000000000..5040d2b0b6c72
+--- /dev/null
++++ b/BrowserKit/Tests/VoiceSearchKitTests/SFSpeechRecognizerEngineTests.swift
+@@ -0,0 +1,98 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import AVFoundation
++import Testing
++
++@testable import VoiceSearchKit
++
++@Suite
++struct SFSpeechRecognizerEngineTests {
++    // TODO: FXIOS-14891 Add more test to improve code coverage and check for memory leaks
++    let session = MockAudioSession()
++
++    @Test
++    func test_prepare_microphoneDenied_speechDenied_throwsError() async {
++        let authorizer = MockAuthorizer(micAuthorized: false, speechAuthorized: false)
++        let subject = SFSpeechRecognizerEngine(audioSession: session, authorizer: authorizer)
++
++        await #expect(throws: SpeechError.permissionDenied) {
++            try await subject.prepare()
++        }
++
++        #expect(session.setCategoryCalls.isEmpty)
++        #expect(session.setActiveCalls.isEmpty)
++    }
++
++    @Test
++    func test_prepare_microphoneDenied_speechGranted_throwsError() async {
++        let authorizer = MockAuthorizer(micAuthorized: false, speechAuthorized: true)
++        let subject = SFSpeechRecognizerEngine(audioSession: session, authorizer: authorizer)
++
++        await #expect(throws: SpeechError.permissionDenied) {
++            try await subject.prepare()
++        }
++
++        #expect(session.setCategoryCalls.isEmpty)
++        #expect(session.setActiveCalls.isEmpty)
++    }
++
++    @Test
++    func test_prepare_microphoneGranted_speechDenied_throwsError() async {
++        let authorizer = MockAuthorizer(micAuthorized: true, speechAuthorized: false)
++        let engine = SFSpeechRecognizerEngine(audioSession: session, authorizer: authorizer)
++
++        await #expect(throws: SpeechError.permissionDenied) {
++            try await engine.prepare()
++        }
++
++        #expect(session.setCategoryCalls.isEmpty)
++        #expect(session.setActiveCalls.isEmpty)
++    }
++
++    @Test
++    func test_prepare_microphoneGranted_speechGranted_returnsExpectedCalls() async throws {
++        let authorizer = MockAuthorizer(micAuthorized: true, speechAuthorized: true)
++        let subject = SFSpeechRecognizerEngine(audioSession: session, authorizer: authorizer)
++        try await subject.prepare()
++
++        #expect(session.setCategoryCalls.count == 1)
++        #expect(session.setCategoryCalls[0].category == .record)
++        #expect(session.setCategoryCalls[0].mode == .measurement)
++        #expect(session.setCategoryCalls[0].options.contains(.duckOthers))
++
++        #expect(session.setActiveCalls.count == 1)
++        let (active, activeOptions) = session.setActiveCalls[0]
++        #expect(active == true)
++        #expect(activeOptions.contains(.notifyOthersOnDeactivation))
++    }
++
++    @Test
++    func test_stop_returnsExpectedCalls() async throws {
++        let authorizer = MockAuthorizer(micAuthorized: true, speechAuthorized: true)
++        let subject = SFSpeechRecognizerEngine(audioSession: session, authorizer: authorizer)
++        try await subject.prepare()
++
++        #expect(session.setCategoryCalls.count == 1)
++        #expect(session.setCategoryCalls[0].category == .record)
++        #expect(session.setCategoryCalls[0].mode == .measurement)
++        #expect(session.setCategoryCalls[0].options.contains(.duckOthers))
++
++        #expect(session.setActiveCalls.count == 1)
++        let (active, activeOptions) = session.setActiveCalls[0]
++        #expect(active == true)
++        #expect(activeOptions.contains(.notifyOthersOnDeactivation))
++    }
++
++    @Test
++    func test_stop_createsRecognitionTask() async throws {
++        let authorizer = MockAuthorizer(micAuthorized: true, speechAuthorized: true)
++        let engine = MockAudioEngine()
++        let subject = SFSpeechRecognizerEngine(audioEngine: engine, audioSession: session, authorizer: authorizer)
++
++        await subject.stop()
++
++        #expect(engine.stopCallCount == 1)
++    }
++}

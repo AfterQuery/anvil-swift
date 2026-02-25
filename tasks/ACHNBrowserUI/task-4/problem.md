@@ -10,9 +10,8 @@ In the **ACHNBrowserUI** app, the Villagers list view displays all villagers but
 2. Sorting must use locale-aware string comparison.
 3. A sort button in the navigation bar must present the available sort options (e.g., via an action sheet).
 4. The sort button icon must visually indicate whether a sort is currently active.
-5. Setting the `sort` property to the same value it already holds must reverse the sort order (ascending ↔ descending). The initial sort direction must be ascending.
+5. Setting the sort to the same value it already holds must reverse the sort order (ascending / descending). The initial sort direction must be ascending.
 6. There must be a way to clear the active sort, restoring the default villager order.
 7. When searching, search results must take priority over sorting.
 8. French localization must be added for any new user-facing sort strings.
 9. The existing search functionality and villager detail view must remain unchanged.
-10. Add a `Sort` enum (with `name` and `species` cases), a `sort` property, and a `sortedVillagers` array to `VillagersViewModel` so the view can bind to them. `sortedVillagers` must be empty when no sort is active (`sort` is nil); it only contains villagers when a sort is applied.

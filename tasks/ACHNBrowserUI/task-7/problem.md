@@ -6,34 +6,15 @@ The **ACHNBrowserUI** app does not expose Turnip Exchange island listings anywhe
 
 Additionally, catalog browsing is fragmented across multiple top-level tabs (Items, Wardrobe, Nature), each using a modal category picker. This flat structure makes it difficult to explore items across category groups and doesn't scale as new sections are added.
 
-### Expected Behavior
-
-- Users can access a Turnips section from the main tab navigation.
-- The section displays island listings fetched from the Turnip Exchange service.
-- Listings load asynchronously and show a loading state while data is unavailable.
-- Catalog browsing supports hierarchical drill-down navigation across category groups from a single tab.
-- Individual item lists can be reached by navigating through category groups.
-- The `Island` model handles missing descriptions gracefully.
-- Existing functionality (villagers, collection) remains intact.
-
 ### Acceptance Criteria
 
-1. Turnip Exchange island listings are visible within the app via the main navigation.
-2. Listings update when data is fetched.
-3. Catalog navigation supports structured, hierarchical browsing.
-4. The app builds and runs without regressions.
-
-### API Compatibility Requirements
-
-The test suite expects the following symbols and signatures:
-
-- `TurnipsViewModel`: an `ObservableObject` with a `@Published var islands: [Island]?` property (nil by default) and a `func fetch()` method.
-- `TabbarView.Tab.turnips`: a case in the tab enumeration.
-- `Island`: conforms to `Identifiable`.
-- `CategoriesView(categories:)`: initializer accepting `[Categories]` with no additional binding parameter.
-- `CategoryDetailView(categories:)`: initializer accepting `[Categories]`.
-- `ItemsListView(viewModel:)`: initializer accepting an `ItemsViewModel`.
-- `ItemsViewModel(categorie:)`: initializer must be accessible from outside its defining file.
+1. Users can access a Turnips section from the main tab navigation.
+2. The section displays island listings fetched from the Turnip Exchange service, with a loading state while data is unavailable.
+3. Catalog browsing supports hierarchical drill-down navigation across category groups from a single tab.
+4. Individual item lists can be reached by navigating through category groups.
+5. The island model handles missing descriptions gracefully.
+6. Existing functionality (villagers, collection) remains intact.
+7. The app builds and runs without regressions.
 
 ### Xcode Project Note
 

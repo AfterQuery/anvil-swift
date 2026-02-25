@@ -18,6 +18,7 @@ uv sync
 ```bash
 xcode-select --install
 xcodebuild -downloadPlatform iOS
+xcodebuild -downloadPlatform watchOS   # Required for repos with embedded Watch apps (e.g. iOS-Open-GPX-Tracker)
 ```
 
 **3. Configure environment**

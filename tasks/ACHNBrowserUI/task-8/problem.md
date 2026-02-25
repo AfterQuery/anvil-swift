@@ -6,24 +6,15 @@ In the **ACHNBrowserUI** turnip prediction screen, when a user enters their actu
 
 This is confusing because the whole point of entering prices is to refine the forecast, yet the display overwrites entered values with computed ones.
 
-### Expected Behavior
+### Acceptance Criteria
 
-- When a user has entered an actual turnip price for a time slot, the display should show that exact value rather than a calculated prediction.
-- In the min/max view, an entered value should appear as a single number (not a range), since the min and max are identical when the price is known.
-- Entered values should be visually distinguished from predictions using a different text color.
-- Predicted values retain existing color coding (low prices in red, high prices highlighted, mid-range in secondary text).
-- Switching between average, min/max, and profit display tabs should not cause visual glitches or show stale data.
-- The profit calculations should use entered values where available.
-
-### API Compatibility Requirements
-
-The test suite expects the following symbols and signatures:
-
-- `TurnipsAveragePriceRow(label:prices:minMaxPrices:)`: initializer accepting `String`, `[Int]`, and `[[Int]]`.
-- `TurnipsMinMaxPriceRow(label:prices:averagePrices:)`: a new row view accepting `String`, `[[Int]]`, and `[Int]`.
-- `TurnipsPriceRow`: a protocol that both row types conform to.
-- `isEntered(meridian:)`: a method on `TurnipsPriceRow` that detects whether a time slot contains a user-entered value.
-- `eraseToAnyView()`: a `View` extension returning `AnyView`.
+1. When a user has entered an actual turnip price for a time slot, the display must show that exact value rather than a calculated prediction.
+2. In the min/max view, an entered value must appear as a single number (not a range), since the min and max are identical when the price is known.
+3. Entered values must be visually distinguished from predictions using a different text color.
+4. Predicted values retain existing color coding (low prices in red, high prices highlighted, mid-range in secondary text).
+5. Switching between average, min/max, and profit display tabs must not cause visual glitches or show stale data.
+6. Both average-price and min/max-price row types must be able to detect whether a given time slot contains a user-entered value.
+7. The profit calculations should use entered values where available.
 
 ### Xcode Project Note
 

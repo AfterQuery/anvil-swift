@@ -24,14 +24,3 @@ The **iOS-Open-GPX-Tracker** app uses a hardcoded date format (`dd-MMM-yyyy-HHmm
 3. Custom format input with `{pattern}` syntax produces correct file names.
 4. UTC and English locale toggles work correctly.
 5. The app builds and runs without regressions.
-
-### API Compatibility Requirements
-
-The test suite expects the following symbols and signatures:
-
-- `kDefaultNameSection`: an `Int` constant for the new preferences section index.
-- `DefaultDateFormat`: a class with `getDateFormat(unprocessed:)` returning a processed format string, and `getDate(processedFormat:useUTC:useENLocale:)` returning a formatted date string.
-- `DateField`: a struct with `type: String` and `patterns: [String]` properties.
-- `DefaultNameSetupViewController`: a `UITableViewController` subclass.
-- `String.countInstances(of:)`: an extension method returning `Int`.
-- `numberOfSections(in:)` on `PreferencesTableViewController` returns `5` (increased from `4`).

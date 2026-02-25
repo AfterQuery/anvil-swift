@@ -19,15 +19,3 @@ The **iOS-Open-GPX-Tracker** app uses `CLLocationManager` for GPS tracking but d
 3. Tapping a row updates the checkmark and persists the selection.
 4. The location manager uses the selected activity type for tracking.
 5. The app builds and runs without regressions.
-
-### API Compatibility Requirements
-
-The test suite expects the following symbols and signatures:
-
-- `CLActivityType.name`: a computed `String` property returning a human-readable name.
-- `CLActivityType.description`: a computed `String` property returning a brief description.
-- `CLActivityType.count`: a static `Int` property returning `5`.
-- `kActivityTypeSection`: an `Int` constant for the activity type section index.
-- `kDefaultsKeyActivityType`: a `String` constant for the UserDefaults key.
-- `Preferences.shared.locationActivityType`: a read/write `CLActivityType` property.
-- `numberOfSections(in:)` on `PreferencesTableViewController` returns `4` (increased from `3`).

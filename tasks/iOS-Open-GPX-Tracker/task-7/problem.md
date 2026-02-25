@@ -24,14 +24,3 @@ The **iOS-Open-GPX-Tracker** app has two user-facing issues related to preferenc
 3. The preference is persisted to UserDefaults and restored on app launch.
 4. A loading indicator appears while the preferences screen loads and disappears once it is presented.
 5. The app builds and runs without regressions.
-
-### API Compatibility Requirements
-
-The test suite expects the following symbols and signatures:
-
-- `Preferences.shared.keepScreenAlwaysOn`: a read/write `Bool` property (defaults to `false`).
-- `kDefaultsKeyKeepScreenAlwaysOn`: a `String` constant for the UserDefaults key.
-- `kScreenSection`: an `Int` constant representing the screen section index in the preferences table.
-- `Toast.kDisabledDelay`: a `Double` class constant.
-- `Toast.showLoading(_:position:)`: a class method that displays a persistent loading toast.
-- `Toast.hideLoading()`: a class method that dismisses the persistent loading toast.

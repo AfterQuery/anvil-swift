@@ -22,13 +22,3 @@ The **iOS-Open-GPX-Tracker** app saves all recorded GPX files to the app's inter
 3. The file list includes GPX files from both the default and custom directories.
 4. The preference survives app restarts via bookmark data in UserDefaults.
 5. The app builds and runs without regressions.
-
-### API Compatibility Requirements
-
-The test suite expects the following symbols and signatures:
-
-- `kDefaultsKeyGPXFilesFolder`: a `String` constant for the UserDefaults key.
-- `kGPXFilesLocationSection`: an `Int` constant for the new preferences section index.
-- `Preferences.shared.gpxFilesFolderURL`: a read/write `URL?` property backed by bookmark data.
-- `PreferencesTableViewController`: conforms to `UIDocumentPickerDelegate`.
-- `numberOfSections(in:)` returns `6` (increased from `5`).

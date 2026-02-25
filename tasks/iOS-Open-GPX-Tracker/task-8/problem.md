@@ -21,12 +21,3 @@ Additionally, the app has no lightweight, non-intrusive notification system for 
 3. The toast system supports multiple severity levels with distinct styling.
 4. The app title label reflects the current session filename.
 5. The app builds and runs without regressions.
-
-### API Compatibility Requirements
-
-The test suite expects the following symbols and signatures:
-
-- `Toast`: a class with class methods `regular(_:position:delay:)`, `info(_:position:delay:)`, `warning(_:position:delay:)`, `success(_:position:delay:)`, and `error(_:position:delay:)`.
-- `Toast.Position`: an enum with cases `.bottom`, `.center`, `.top`.
-- `ToastLabel`: a `UILabel` subclass with a `convenience init(text:)` initializer.
-- `kAppTitle`: a `String` constant.
