@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Optional
 
 import typer
 
@@ -12,6 +12,10 @@ def validate_tests(
         str,
         typer.Option("--dataset", "-d", help="Dataset ID or path (e.g. datasets/ACHNBrowserUI)"),
     ],
+    max_workers: Annotated[
+        Optional[int],
+        typer.Option("--workers", "-w", help="Max parallel xcodebuild processes (default: 2)"),
+    ] = None,
 ) -> None:
     """Run task tests on the unpatched base commit and check consistency.
 
@@ -25,5 +29,5 @@ def validate_tests(
     """
     from .evals.xcode_eval import validate_task_tests
 
-    rc = validate_task_tests(dataset_id=dataset)
+    rc = validate_task_tests(dataset_id=dataset, max_workers=max_workers)
     raise typer.Exit(rc)

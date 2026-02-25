@@ -898,6 +898,7 @@ def run_xcode_evals(
 
 def validate_task_tests(
     dataset_id: str,
+    max_workers: int | None = None,
 ) -> int:
     """Run task tests against the unpatched base commit and check consistency.
 
@@ -938,31 +939,91 @@ def validate_task_tests(
         typer.echo("No tasks with tests.swift found — nothing to validate.")
         return 0
 
-    typer.echo(f"Validating {len(tasks_with_tests)} task(s) on unpatched base commit")
+    if max_workers is None:
+        max_workers = min(len(tasks_with_tests), 2)
+    max_workers = min(max_workers, len(tasks_with_tests))
+
+    typer.echo(
+        f"Validating {len(tasks_with_tests)} task(s) on unpatched base commit "
+        f"({max_workers} worker{'s' if max_workers > 1 else ''})"
+    )
     typer.echo(
         "  (class name contains 'F2P' = fail-to-pass, all others = pass-to-pass)\n"
     )
 
     output_dir = Path(tempfile.mkdtemp(prefix="anvil-validate-"))
+
+    # Determine if we need a simulator pool for parallel execution.
+    test_destination = xcode_config.get(
+        "test_destination",
+        xcode_config.get("destination", ""),
+    )
+    needs_sim_pool = (
+        max_workers > 1
+        and test_destination
+        and "generic/" not in test_destination
+    )
+
+    sim_udids: list[str] = []
+    collected: list[tuple[str, dict | None]] = []
+
+    try:
+        pool_kwargs: dict = {}
+        if needs_sim_pool:
+            typer.echo(
+                f"Creating {max_workers} simulators for parallel validation..."
+            )
+            sim_udids = _create_simulator_pool(max_workers, test_destination)
+            sim_counter = multiprocessing.Value("i", 0)
+            pool_kwargs["initializer"] = _init_sim_worker
+            pool_kwargs["initargs"] = (sim_udids, sim_counter)
+
+        with ProcessPoolExecutor(max_workers=max_workers, **pool_kwargs) as pool:
+            future_to_task: dict = {}
+            for inst in tasks_with_tests:
+                iid = inst["instance_id"]
+                task_name = iid.split(".")[-1]
+                future = pool.submit(
+                    eval_single_patch,
+                    patch="",
+                    instance_id=iid,
+                    base_commit=inst["base_commit"],
+                    repo_name=inst["repo_name"],
+                    xcode_config=xcode_config,
+                    cache=cache,
+                    output_dir=output_dir,
+                    eval_id="validate-base",
+                    attempt=None,
+                    compile_only=False,
+                    source_tasks_dir=src_tasks,
+                )
+                future_to_task[future] = task_name
+
+            pbar = tqdm(
+                as_completed(future_to_task),
+                total=len(future_to_task),
+                desc="Validating",
+                unit="task",
+            )
+            for future in pbar:
+                task_name = future_to_task[future]
+                try:
+                    result = future.result()
+                except Exception as e:
+                    logger.error("Validation failed for %s: %s", task_name, e)
+                    result = None
+                collected.append((task_name, result))
+                pbar.set_postfix_str(task_name)
+    finally:
+        if sim_udids:
+            typer.echo(f"Cleaning up {len(sim_udids)} validation simulators...")
+            _destroy_simulator_pool(sim_udids)
+
+    # Sort results by task name for deterministic output.
+    collected.sort(key=lambda x: x[0])
+
     all_ok = True
-
-    for inst in tasks_with_tests:
-        iid = inst["instance_id"]
-        task_name = iid.split(".")[-1]
-
-        result = eval_single_patch(
-            patch="",
-            instance_id=iid,
-            base_commit=inst["base_commit"],
-            repo_name=inst["repo_name"],
-            xcode_config=xcode_config,
-            cache=cache,
-            output_dir=output_dir,
-            eval_id="validate-base",
-            attempt=None,
-            compile_only=False,
-            source_tasks_dir=src_tasks,
-        )
+    for task_name, result in collected:
         tests = result.get("tests", []) if result else []
 
         if not tests:
@@ -973,7 +1034,6 @@ def validate_task_tests(
             all_ok = False
             continue
 
-        # Separate real test results from synthetic/meta entries
         _synthetic = {"compilation", "xctest_run", "unit_test_setup", "patch_apply"}
         real_tests = [t for t in tests if t["name"] not in _synthetic]
         synthetic_failures = [
@@ -988,7 +1048,6 @@ def validate_task_tests(
             continue
 
         if not real_tests and synthetic_failures:
-            # Tests failed to compile/run — check if the source has F2P classes
             test_src = src_tasks / task_name / "tests.swift"
             has_f2p = (
                 "F2P" in test_src.read_text().upper() if test_src.is_file() else False
@@ -1006,7 +1065,6 @@ def validate_task_tests(
                 all_ok = False
             continue
 
-        # Categorize: "F2P" in class name → fail-to-pass, everything else → pass-to-pass
         p2p_pass, p2p_fail = [], []
         f2p_pass, f2p_fail = [], []
         for t in real_tests:
