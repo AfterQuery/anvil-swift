@@ -66,6 +66,7 @@ def _create_simulator_pool(n: int, test_destination: str) -> list[str]:
     Returns a list of simulator UDIDs.
     """
     device_name = _parse_device_name(test_destination)
+    created = multiprocessing.Value("i", 0)
 
     def _create_one(i: int) -> str:
         sim_name = f"anvil-eval-{i}"
@@ -84,15 +85,18 @@ def _create_simulator_pool(n: int, test_destination: str) -> list[str]:
                 f"xcrun simctl create failed for '{sim_name}': {result.stderr.strip()}"
             )
         udid = result.stdout.strip()
-        logger.info(
-            "Created simulator %s (%s) based on '%s'", sim_name, udid, device_name
-        )
 
         subprocess.run(
             ["xcrun", "simctl", "boot", udid],
             capture_output=True,
             text=True,
         )
+        with created.get_lock():
+            created.value += 1
+            logger.info(
+                "Created & booted simulator %s (%s) [%d/%d]",
+                sim_name, udid, created.value, n,
+            )
         return udid
 
     with ThreadPoolExecutor(max_workers=n) as pool:
@@ -102,6 +106,8 @@ def _create_simulator_pool(n: int, test_destination: str) -> list[str]:
 
 def _destroy_simulator_pool(udids: list[str]) -> None:
     """Delete simulators created by :func:`_create_simulator_pool`."""
+    total = len(udids)
+    destroyed = multiprocessing.Value("i", 0)
 
     def _delete_one(udid: str) -> None:
         subprocess.run(
@@ -110,8 +116,11 @@ def _destroy_simulator_pool(udids: list[str]) -> None:
         subprocess.run(
             ["xcrun", "simctl", "delete", udid], capture_output=True, text=True
         )
+        with destroyed.get_lock():
+            destroyed.value += 1
+            logger.info("Destroyed simulator %s (%d/%d)", udid, destroyed.value, total)
 
-    with ThreadPoolExecutor(max_workers=len(udids)) as pool:
+    with ThreadPoolExecutor(max_workers=total) as pool:
         list(pool.map(_delete_one, udids))
 
 
@@ -255,6 +264,115 @@ def _add_file_to_pbxproj(
         logger.warning("pbxproj injection failed for %s: %s", target_name, exc)
 
 
+def _propagate_pods_framework_paths(
+    worktree_dir: Path,
+    xcode_config: dict,
+    test_target: str,
+) -> None:
+    """Copy CocoaPods framework search paths from the main target to the test target.
+
+    Reads the main target's Pods xcconfig to discover framework directories,
+    then patches the test target's build configurations in project.pbxproj so
+    ``@testable import`` can resolve transitive module dependencies (e.g.
+    Cache, CoreGPX) that are built as separate frameworks.
+    """
+    scheme = xcode_config.get("scheme", "")
+    project_rel = xcode_config.get("project", "")
+    if not scheme or not project_rel:
+        return
+
+    pods_xcconfig = (
+        worktree_dir / "Pods" / "Target Support Files"
+        / f"Pods-{scheme}" / f"Pods-{scheme}.debug.xcconfig"
+    )
+    if not pods_xcconfig.exists():
+        return
+
+    try:
+        xcconfig_text = pods_xcconfig.read_text()
+    except OSError:
+        return
+
+    pod_dirs = re.findall(
+        r'PODS_CONFIGURATION_BUILD_DIR\}/([^\s"]+)', xcconfig_text
+    )
+    if not pod_dirs:
+        return
+
+    pbxproj_path = worktree_dir / project_rel / "project.pbxproj"
+    if not pbxproj_path.exists():
+        return
+
+    try:
+        pbx = pbxproj_path.read_text()
+    except OSError:
+        return
+
+    # Build the replacement FRAMEWORK_SEARCH_PATHS value.
+    extra_paths = "".join(
+        f'\n\t\t\t\t\t"$(BUILT_PRODUCTS_DIR)/{d}",' for d in pod_dirs
+    )
+
+    # Find and patch each build configuration block belonging to the test
+    # target.  Configurations are linked via buildConfigurationList; rather
+    # than full pbxproj parsing, we locate the test target's config UUIDs and
+    # inject paths into their FRAMEWORK_SEARCH_PATHS arrays.
+    target_match = re.search(
+        rf'(/\* {re.escape(test_target)} \*/ = \{{.*?buildConfigurationList = )(\w{{24}})',
+        pbx,
+        re.DOTALL,
+    )
+    if not target_match:
+        return
+
+    config_list_uuid = target_match.group(2)
+    config_list_match = re.search(
+        rf'{config_list_uuid}.*?buildConfigurations = \((.*?)\)',
+        pbx,
+        re.DOTALL,
+    )
+    if not config_list_match:
+        return
+
+    config_uuids = re.findall(r'(\w{24})', config_list_match.group(1))
+
+    modified = False
+    for uuid in config_uuids:
+        # Find the FRAMEWORK_SEARCH_PATHS in this config block
+        pattern = (
+            rf'({uuid}\s*/\*.*?\*/\s*=\s*\{{.*?'
+            r'FRAMEWORK_SEARCH_PATHS\s*=\s*\()(.*?\);)'
+        )
+        m = re.search(pattern, pbx, re.DOTALL)
+        if m:
+            pbx = (
+                pbx[: m.start(2)]
+                + extra_paths
+                + m.group(2)
+                + pbx[m.end(2) :]
+            )
+            modified = True
+        else:
+            # No existing FRAMEWORK_SEARCH_PATHS — inject one
+            cfg_pattern = rf'({uuid}\s*/\*.*?\*/\s*=\s*\{{[^{{}}]*?buildSettings\s*=\s*\{{)'
+            cm = re.search(cfg_pattern, pbx, re.DOTALL)
+            if cm:
+                insert = (
+                    f"\n\t\t\t\tFRAMEWORK_SEARCH_PATHS = ("
+                    f'\n\t\t\t\t\t"$(inherited)",'
+                    f"{extra_paths}"
+                    f"\n\t\t\t\t);"
+                )
+                pbx = pbx[: cm.end()] + insert + pbx[cm.end() :]
+                modified = True
+
+    if modified:
+        pbxproj_path.write_text(pbx)
+        logger.info(
+            "Propagated %d Pods framework paths to %s", len(pod_dirs), test_target
+        )
+
+
 def _copy_spm_tests(
     instance_id: str,
     tests_file: Path,
@@ -290,6 +408,7 @@ def _copy_spm_tests(
     project_rel = xcode_config.get("project", "")
     if test_target and not xcode_config.get("test_package_path") and project_rel:
         _add_file_to_pbxproj(worktree_dir, project_rel, dst, test_target)
+        _propagate_pods_framework_paths(worktree_dir, xcode_config, test_target)
 
     return "spm"
 

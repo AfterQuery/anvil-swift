@@ -411,6 +411,12 @@ class XcodeBuildCache:
             target_dir / "DerivedData-app-tests",
         )
 
+        #  Removing the module cache forces Xcode to rebuild it cheaply while still reusing compiled products.
+        for dd_name in ("DerivedData", "DerivedData-tests", "DerivedData-app-tests"):
+            module_cache = target_dir / dd_name / "ModuleCache.noindex"
+            if module_cache.exists():
+                shutil.rmtree(module_cache, ignore_errors=True)
+
         if xcode_config:
             self._restore_package_resolved(
                 xcode_config, repo_name, base_commit, target_dir
