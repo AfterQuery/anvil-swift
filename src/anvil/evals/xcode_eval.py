@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import multiprocessing
-import os
 import re
 import shutil
 import subprocess
@@ -45,7 +43,7 @@ _tls = threading.local()
 _build_start_lock: threading.Lock | None = None
 
 # Minimum gap between successive xcodebuild launches (seconds).
-_BUILD_GATE_SECONDS = 2
+_BUILD_GATE_SECONDS = 1
 
 # Timestamp of last xcodebuild launch (used with the lock above).
 _last_build_start: float = 0.0
@@ -509,11 +507,13 @@ def _run_spm_tests(
     xcode_config: dict,
     worktree_dir: Path,
     dd_dir: Path,
+    spm_standalone: bool = False,
 ) -> dict | None:
     """Run SPM-based backend tests. Returns test output dict or None."""
-    test_dd = dd_dir
-    if resolve_test_package_path(xcode_config, worktree_dir):
+    if spm_standalone or resolve_test_package_path(xcode_config, worktree_dir):
         test_dd = worktree_dir / "DerivedData-tests"
+    else:
+        test_dd = dd_dir
     return _run_xcodebuild_tests(
         _build_xcodebuild_test_cmd(xcode_config, worktree_dir, test_dd),
         timeout=600,
@@ -619,8 +619,8 @@ def eval_single_patch(
     worktree_dir = None
 
     try:
-        worktree_dir = Path(
-            tempfile.mkdtemp(prefix=f"anvil-eval-{instance_id}-{attempt or 0}-")
+        worktree_dir = Path(tempfile.gettempdir()) / (
+            f"anvil-eval-{instance_id}-{attempt or 0}-{time.monotonic_ns()}"
         )
 
         cache.checkout(repo_name, base_commit, worktree_dir, xcode_config=xcode_config)
@@ -752,7 +752,10 @@ def eval_single_patch(
             if test_type == "app":
                 xctest_output = _run_app_tests(test_xcode_config, worktree_dir)
             else:
-                xctest_output = _run_spm_tests(test_xcode_config, worktree_dir, dd_dir)
+                xctest_output = _run_spm_tests(
+                    test_xcode_config, worktree_dir, dd_dir,
+                    spm_standalone=bool(spm_standalone),
+                )
 
             if xctest_output:
                 all_stdout += "\n" + xctest_output.pop("_stdout", "")
