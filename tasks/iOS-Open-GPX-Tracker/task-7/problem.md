@@ -32,6 +32,6 @@ The implementation must expose these names (tests depend on them to compile):
 - `Preferences.shared.keepScreenAlwaysOn` — `Bool` property.
 - `kDefaultsKeyKeepScreenAlwaysOn` — string constant.
 - `kScreenSection` — new integer constant for the screen preferences section (must precede the existing `kCacheSection`).
-- `Toast.kDisabledDelay` — static `Double` constant with a negative sentinel value (e.g., `-1.0`) indicating a persistent toast that should not auto-dismiss.
+- `Toast.kDisabledDelay` — static `Double` constant with a negative sentinel value indicating a persistent toast that should not auto-dismiss.
 - `Toast.showLoading(_: String)` — static method.
 - `Toast.hideLoading()` — static method.

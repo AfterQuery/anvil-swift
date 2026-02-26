@@ -8,13 +8,13 @@ Additionally, the codebase contains obsolete `#available(iOS 10, *)` version che
 
 ### Acceptance Criteria
 
-1. A scale bar using MapKit's built-in `MKScaleView` must be added to the map view and displayed on screen.
-2. The scale bar must be linked to the existing map so it automatically updates as the user zooms in and out.
-3. Obsolete `#available(iOS 10, *)` checks that are no longer needed given the app's current minimum deployment target must be removed.
+1. A scale indicator must be visible on the map and update automatically as the user zooms in and out.
+2. The indicator must be properly positioned using constraints, not hardcoded frames.
+3. Obsolete `#available(iOS 10, *)` checks must be removed.
 4. The user-facing alert behavior must remain the same.
 
 ### Required API Surface
 
 The implementation must expose these specific names (tests depend on them):
 
-- `ViewController.scaleBar` — stored property of type `MKScaleView` on `ViewController`.
+- `ViewController.scaleBar` — stored property of type `MKScaleView` on `ViewController`. Must be connected to the map, added to the view hierarchy, and use Auto Layout.

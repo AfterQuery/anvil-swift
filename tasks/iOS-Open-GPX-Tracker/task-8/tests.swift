@@ -38,6 +38,20 @@ final class AnvilTask8F2PTests: XCTestCase {
                              "Long delay should be greater than short delay")
     }
 
+    // MARK: - Toast actually displays
+
+    func testToastRegularAddsViewToWindow() {
+        guard let window = UIApplication.shared.windows.first else {
+            XCTFail("No window available in test environment")
+            return
+        }
+        let before = window.subviews.count
+        Toast.regular("Visibility test")
+        let after = window.subviews.count
+        XCTAssertGreaterThan(after, before,
+                             "Toast.regular should add a subview to the window")
+    }
+
     // MARK: - ToastLabel
 
     func testToastLabelConvenienceInit() {
@@ -45,10 +59,30 @@ final class AnvilTask8F2PTests: XCTestCase {
         XCTAssertEqual(label.text, "Hello")
     }
 
+    func testToastLabelHasRoundedCorners() {
+        let label = ToastLabel(text: "Test")
+        XCTAssertGreaterThan(label.layer.cornerRadius, 0,
+                             "ToastLabel should have rounded corners")
+    }
+
+    func testToastLabelTextIsCentered() {
+        let label = ToastLabel(text: "Test")
+        XCTAssertEqual(label.textAlignment, .center,
+                       "ToastLabel text should be centered")
+    }
+
     // MARK: - kAppTitle constant
 
     func testAppTitleConstantExists() {
         XCTAssertFalse(kAppTitle.isEmpty,
                        "kAppTitle should be a non-empty string constant")
+    }
+
+    // MARK: - CoreDataAlertView removed (auto-recovery replaces dialog)
+
+    func testCoreDataAlertViewClassRemoved() {
+        let alertViewClass = NSClassFromString("OpenGpxTracker.CoreDataAlertView")
+        XCTAssertNil(alertViewClass,
+                     "CoreDataAlertView should be removed — recovery must be automatic, not dialog-based")
     }
 }

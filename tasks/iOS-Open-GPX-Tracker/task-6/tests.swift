@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import WatchConnectivity
 @testable import OpenGpxTracker
 
 final class AnvilTask6F2PTests: XCTestCase {
@@ -18,6 +19,12 @@ final class AnvilTask6F2PTests: XCTestCase {
                        "didReceiveFileFromAppleWatch notification should have a non-empty rawValue")
     }
 
+    func testNotificationNamesAreDistinct() {
+        XCTAssertNotEqual(Notification.Name.didReceiveFileFromURL,
+                          Notification.Name.didReceiveFileFromAppleWatch,
+                          "The two notification names must be different")
+    }
+
     // MARK: - GPXFilesTableViewController reload support
 
     func testGPXFilesTableViewControllerRespondsToReloadTableData() {
@@ -26,11 +33,45 @@ final class AnvilTask6F2PTests: XCTestCase {
                       "GPXFilesTableViewController should have a reloadTableData method")
     }
 
-    // MARK: - ViewController no longer conforms to WCSessionDelegate
+    func testFileTableViewControllerReloadsOnURLNotification() {
+        let vc = GPXFilesTableViewController()
+        vc.loadViewIfNeeded()
+        let expectation = XCTNSNotificationExpectation(
+            name: .didReceiveFileFromURL,
+            object: nil
+        )
+        NotificationCenter.default.post(name: .didReceiveFileFromURL, object: nil)
+        wait(for: [expectation], timeout: 2.0)
+    }
+
+    func testFileTableViewControllerReloadsOnAppleWatchNotification() {
+        let vc = GPXFilesTableViewController()
+        vc.loadViewIfNeeded()
+        let expectation = XCTNSNotificationExpectation(
+            name: .didReceiveFileFromAppleWatch,
+            object: nil
+        )
+        NotificationCenter.default.post(name: .didReceiveFileFromAppleWatch, object: nil)
+        wait(for: [expectation], timeout: 2.0)
+    }
+
+    // MARK: - WCSession delegation moved to AppDelegate
 
     func testViewControllerDoesNotRespondToWCSessionDelegateMethods() {
         let sel = NSSelectorFromString("session:didReceiveFile:")
         XCTAssertFalse(ViewController.instancesRespond(to: sel),
                        "ViewController should no longer handle WCSession file transfers directly")
+    }
+
+    func testAppDelegateConformsToWCSessionDelegate() {
+        let appDelegate = AppDelegate()
+        XCTAssertTrue(appDelegate is WCSessionDelegate,
+                      "AppDelegate should conform to WCSessionDelegate to handle file transfers")
+    }
+
+    func testAppDelegateRespondsToDidReceiveFile() {
+        let sel = NSSelectorFromString("session:didReceiveFile:")
+        XCTAssertTrue(AppDelegate.instancesRespond(to: sel),
+                      "AppDelegate should implement session(_:didReceive:) for Apple Watch file transfers")
     }
 }

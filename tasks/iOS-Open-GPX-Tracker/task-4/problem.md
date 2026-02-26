@@ -13,8 +13,8 @@ In the **iOS-Open-GPX-Tracker** app, there is a bug regarding how the UI handles
 
 ### Acceptance Criteria
 
-1. The layout must be migrated from manual frame calculations and `autoresizingMask` to Auto Layout constraints so that all UI elements adapt dynamically to size changes.
-2. Buttons must not use hardcoded frame or center assignments — their positions must be defined by constraints relative to the view.
+1. UI elements must adapt dynamically to size changes instead of relying on manual frame calculations.
+2. Buttons must not use hardcoded frame or center assignments — their positions must be defined relative to the view.
 3. Status labels must not use hardcoded frame assignments — they must remain anchored to their relative positions as the view resizes.
 4. The view controller must respond to orientation transitions and update the layout accordingly, without requiring arbitrary delays.
 5. The compass must reposition correctly when the orientation changes, remaining in its designated location.
@@ -24,4 +24,4 @@ In the **iOS-Open-GPX-Tracker** app, there is a bug regarding how the UI handles
 
 The implementation must expose this specific name (tests depend on it):
 
-- `ViewController.addConstraints(_ isIPhoneX: Bool)` — method on `ViewController` that accepts a `Bool` parameter and sets up Auto Layout constraints.
+- `ViewController.addConstraints(_ isIPhoneX: Bool)` — method on `ViewController` that accepts a `Bool` parameter and sets up Auto Layout constraints. The method must actually add constraints (increasing the total constraint count) and disable `translatesAutoresizingMaskIntoConstraints` on multiple subviews.

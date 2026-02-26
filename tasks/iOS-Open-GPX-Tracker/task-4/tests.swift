@@ -10,19 +10,21 @@ final class AnvilTask4F2PTests: XCTestCase {
         let _: (ViewController) -> (Bool) -> Void = { $0.addConstraints }
     }
 
-    func testAddConstraintsProducesLayoutConstraints() {
+    func testAddConstraintsIncreasesConstraintCount() {
         let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
         guard let vc = storyboard.instantiateInitialViewController() as? ViewController else {
             XCTFail("Could not load ViewController from storyboard")
             return
         }
         vc.loadViewIfNeeded()
+        let allConstraintsBefore = countActiveConstraints(in: vc.view)
         vc.addConstraints(false)
-        XCTAssertFalse(vc.view.constraints.isEmpty,
-                       "View should have Auto Layout constraints after addConstraints(_:) is called")
+        let allConstraintsAfter = countActiveConstraints(in: vc.view)
+        XCTAssertGreaterThan(allConstraintsAfter, allConstraintsBefore,
+                             "addConstraints(_:) must actually add layout constraints")
     }
 
-    func testAutoLayoutDisablesAutoresizingOnSubviews() {
+    func testAutoLayoutDisablesAutoresizingOnMultipleSubviews() {
         let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
         guard let vc = storyboard.instantiateInitialViewController() as? ViewController else {
             XCTFail("Could not load ViewController from storyboard")
@@ -31,7 +33,17 @@ final class AnvilTask4F2PTests: XCTestCase {
         vc.loadViewIfNeeded()
         vc.addConstraints(false)
         let constrainedSubviews = vc.view.subviews.filter { !$0.translatesAutoresizingMaskIntoConstraints }
-        XCTAssertGreaterThan(constrainedSubviews.count, 0,
-                             "At least some subviews should have translatesAutoresizingMaskIntoConstraints = false")
+        XCTAssertGreaterThanOrEqual(constrainedSubviews.count, 2,
+                                    "Multiple subviews should use Auto Layout after addConstraints(_:)")
+    }
+
+    // MARK: - Helpers
+
+    private func countActiveConstraints(in view: UIView) -> Int {
+        var count = view.constraints.count
+        for subview in view.subviews {
+            count += subview.constraints.count
+        }
+        return count
     }
 }

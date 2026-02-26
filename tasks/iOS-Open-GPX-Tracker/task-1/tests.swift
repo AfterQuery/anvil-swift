@@ -30,6 +30,12 @@ final class AnvilTask1F2PTests: XCTestCase {
                        "OpenStreetMap should use light mode color scheme")
     }
 
+    func testCartoDBIsLightMode() {
+        XCTAssertEqual(GPXTileServer.cartoDB.colorMode,
+                       GPXTileServer.GPXTileServerColorMode.lightMode,
+                       "CartoDB should use light mode color scheme")
+    }
+
     // MARK: - GPXScaleBar.forcedColor
 
     func testForcedColorDefaultsToNil() {

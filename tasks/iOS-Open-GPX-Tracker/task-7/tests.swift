@@ -44,8 +44,31 @@ final class AnvilTask7F2PTests: XCTestCase {
                           "kDisabledDelay should be negative to signal a persistent toast")
     }
 
-    func testToastShowLoadingExists() {
+    func testToastShowLoadingAddsViewToWindow() {
+        guard let window = UIApplication.shared.windows.first else {
+            XCTFail("No window available in test environment")
+            return
+        }
+        Toast.hideLoading()
+        let before = window.subviews.count
         Toast.showLoading("Test")
+        let after = window.subviews.count
+        XCTAssertGreaterThan(after, before,
+                             "Toast.showLoading should add a visible subview to the window")
+        Toast.hideLoading()
+    }
+
+    func testToastShowLoadingPersistsUntilHidden() {
+        guard let window = UIApplication.shared.windows.first else {
+            XCTFail("No window available in test environment")
+            return
+        }
+        Toast.hideLoading()
+        let before = window.subviews.count
+        Toast.showLoading("Persistent test")
+        let duringCount = window.subviews.count
+        XCTAssertGreaterThan(duringCount, before,
+                             "Loading toast should remain visible")
         Toast.hideLoading()
     }
 

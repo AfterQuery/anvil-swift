@@ -33,4 +33,27 @@ final class AnvilTask3F2PTests: XCTestCase {
         XCTAssertTrue(viewController.scaleBar.isDescendant(of: viewController.view),
                       "scaleBar should be added to the view hierarchy")
     }
+
+    func testScaleBarIsLinkedToMap() {
+        let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
+        guard let viewController = storyboard.instantiateInitialViewController() as? ViewController else {
+            XCTFail("Initial view controller is not ViewController")
+            return
+        }
+        viewController.loadViewIfNeeded()
+        let scaleBar = viewController.scaleBar
+        XCTAssertNotNil(scaleBar.mapView,
+                        "scaleBar must be linked to a map view so it updates with zoom")
+    }
+
+    func testScaleBarUsesAutoLayout() {
+        let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
+        guard let viewController = storyboard.instantiateInitialViewController() as? ViewController else {
+            XCTFail("Initial view controller is not ViewController")
+            return
+        }
+        viewController.loadViewIfNeeded()
+        XCTAssertFalse(viewController.scaleBar.translatesAutoresizingMaskIntoConstraints,
+                       "scaleBar should use Auto Layout (translatesAutoresizingMaskIntoConstraints = false)")
+    }
 }

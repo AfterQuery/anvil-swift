@@ -10,7 +10,7 @@ The **iOS-Open-GPX-Tracker** app saves all recorded GPX files to the app's inter
 - Tapping the preference opens a system folder picker (`UIDocumentPickerViewController`) so users can choose any accessible local or cloud directory.
 - Once a custom folder is selected, the preference cell displays the chosen folder's name.
 - If no custom folder is selected, the cell indicates the default folder is in use.
-- The selected folder is persisted across app launches using bookmark data, so the app retains access to the security-scoped resource.
+- The selected folder is persisted across app launches so the app retains access to the chosen directory.
 - The GPX file list aggregates files from both the default Documents directory and the custom folder (if set), sorted by modification date.
 - New GPX files are saved to the custom folder when one is set.
 - New localization strings are added for the section header and cell labels (translations were added for English and Russian only; other locales remain untranslated per project convention of requiring human translators).

@@ -6,9 +6,8 @@ The **iOS-Open-GPX-Tracker** application uses `UIAlertView` to present alert dia
 
 ### Acceptance Criteria
 
-1. `UIAlertView` must not appear anywhere in the codebase.
-2. `UIAlertViewDelegate` must not appear anywhere in the codebase.
-3. Every file that previously used `UIAlertView` must be migrated to use `UIAlertController`.
-4. The delegate-callback pattern for handling button taps must be replaced with inline action handlers.
-5. All user-facing behavior and messaging must remain the same (same titles, messages, button labels, and actions).
-6. Alerts must be presented from the appropriate view controller within the current navigation flow.
+1. `UIAlertView` and `UIAlertViewDelegate` must not appear anywhere in the codebase.
+2. All alert functionality must be preserved using the modern `UIAlertController` API.
+3. All user-facing behavior and messaging must remain the same (same titles, messages, button labels, and actions).
+4. Alerts must be presented from the appropriate view controller within the current navigation flow.
+5. Existing alert-presenting methods (e.g., `displayLocationServicesDisabledAlert`) must remain on `ViewController` — they must be migrated in place, not deleted.
