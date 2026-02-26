@@ -33,6 +33,7 @@ final class AnvilTask10F2PTests: XCTestCase {
 
     func testSectionCountIncludesGPXFilesLocation() {
         let vc = PreferencesTableViewController(style: .grouped)
+        vc.loadViewIfNeeded()
         let sections = vc.numberOfSections(in: vc.tableView)
         XCTAssertGreaterThanOrEqual(sections, 6,
                                     "Preferences should have at least 6 sections after adding GPX files location")

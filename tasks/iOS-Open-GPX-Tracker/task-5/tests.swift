@@ -14,12 +14,12 @@ final class AnvilTask5F2PTests: XCTestCase {
                        "Valid input should produce a non-empty formatted date")
     }
 
-    func testDefaultDateFormatRejectsUnterminatedBrace() {
+    func testDefaultDateFormatHandlesUnterminatedBrace() {
         let formatter = DefaultDateFormat()
-        let validResult = formatter.getDateFormat(unprocessed: "{dd}-{MMM}-{yyyy}")
-        let invalidResult = formatter.getDateFormat(unprocessed: "{dd}-{MMM")
-        XCTAssertNotEqual(validResult, invalidResult,
-                          "Malformed input should produce a different result than valid input")
+        let invalidResult = formatter.getDate(processedFormat: formatter.getDateFormat(unprocessed: "{dd}-{MMM"))
+        let validResult = formatter.getDate(processedFormat: formatter.getDateFormat(unprocessed: "{dd}-{MMM}-{yyyy}"))
+        XCTAssertNotEqual(invalidResult, validResult,
+                          "Malformed input should not produce the same formatted date as valid input")
     }
 
     func testDefaultDateFormatGetDateReturnsNonEmpty() {
@@ -53,6 +53,7 @@ final class AnvilTask5F2PTests: XCTestCase {
 
     func testSectionCountIncludesDefaultName() {
         let vc = PreferencesTableViewController(style: .grouped)
+        vc.loadViewIfNeeded()
         let sections = vc.numberOfSections(in: vc.tableView)
         XCTAssertGreaterThanOrEqual(sections, 5,
                                     "Preferences should have at least 5 sections after adding default name")

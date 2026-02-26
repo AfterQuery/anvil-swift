@@ -14,8 +14,7 @@ final class AnvilTask3F2PTests: XCTestCase {
 
     func testViewControllerLoadableFromStoryboardWithScaleBar() {
         let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
-        let vc = storyboard.instantiateViewController(withIdentifier: "RootViewController")
-        guard let viewController = vc as? ViewController else {
+        guard let viewController = storyboard.instantiateInitialViewController() as? ViewController else {
             XCTFail("Initial view controller is not ViewController")
             return
         }
@@ -26,8 +25,7 @@ final class AnvilTask3F2PTests: XCTestCase {
 
     func testScaleBarIsInViewHierarchy() {
         let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
-        let vc = storyboard.instantiateViewController(withIdentifier: "RootViewController")
-        guard let viewController = vc as? ViewController else {
+        guard let viewController = storyboard.instantiateInitialViewController() as? ViewController else {
             XCTFail("Initial view controller is not ViewController")
             return
         }

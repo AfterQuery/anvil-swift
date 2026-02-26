@@ -80,6 +80,7 @@ Mobile GPS Logger: https://github.com/merlos/iOS-Open-GPX-Tracker
 ## Commands
 
 ```bash
+source .venv/bin/activate
 
 # Step 1: (Run only once) Warm Xcode build cache (~5 min per unique base commit)
 anvil warm-xcode-cache --dataset datasets/iOS-Open-GPX-Tracker

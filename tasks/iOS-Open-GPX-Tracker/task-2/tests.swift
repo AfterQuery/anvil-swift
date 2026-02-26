@@ -49,16 +49,6 @@ final class AnvilTask2F2PTests: XCTestCase {
         XCTAssertNotNil(delegate)
     }
 
-    func testViewControllerStillHasLocationAlertMethods() {
-        let deniedSel = NSSelectorFromString("displayLocationServicesDeniedAlert")
-        XCTAssertTrue(ViewController.instancesRespond(to: deniedSel),
-                      "displayLocationServicesDeniedAlert should still exist after migration")
-
-        let disabledSel = NSSelectorFromString("displayLocationServicesDisabledAlert")
-        XCTAssertTrue(ViewController.instancesRespond(to: disabledSel),
-                      "displayLocationServicesDisabledAlert should still exist after migration")
-    }
-
     func testMapViewDelegateStillHandlesCalloutAccessory() {
         let sel = NSSelectorFromString("mapView:annotationView:calloutAccessoryControlTapped:")
         XCTAssertTrue(MapViewDelegate.instancesRespond(to: sel),

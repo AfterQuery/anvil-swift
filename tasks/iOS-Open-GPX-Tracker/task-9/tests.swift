@@ -47,6 +47,7 @@ final class AnvilTask9F2PTests: XCTestCase {
 
     func testSectionCountIncludesActivityType() {
         let vc = PreferencesTableViewController(style: .grouped)
+        vc.loadViewIfNeeded()
         let sections = vc.numberOfSections(in: vc.tableView)
         XCTAssertGreaterThanOrEqual(sections, 4,
                                     "Preferences should have at least 4 sections after adding activity type")
