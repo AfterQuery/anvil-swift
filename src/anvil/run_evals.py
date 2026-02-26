@@ -67,6 +67,13 @@ def run_evals(
             help="(xcode backend) Only check compilation, skip tests",
         ),
     ] = False,
+    rollout_only: Annotated[
+        bool,
+        typer.Option(
+            "--rollout-only",
+            help="Run agent rollouts only, skip evaluation phase",
+        ),
+    ] = False,
 ) -> None:
     """Run evaluation with an agent on a dataset."""
     dockerhub_username = dockerhub_username or os.environ.get("REGISTRY_USERNAME", "")
@@ -90,5 +97,6 @@ def run_evals(
         no_continue=no_continue,
         eval_backend=eval_backend,
         compile_only=compile_only,
+        rollout_only=rollout_only,
     )
     raise typer.Exit(rc)

@@ -1,0 +1,130 @@
+name: Anvil Eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      dataset:
+        description: "Dataset (repo) to evaluate"
+        required: true
+        type: choice
+        options:
+          - iOS-Open-GPX-Tracker
+          - ACHNBrowserUI
+          - firefox-ios
+      model:
+        description: "Model to run (ignored for oracle)"
+        required: true
+        type: choice
+        options:
+          - openrouter/anthropic/claude-sonnet-4
+          - openrouter/anthropic/claude-sonnet-4.5
+          - openrouter/anthropic/claude-opus-4
+          - openrouter/openai/gpt-4.1
+          - openrouter/openai/o3
+          - openrouter/google/gemini-2.5-pro
+        default: openrouter/anthropic/claude-sonnet-4
+      agent:
+        description: "Agent to use"
+        required: true
+        type: choice
+        options:
+          - mini-swe-agent
+          - oracle
+        default: mini-swe-agent
+      n_attempts:
+        description: "Number of attempts per task (pass@k)"
+        required: true
+        type: number
+        default: 4
+
+env:
+  DATASET_PATH: "datasets/${{ inputs.dataset }}"
+  TASKS_PATH: "tasks/${{ inputs.dataset }}"
+
+jobs:
+  eval:
+    runs-on: macos-15
+    timeout-minutes: 240
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+      REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+
+      - name: Install iOS Simulator runtime
+        run: xcodebuild -downloadPlatform iOS
+
+      - name: Install watchOS Simulator runtime
+        run: xcodebuild -downloadPlatform watchOS
+        continue-on-error: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install Python deps
+        run: uv sync
+
+      - name: Clone source repo
+        run: |
+          REPO_URL=$(head -1 "${{ env.TASKS_PATH }}/repo.md" | grep -oE 'https://github\.com/[^ ]+')
+          if [ -z "$REPO_URL" ]; then
+            echo "::error::Could not extract repo URL from ${{ env.TASKS_PATH }}/repo.md"
+            exit 1
+          fi
+          echo "Cloning $REPO_URL into repos/${{ inputs.dataset }}"
+          git clone "$REPO_URL" "repos/${{ inputs.dataset }}"
+
+      - name: Convert dataset
+        run: uv run anvil convert-dataset --dataset "${{ env.TASKS_PATH }}"
+
+      - name: Restore Xcode build cache
+        id: xcode-cache
+        uses: actions/cache@v4
+        with:
+          path: .xcode-cache/${{ inputs.dataset }}
+          key: xcode-cache-${{ inputs.dataset }}-${{ hashFiles(format('tasks/{0}/**', inputs.dataset)) }}
+          restore-keys: |
+            xcode-cache-${{ inputs.dataset }}-
+
+      - name: Warm Xcode build cache
+        if: steps.xcode-cache.outputs.cache-hit != 'true'
+        run: uv run anvil warm-xcode-cache --dataset "${{ env.DATASET_PATH }}"
+
+      - name: Restore previous results
+        uses: actions/download-artifact@v4
+        with:
+          name: eval-results-${{ inputs.dataset }}-${{ inputs.model }}-${{ inputs.agent }}
+          path: "${{ env.DATASET_PATH }}/runs/"
+        continue-on-error: true
+
+      - name: Run evaluation
+        run: |
+          AGENT_ARGS="--agent ${{ inputs.agent }}"
+          if [ "${{ inputs.agent }}" = "oracle" ]; then
+            MODEL_ARGS=""
+          else
+            MODEL_ARGS="--model ${{ inputs.model }}"
+          fi
+
+          uv run anvil run-evals \
+            --dataset "${{ env.DATASET_PATH }}" \
+            $MODEL_ARGS \
+            $AGENT_ARGS \
+            --n-attempts "${{ inputs.n_attempts }}"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ inputs.dataset }}-${{ inputs.model }}-${{ inputs.agent }}
+          path: "${{ env.DATASET_PATH }}/runs/"
+          overwrite: true
+          retention-days: 30

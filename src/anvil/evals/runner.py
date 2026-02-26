@@ -150,6 +150,7 @@ def run_evaluation(
     no_continue: bool = False,
     eval_backend: str = "xcode",
     compile_only: bool = False,
+    rollout_only: bool = False,
 ) -> int:
     """Run full evaluation with an agent on a dataset."""
     from tqdm import tqdm
@@ -322,6 +323,10 @@ def run_evaluation(
 
             typer.echo(f"Running agents (max {max_parallel} parallel)...")
             asyncio.run(run_all_agents())
+
+        if rollout_only:
+            typer.echo("Rollout-only mode: skipping evaluation phase.")
+            return 0
 
         # ---- Evaluation Phase for non-oracle ----
         bad_eval_moved = _cleanup_bad_evals(base_out, instances, k, eval_id)
