@@ -102,11 +102,16 @@ jobs:
         run: uv run anvil warm-xcode-cache --dataset "${{ env.DATASET_PATH }}"
 
       - name: Restore previous results
+        id: prev-results
         uses: actions/download-artifact@v4
         with:
           name: eval-results-${{ inputs.dataset }}-${{ inputs.model }}-${{ inputs.agent }}
-          path: "${{ env.DATASET_PATH }}/runs/"
+          path: /tmp/prev-results
         continue-on-error: true
+
+      - name: Decompress previous results
+        if: steps.prev-results.outcome == 'success'
+        run: tar -xzf /tmp/prev-results/eval-results.tar.gz -C "${{ env.DATASET_PATH }}"
 
       - name: Run evaluation
         run: |
@@ -123,11 +128,15 @@ jobs:
             $AGENT_ARGS \
             --n-attempts "${{ inputs.n_attempts }}"
 
+      - name: Compress results
+        if: always()
+        run: tar -czf eval-results.tar.gz -C "${{ env.DATASET_PATH }}" runs/
+
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: eval-results-${{ inputs.dataset }}-${{ inputs.model }}-${{ inputs.agent }}
-          path: "${{ env.DATASET_PATH }}/runs/"
+          path: eval-results.tar.gz
           overwrite: true
-          retention-days: 30
+          retention-days: 7
