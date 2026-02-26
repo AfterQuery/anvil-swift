@@ -72,7 +72,11 @@ Cached DerivedData is stored in `.xcode-cache/` in the project root. This takes 
 
 ### Run evaluations
 
-Run an agent on all tasks and evaluate the patches:
+**Via GitHub Actions (recommended):**
+
+Use the [Anvil Eval workflow](https://github.com/AfterQuery/anvil-swift/actions/workflows/eval.yml) to run evaluations in CI. Click **Run workflow**, pick a dataset, model, and agent from the dropdowns, then set the number of attempts. Results are uploaded as artifacts on the workflow run.
+
+**Locally:**
 
 ```bash
 anvil run-evals \
