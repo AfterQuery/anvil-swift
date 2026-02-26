@@ -57,7 +57,7 @@ AGENT_CONFIGS: dict[str, AgentConfig] = {
         install_cmd="pip install -q mini-swe-agent || pip install -q --break-system-packages mini-swe-agent",
         run_cmd="mini -c mini.yaml -c /tmp/anvil_override.yaml --model {model} --task {task} --yolo --exit-immediately --output {output_dir}/trajectory.traj.json --cost-limit 0",
         output_format="trajectory_json",
-        timeout=1200,
+        timeout=2400,
     ),
 }
 
@@ -155,6 +155,9 @@ def _build_agent_script(
         """cat > /tmp/anvil_override.yaml << 'ANVIL_CFG_EOF'
 model:
   set_cache_control: null
+agent:
+  max_steps: 50
+  max_thoughts: 100
 ANVIL_CFG_EOF""",
         # Redirect stdin from /dev/null so that if mini-swe-agent hits cost/step
         # limits and drops to an interactive prompt (InteractiveAgent catches
