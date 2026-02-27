@@ -325,30 +325,31 @@ def convert_to_anvil_structure(
 
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # --- Docker/Modal artifacts (only when a Dockerfile is present) ---
-    if has_docker:
-        dockerfiles_base_dir = (
-            output_path / "dockerfiles" / "docker_image_creation" / project_name
-        )
-        dockerfiles_base_dockerfile_dir = (
-            output_path / "dockerfiles" / "base_dockerfile" / project_name
-        )
-        dockerfiles_instance_dir = output_path / "dockerfiles" / "instance_dockerfile"
-        run_scripts_dir = output_path / "run_scripts"
+    # --- Shared Docker directory layout ---
+    dockerfiles_base_dir = (
+        output_path / "dockerfiles" / "docker_image_creation" / project_name
+    )
+    dockerfiles_base_dockerfile_dir = (
+        output_path / "dockerfiles" / "base_dockerfile" / project_name
+    )
+    dockerfiles_instance_dir = output_path / "dockerfiles" / "instance_dockerfile"
 
-        dockerfiles_base_dir.mkdir(parents=True, exist_ok=True)
-        dockerfiles_base_dockerfile_dir.mkdir(parents=True, exist_ok=True)
-        dockerfiles_instance_dir.mkdir(parents=True, exist_ok=True)
+    dockerfiles_base_dir.mkdir(parents=True, exist_ok=True)
+    dockerfiles_base_dockerfile_dir.mkdir(parents=True, exist_ok=True)
+    dockerfiles_instance_dir.mkdir(parents=True, exist_ok=True)
+
+    base_image_tag = f"{dockerhub_username}/{dockerhub_repo}:{project_name}.base"
+
+    # --- Base Dockerfiles ---
+    if has_docker:
+        run_scripts_dir = output_path / "run_scripts"
         run_scripts_dir.mkdir(parents=True, exist_ok=True)
 
         base_dockerfile = dataset_path / "Dockerfile"
-        dest = dockerfiles_base_dir / "Dockerfile"
-        shutil.copy(base_dockerfile, dest)
-        created_files["dockerfiles"].append(dest)
-
-        dest_base = dockerfiles_base_dockerfile_dir / "Dockerfile"
-        shutil.copy(base_dockerfile, dest_base)
-        created_files["dockerfiles"].append(dest_base)
+        for dest_dir in [dockerfiles_base_dir, dockerfiles_base_dockerfile_dir]:
+            dest = dest_dir / "Dockerfile"
+            shutil.copy(base_dockerfile, dest)
+            created_files["dockerfiles"].append(dest)
 
         requirements_txt = dataset_path / "requirements.txt"
         if requirements_txt.exists():
@@ -359,13 +360,10 @@ def convert_to_anvil_structure(
         repo_dir = dataset_path / project_name
         if repo_dir.is_dir():
             shutil.copytree(repo_dir, dockerfiles_base_dir, dirs_exist_ok=True)
-
-    # --- Docker artifacts for Xcode datasets (auto-generated from repos/) ---
-    if not has_docker:
+    else:
         repo_source = repo_root() / "repos" / project_name
 
         if repo_source.is_dir():
-            # Get the remote URL so the Dockerfile can clone the repo
             remote_url = ""
             try:
                 result = subprocess.run(
@@ -376,18 +374,6 @@ def convert_to_anvil_structure(
                     remote_url = result.stdout.strip()
             except FileNotFoundError:
                 pass
-
-            dockerfiles_base_dir = (
-                output_path / "dockerfiles" / "docker_image_creation" / project_name
-            )
-            dockerfiles_base_dockerfile_dir = (
-                output_path / "dockerfiles" / "base_dockerfile" / project_name
-            )
-            dockerfiles_instance_dir = output_path / "dockerfiles" / "instance_dockerfile"
-
-            dockerfiles_base_dir.mkdir(parents=True, exist_ok=True)
-            dockerfiles_base_dockerfile_dir.mkdir(parents=True, exist_ok=True)
-            dockerfiles_instance_dir.mkdir(parents=True, exist_ok=True)
 
             if remote_url:
                 base_dockerfile_content = (
@@ -410,7 +396,6 @@ def convert_to_anvil_structure(
                 dest.write_text(base_dockerfile_content)
                 created_files["dockerfiles"].append(dest)
 
-            # If no remote URL, copy repo source into build context (minus .git)
             if not remote_url:
                 shutil.copytree(
                     repo_source, dockerfiles_base_dir,
@@ -418,19 +403,41 @@ def convert_to_anvil_structure(
                     ignore=shutil.ignore_patterns(".git"),
                 )
 
-            # Per-instance Dockerfiles
-            for task in tasks:
-                instance_docker_dir = dockerfiles_instance_dir / task.instance_id
-                instance_docker_dir.mkdir(parents=True, exist_ok=True)
-                content = (
-                    f"FROM {dockerhub_username}/{dockerhub_repo}:{project_name}.base\n"
-                    "WORKDIR /app\n"
-                )
-                if task.base_commit:
-                    content += f"RUN git reset --hard {task.base_commit}\n"
-                dest = instance_docker_dir / "Dockerfile"
-                dest.write_text(content)
-                created_files["dockerfiles"].append(dest)
+    # --- Per-instance Dockerfiles ---
+    for task in tasks:
+        instance_docker_dir = dockerfiles_instance_dir / task.instance_id
+        instance_docker_dir.mkdir(parents=True, exist_ok=True)
+
+        task_dockerfile = dataset_path / task.task_id / "Dockerfile"
+        if has_docker and task_dockerfile.exists():
+            content = task_dockerfile.read_text()
+        else:
+            content = f"FROM {base_image_tag}\nWORKDIR /app\n"
+        if task.base_commit:
+            content += f"RUN git reset --hard {task.base_commit}\n"
+
+        dest = instance_docker_dir / "Dockerfile"
+        dest.write_text(content)
+        created_files["dockerfiles"].append(dest)
+
+    # --- Per-task run scripts (Docker/Modal only) ---
+    if has_docker:
+        for task in tasks:
+            instance_scripts_dir = run_scripts_dir / task.instance_id
+            instance_scripts_dir.mkdir(parents=True, exist_ok=True)
+
+            for filename, make_executable in [
+                ("run_script.sh", True),
+                ("parser.py", False),
+                ("instance_info.txt", False),
+            ]:
+                src = dataset_path / task.task_id / filename
+                if src.exists():
+                    dest = instance_scripts_dir / filename
+                    shutil.copy(src, dest)
+                    if make_executable:
+                        dest.chmod(0o755)
+                    created_files["run_scripts"].append(dest)
 
     # --- Config files (always generated) ---
     instances_yaml = generate_instances_yaml(
@@ -449,48 +456,6 @@ def convert_to_anvil_structure(
     tasks_csv_path = output_path / "tasks.csv"
     tasks_csv_path.write_text(tasks_csv)
     created_files["config"].append(tasks_csv_path)
-
-    # --- Per-task Docker artifacts (only when Dockerfile is present) ---
-    if has_docker:
-        for task in tasks:
-            instance_docker_dir = dockerfiles_instance_dir / task.instance_id
-            instance_docker_dir.mkdir(parents=True, exist_ok=True)
-
-            dest = instance_docker_dir / "Dockerfile"
-            task_dockerfile = dataset_path / task.task_id / "Dockerfile"
-            if task_dockerfile.exists():
-                content = task_dockerfile.read_text()
-            else:
-                content = (
-                    f"FROM {dockerhub_username}/{dockerhub_repo}:{project_name}.base\n"
-                    "WORKDIR /app\n"
-                )
-            if task.base_commit:
-                content += f"RUN git reset --hard {task.base_commit}\n"
-            dest.write_text(content)
-            created_files["dockerfiles"].append(dest)
-
-            instance_scripts_dir = run_scripts_dir / task.instance_id
-            instance_scripts_dir.mkdir(parents=True, exist_ok=True)
-
-            run_script = dataset_path / task.task_id / "run_script.sh"
-            if run_script.exists():
-                dest = instance_scripts_dir / "run_script.sh"
-                shutil.copy(run_script, dest)
-                dest.chmod(0o755)
-                created_files["run_scripts"].append(dest)
-
-            parser_py = dataset_path / task.task_id / "parser.py"
-            if parser_py.exists():
-                dest = instance_scripts_dir / "parser.py"
-                shutil.copy(parser_py, dest)
-                created_files["run_scripts"].append(dest)
-
-            instance_info = dataset_path / task.task_id / "instance_info.txt"
-            if instance_info.exists():
-                dest = instance_scripts_dir / "instance_info.txt"
-                shutil.copy(instance_info, dest)
-                created_files["run_scripts"].append(dest)
 
     return created_files
 
