@@ -23,7 +23,6 @@ import ast
 import csv
 import io
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -34,6 +33,7 @@ import typer
 import yaml
 
 from ..config import repo_root
+from ..util import resolve_dataset_path, resolve_registry_env
 from .models import Task, TestSpec
 
 
@@ -477,13 +477,8 @@ def convert_dataset(
     Generates instances.yaml, gold_patches.json, and the directory structure
     required for Anvil's publish-images and run-evals commands.
     """
-    dockerhub_username = dockerhub_username or os.environ.get("REGISTRY_USERNAME", "")
-    dockerhub_repo = dockerhub_repo or os.environ.get("REGISTRY_REPO", "anvil-images")
-
-    # Resolve dataset path
-    dataset_path = Path(dataset)
-    if not dataset_path.is_absolute():
-        dataset_path = Path.cwd() / dataset
+    dockerhub_username, dockerhub_repo = resolve_registry_env(dockerhub_username, dockerhub_repo)
+    dataset_path = resolve_dataset_path(dataset)
 
     if not dataset_path.exists():
         typer.secho(

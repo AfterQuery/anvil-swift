@@ -4,6 +4,9 @@ from pathlib import Path
 
 import typer
 
+DEFAULT_REGISTRY_REPO = "anvil-images"
+DEFAULT_DOCKERHUB_USERNAME = "afterquery"
+
 
 def run(
     cmd: list[str] | str,
@@ -22,6 +25,24 @@ def run(
         stdout=subprocess.DEVNULL if quiet else None,
         stderr=subprocess.DEVNULL if quiet else None,
     ).returncode
+
+
+def resolve_dataset_path(dataset: str) -> Path:
+    """Resolve a dataset string (relative or absolute) to an absolute Path."""
+    p = Path(dataset)
+    if not p.is_absolute():
+        p = Path.cwd() / dataset
+    return p
+
+
+def resolve_registry_env(
+    username: str = "",
+    repo: str = "",
+) -> tuple[str, str]:
+    """Resolve DockerHub username and repo from args or environment."""
+    username = username or os.environ.get("REGISTRY_USERNAME", "")
+    repo = repo or os.environ.get("REGISTRY_REPO", DEFAULT_REGISTRY_REPO)
+    return username, repo
 
 
 def ensure_dir(path: Path) -> Path:

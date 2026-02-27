@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 from typing import Annotated
 
+from ..util import DEFAULT_DOCKERHUB_USERNAME, resolve_dataset_path
+
 import typer
 
 from .generators import write_dataset_base_files, write_task_files
@@ -320,7 +322,7 @@ def add_task(
     ] = None,
     dockerhub_username: Annotated[
         str, typer.Option("--dockerhub-username", "-u", help="Docker Hub username")
-    ] = "afterquery",
+    ] = DEFAULT_DOCKERHUB_USERNAME,
     interactive: Annotated[
         bool, typer.Option("--interactive", "-i", help="Run interactive wizard")
     ] = False,
@@ -344,10 +346,7 @@ def add_task(
     3. Captures git diff as the solution
     4. Resets repo to clean state for next task
     """
-    # Resolve dataset path
-    dataset_path = Path(dataset)
-    if not dataset_path.is_absolute():
-        dataset_path = Path.cwd() / dataset
+    dataset_path = resolve_dataset_path(dataset)
 
     # When --task-number is given, resolve files from tasks/<project>/task-<N>/
     if task_number is not None:
@@ -658,10 +657,7 @@ def validate_dataset(
     ] = False,
 ) -> None:
     """Validate dataset structure and task definitions."""
-    # Resolve dataset path
-    dataset_path = Path(dataset)
-    if not dataset_path.is_absolute():
-        dataset_path = Path.cwd() / dataset
+    dataset_path = resolve_dataset_path(dataset)
 
     typer.echo(f"Validating dataset at {dataset_path}...")
 

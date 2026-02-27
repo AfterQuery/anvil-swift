@@ -6,6 +6,7 @@ import csv
 import io
 from pathlib import Path
 
+from ..util import DEFAULT_DOCKERHUB_USERNAME
 from .models import Dataset, Task
 from .templates import (
     BASE_DOCKERFILE_TEMPLATE,
@@ -28,7 +29,7 @@ def generate_requirements_txt() -> str:
     return REQUIREMENTS_TXT
 
 
-def generate_task_dockerfile(project_name: str, dockerhub_username: str = "afterquery") -> str:
+def generate_task_dockerfile(project_name: str, dockerhub_username: str = DEFAULT_DOCKERHUB_USERNAME) -> str:
     """Generate the task-specific Dockerfile that extends the base image."""
     return TASK_DOCKERFILE_TEMPLATE.format(
         dockerhub_username=dockerhub_username,
@@ -103,7 +104,7 @@ def generate_tasks_csv(task: Task) -> str:
 def write_task_files(
     dataset_path: Path,
     task: Task,
-    dockerhub_username: str = "afterquery",
+    dockerhub_username: str = DEFAULT_DOCKERHUB_USERNAME,
 ) -> list[Path]:
     """Write all files for a task to the dataset directory.
 

@@ -17,6 +17,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from collections.abc import Callable
 from typing import Literal
 
 import yaml
@@ -261,7 +262,7 @@ async def run_agent_in_modal(
     provider_env_var: str,
     app: "modal.App",
     registry_secret: "modal.Secret | None" = None,
-    on_running: callable = None,
+    on_running: Callable[[str], None] | None = None,
 ) -> AgentResult:
     """Execute an agent in a Modal sandbox for a single instance."""
     import modal
@@ -407,8 +408,8 @@ async def run_agents_batch(
     instances: list[dict],
     model: str,
     provider_env_var: str,
-    on_progress: callable = None,
-    on_result: callable = None,
+    on_progress: Callable[[str, str], None] | None = None,
+    on_result: Callable[["AgentResult"], None] | None = None,
     max_wait_minutes: int = 20,
 ) -> list[AgentResult]:
     """Run agents on all instances."""

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import os
 from typing import Annotated, Literal
 
 import typer
+
+from .util import resolve_registry_env
 
 
 def run_evals(
@@ -76,8 +77,7 @@ def run_evals(
     ] = False,
 ) -> None:
     """Run evaluation with an agent on a dataset."""
-    dockerhub_username = dockerhub_username or os.environ.get("REGISTRY_USERNAME", "")
-    dockerhub_repo = dockerhub_repo or os.environ.get("REGISTRY_REPO", "anvil-images")
+    dockerhub_username, dockerhub_repo = resolve_registry_env(dockerhub_username, dockerhub_repo)
     if eval_backend == "modal" and not dockerhub_username:
         typer.echo("Docker Hub username required for modal backend. Set REGISTRY_USERNAME in .env or pass -u.", err=True)
         raise typer.Exit(1)

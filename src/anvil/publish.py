@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 import time
@@ -14,6 +13,10 @@ from pathlib import Path
 
 import typer
 from ruamel.yaml import YAML
+
+from .util import resolve_registry_env
+
+_RETRYABLE_PUSH_ERRORS = ("broken pipe", "connection reset", "timeout", "EOF", "TLS handshake")
 
 
 @dataclass
@@ -142,11 +145,11 @@ def _push_with_retry(tag: str, max_retries: int = 3) -> tuple[bool, str]:
         if result.returncode == 0:
             return True, ""
         full_err = (result.stderr or result.stdout or "").strip()
-        retryable = any(s in full_err for s in ["broken pipe", "connection reset", "timeout", "EOF", "TLS handshake"])
+        retryable = any(s in full_err for s in _RETRYABLE_PUSH_ERRORS)
         if not retryable or attempt == max_retries:
             return False, full_err
         wait = 5 * attempt
-        print(f"  Push attempt {attempt}/{max_retries} failed (retrying in {wait}s): {full_err.split(chr(10))[-1]}")
+        print(f"  Push attempt {attempt}/{max_retries} failed (retrying in {wait}s): {full_err.splitlines()[-1]}")
         time.sleep(wait)
     return False, "max retries exceeded"
 
@@ -215,8 +218,7 @@ def publish_images(
     max_workers: int = typer.Option(4, "--max-workers", "-j", help="Max parallel builds (lower to avoid rate limits)"),
 ) -> None:
     """Build and push dataset images to your private Docker Hub."""
-    dockerhub_username = dockerhub_username or os.environ.get("REGISTRY_USERNAME", "")
-    repo_name = repo_name or os.environ.get("REGISTRY_REPO", "anvil-images")
+    dockerhub_username, repo_name = resolve_registry_env(dockerhub_username, repo_name)
     if not dockerhub_username:
         typer.echo("Docker Hub username required. Set REGISTRY_USERNAME in .env or pass -u.", err=True)
         raise typer.Exit(1)
