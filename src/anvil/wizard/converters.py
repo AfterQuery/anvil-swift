@@ -210,7 +210,6 @@ def generate_instances_yaml(
     tasks: list[Task],
     dockerhub_username: str,
     dockerhub_repo: str,
-    dataset_id: str,
 ) -> str:
     """Generate instances.yaml content for Anvil's run-evals."""
     instances = []
@@ -310,7 +309,6 @@ def convert_to_anvil_structure(
     Handles both Docker/Modal datasets and Xcode datasets.
     Returns dict of created file paths by category.
     """
-    dataset_id = dataset_path.name
     tasks = load_all_tasks(dataset_path)
 
     if not tasks:
@@ -436,7 +434,7 @@ def convert_to_anvil_structure(
 
     # --- Config files (always generated) ---
     instances_yaml = generate_instances_yaml(
-        tasks, dockerhub_username, dockerhub_repo, dataset_id
+        tasks, dockerhub_username, dockerhub_repo
     )
     instances_path = output_path / "instances.yaml"
     instances_path.write_text(instances_yaml)
