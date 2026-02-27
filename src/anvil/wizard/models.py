@@ -13,13 +13,17 @@ class TestSpec:
     fail_to_pass: list[str] = field(default_factory=list)
     pass_to_pass: list[str] = field(default_factory=list)
 
+    @staticmethod
+    def _format_test_list(tests: list[str]) -> str:
+        return "[" + ", ".join(f"'{t}'" for t in tests) + "]"
+
     def to_fail_to_pass_str(self) -> str:
         """Format fail_to_pass as a string list for instance_info.txt."""
-        return "[" + ", ".join(f"'{t}'" for t in self.fail_to_pass) + "]"
+        return self._format_test_list(self.fail_to_pass)
 
     def to_pass_to_pass_str(self) -> str:
         """Format pass_to_pass as a string list for instance_info.txt."""
-        return "[" + ", ".join(f"'{t}'" for t in self.pass_to_pass) + "]"
+        return self._format_test_list(self.pass_to_pass)
 
 
 @dataclass

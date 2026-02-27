@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -131,6 +130,18 @@ def _read_file_or_value(file_path: Path | None, value: str | None) -> str | None
     if file_path and file_path.exists():
         return file_path.read_text()
     return value
+
+
+def _read_multiline(prompt: str) -> str:
+    """Read multiline input from stdin until EOF (Ctrl+D)."""
+    typer.echo(prompt)
+    lines: list[str] = []
+    try:
+        while True:
+            lines.append(input())
+    except EOFError:
+        pass
+    return "\n".join(lines)
 
 
 def _parse_comma_separated(value: str | None) -> list[str]:
@@ -468,34 +479,11 @@ def add_task(
     # Interactive mode for missing fields
     if interactive:
         if not problem_statement and not problem_file:
-            typer.echo("Enter problem statement (Ctrl+D when done):")
-            lines = []
-            try:
-                while True:
-                    lines.append(input())
-            except EOFError:
-                pass
-            problem_statement = "\n".join(lines)
-
+            problem_statement = _read_multiline("Enter problem statement (Ctrl+D when done):")
         if not patch and not patch_file:
-            typer.echo("Enter patch/solution (Ctrl+D when done):")
-            lines = []
-            try:
-                while True:
-                    lines.append(input())
-            except EOFError:
-                pass
-            patch = "\n".join(lines)
-
+            patch = _read_multiline("Enter patch/solution (Ctrl+D when done):")
         if not tests and not tests_file:
-            typer.echo("Enter test code (Ctrl+D when done):")
-            lines = []
-            try:
-                while True:
-                    lines.append(input())
-            except EOFError:
-                pass
-            tests = "\n".join(lines)
+            tests = _read_multiline("Enter test code (Ctrl+D when done):")
 
     # Read content from files or direct values
     problem_content = _read_file_or_value(problem_file, problem_statement)
@@ -569,13 +557,11 @@ def add_task(
 
     # Auto-detect base commit
     if not base_commit:
-        # Try to find a git repo in the dataset
-        for item in dataset_path.iterdir():
-            if item.is_dir() and (item / ".git").exists():
-                base_commit = _get_repo_head_commit(item)
-                if base_commit:
-                    typer.echo(f"Auto-detected base commit: {base_commit[:12]}")
-                    break
+        repo_dir = _find_repo_in_dataset(dataset_path)
+        if repo_dir:
+            base_commit = _get_repo_head_commit(repo_dir)
+            if base_commit:
+                typer.echo(f"Auto-detected base commit: {base_commit[:12]}")
 
     if not base_commit:
         if interactive:
@@ -593,13 +579,8 @@ def add_task(
 
     # Determine repo name
     if not repo_name:
-        # Try to find repo directory
-        for item in dataset_path.iterdir():
-            if item.is_dir() and (item / ".git").exists():
-                repo_name = item.name
-                break
-        if not repo_name:
-            repo_name = dataset_path.name
+        repo_dir = _find_repo_in_dataset(dataset_path)
+        repo_name = repo_dir.name if repo_dir else dataset_path.name
 
     # Create task object
     # instance_id prefix must match repo_name because publish.py uses
