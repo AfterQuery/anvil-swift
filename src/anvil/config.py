@@ -29,11 +29,6 @@ def eval_dir(dataset_id: str, eval_id: str) -> Path:
     """Return the output directory for an evaluation run."""
     return runs_dir(dataset_id) / eval_id
 
-
-# Alias for backwards compatibility
-eval_output_dir = eval_dir
-
-
 def source_tasks_dir(dataset_id: str) -> Path:
     """Return the source tasks directory for a dataset (e.g. tasks/ACHNBrowserUI/).
 

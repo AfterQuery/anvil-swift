@@ -6,12 +6,18 @@ import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import NamedTuple
 
 import typer
 from ruamel.yaml import YAML
 
 from .config import source_tasks_dir, tasks_dir, repo_root
 from .evals.xcode_cache import XcodeBuildCache, load_xcode_config
+
+
+class _RepoCommit(NamedTuple):
+    repo_name: str
+    base_commit: str
 
 
 def warm_xcode_cache(
@@ -48,30 +54,27 @@ def warm_xcode_cache(
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
 
-    seen_commits: dict[str, str] = {}
+    seen: dict[_RepoCommit, str] = {}
     for inst in instances:
-        repo_name = inst["repo_name"]
-        base_commit = inst["base_commit"]
-        key = f"{repo_name}:{base_commit}"
-        if key not in seen_commits:
-            seen_commits[key] = inst["instance_id"]
+        rc = _RepoCommit(inst["repo_name"], inst["base_commit"])
+        if rc not in seen:
+            seen[rc] = inst["instance_id"]
 
     typer.echo(f"Warming Xcode build cache for {dataset}")
-    typer.echo(f"  Unique (repo, commit) pairs: {len(seen_commits)}")
+    typer.echo(f"  Unique (repo, commit) pairs: {len(seen)}")
 
     cache = XcodeBuildCache()
 
     pruned_repos: set[str] = set()
-    for key in seen_commits:
-        repo_name, base_commit = key.split(":", 1)
-        commit_dir = cache._commit_cache_dir(repo_name, base_commit)
+    for rc in seen:
+        commit_dir = cache.commit_cache_dir(rc.repo_name, rc.base_commit)
         if commit_dir.exists():
             shutil.rmtree(commit_dir)
-            typer.echo(f"  Deleted cache for {repo_name}@{base_commit[:8]}")
-            pruned_repos.add(repo_name)
+            typer.echo(f"  Deleted cache for {rc.repo_name}@{rc.base_commit[:8]}")
+            pruned_repos.add(rc.repo_name)
 
     for repo_name in pruned_repos:
-        clone_dir = cache._repo_clone_dir(repo_name)
+        clone_dir = cache.repo_clone_dir(repo_name)
         if clone_dir.exists():
             subprocess.run(
                 ["git", "-C", str(clone_dir), "worktree", "prune"],
@@ -81,10 +84,9 @@ def warm_xcode_cache(
     repos_root = repo_root() / "repos"
 
     unique_repos: dict[str, Path] = {}
-    for key in seen_commits:
-        repo_name, _ = key.split(":", 1)
-        if repo_name not in unique_repos:
-            unique_repos[repo_name] = repos_root / repo_name
+    for rc in seen:
+        if rc.repo_name not in unique_repos:
+            unique_repos[rc.repo_name] = repos_root / rc.repo_name
 
     valid_repos: set[str] = set()
     for repo_name, repo_path in unique_repos.items():
@@ -96,27 +98,24 @@ def warm_xcode_cache(
         cache.ensure_cloned(repo_name, repo_path)
         valid_repos.add(repo_name)
 
-    def _warm_one(key: str) -> tuple[str, Exception | None]:
-        repo_name, base_commit = key.split(":", 1)
-        repo_path = repos_root / repo_name
+    def _warm_one(rc: _RepoCommit) -> tuple[_RepoCommit, Exception | None]:
         try:
-            cache.warm(repo_path, repo_name, base_commit, xcode_config)
-            return key, None
+            cache.warm(repos_root / rc.repo_name, rc.repo_name, rc.base_commit, xcode_config)
+            return rc, None
         except Exception as e:
-            return key, e
+            return rc, e
 
-    valid_commits = [key for key in seen_commits if key.split(":", 1)[0] in valid_repos]
+    valid_commits = [rc for rc in seen if rc.repo_name in valid_repos]
     typer.echo(f"  Building with {workers} parallel worker(s)...")
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_warm_one, key): key for key in valid_commits}
+        futures = {pool.submit(_warm_one, rc): rc for rc in valid_commits}
         for future in as_completed(futures):
-            key, error = future.result()
-            repo_name, base_commit = key.split(":", 1)
+            rc, error = future.result()
             if error:
                 typer.echo(
-                    f"  {repo_name}@{base_commit[:8]}: FAILED - {error}", err=True
+                    f"  {rc.repo_name}@{rc.base_commit[:8]}: FAILED - {error}", err=True
                 )
             else:
-                typer.echo(f"  {repo_name}@{base_commit[:8]}: cached")
+                typer.echo(f"  {rc.repo_name}@{rc.base_commit[:8]}: cached")
 
     typer.echo("Cache warming complete.")
