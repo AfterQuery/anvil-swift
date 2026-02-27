@@ -21,6 +21,8 @@ from typing import Literal
 
 import yaml
 
+from ..config import tasks_dir as get_tasks_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -416,7 +418,6 @@ async def run_agents_batch(
 
     try:
         from dotenv import load_dotenv
-
         load_dotenv(Path(__file__).resolve().parents[3] / ".env")
     except ImportError:
         pass
@@ -531,8 +532,6 @@ def write_results(
 
 def load_instances(dataset_id: str) -> list[dict]:
     """Load instances from dataset's instances.yaml."""
-    from ..config import tasks_dir as get_tasks_dir
-
     inst_path = get_tasks_dir(dataset_id) / "instances.yaml"
     if not inst_path.exists():
         raise FileNotFoundError(f"instances.yaml not found at {inst_path}")

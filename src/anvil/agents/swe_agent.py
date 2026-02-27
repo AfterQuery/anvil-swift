@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -20,19 +21,17 @@ def build_image() -> int:
     modal_py = swe_agent_dir() / "swerex_patches" / "swerex" / "deployment" / "modal.py"
     if modal_py.exists():
         try:
-            import re as _re
-
             content = modal_py.read_text()
             patched = content.replace("secrets", "secret")
             patched = patched.replace("DOCKER_USERNAME", "REGISTRY_USERNAME")
             patched = patched.replace("DOCKER_PASSWORD", "REGISTRY_PASSWORD")
-            patched = _re.sub(r"\bdocker_username\b", "registry_username", patched)
-            patched = _re.sub(r"\bdocker_password\b", "registry_password", patched)
-            patched = _re.sub(
+            patched = re.sub(r"\bdocker_username\b", "registry_username", patched)
+            patched = re.sub(r"\bdocker_password\b", "registry_password", patched)
+            patched = re.sub(
                 r"^\s*secret\s*=\s*\[\s*secret\s*\]\s*$",
                 "",
                 patched,
-                flags=_re.MULTILINE,
+                flags=re.MULTILINE,
             )
             if patched != content:
                 modal_py.write_text(patched)

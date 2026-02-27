@@ -11,6 +11,8 @@ from pathlib import Path
 import typer
 from ruamel.yaml import YAML as _YAML
 
+from ..config import repo_root, source_tasks_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,7 +64,6 @@ def _format_build_errors(stderr: str, max_lines: int = 10, fallback_chars: int =
 
 
 def _default_cache_root() -> Path:
-    from ..config import repo_root
     return repo_root() / ".xcode-cache"
 
 
@@ -170,12 +171,13 @@ class XcodeBuildCache:
             build_cmd = _build_xcodebuild_cmd(
                 xcode_config, work_dir, dd_dir, clean=True, allow_pkg_resolution=True,
             )
+            build_timeout = xcode_config.get("build_timeout", 1200)
             result = subprocess.run(
                 build_cmd,
                 cwd=str(work_dir),
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=build_timeout,
             )
 
             if result.returncode != 0:
@@ -301,13 +303,14 @@ class XcodeBuildCache:
         test_cmd, test_cwd = test_cmd_info
         test_cmd = _as_build_for_testing(test_cmd)
 
+        build_timeout = xcode_config.get("build_timeout", 1200)
         typer.echo(f"  Warming test DerivedData for {repo_name}@{base_commit[:8]}...")
         result = subprocess.run(
             test_cmd,
             cwd=str(test_cwd),
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=build_timeout,
         )
         dummy_file.unlink(missing_ok=True)
 
@@ -358,13 +361,14 @@ class XcodeBuildCache:
         cmd, cwd = cmd_info
         cmd = _as_build_for_testing(cmd)
 
+        build_timeout = xcode_config.get("build_timeout", 1200)
         typer.echo(f"  Warming app-test DerivedData for {repo_name}@{base_commit[:8]}...")
         result = subprocess.run(
             cmd,
             cwd=str(cwd),
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=build_timeout,
         )
         dummy_file.unlink(missing_ok=True)
 
@@ -993,7 +997,6 @@ def load_xcode_config(dataset_tasks_dir: Path, dataset_id: str | None = None) ->
     candidates = [dataset_tasks_dir / "xcode_config.yaml"]
 
     if dataset_id:
-        from ..config import source_tasks_dir
         candidates.append(source_tasks_dir(dataset_id) / "xcode_config.yaml")
 
     for path in candidates:

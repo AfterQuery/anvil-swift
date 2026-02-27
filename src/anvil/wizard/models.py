@@ -41,50 +41,6 @@ class Task:
     issue_specificity: str = ""
     issue_categories: str = ""
 
-    @classmethod
-    def from_dict(cls, data: dict) -> Task:
-        """Create a Task from a dictionary."""
-        test_spec = TestSpec(
-            fail_to_pass=data.get("fail_to_pass", []),
-            pass_to_pass=data.get("pass_to_pass", []),
-        )
-        return cls(
-            task_id=data["task_id"],
-            instance_id=data["instance_id"],
-            problem_statement=data["problem_statement"],
-            patch=data["patch"],
-            test_code=data["test_code"],
-            test_spec=test_spec,
-            base_commit=data["base_commit"],
-            repo=data["repo"],
-            language=data.get("language", "Python"),
-            before_repo_set_cmd=data.get("before_repo_set_cmd", ""),
-            requirements=data.get("requirements", ""),
-            interface=data.get("interface", ""),
-            issue_specificity=data.get("issue_specificity", ""),
-            issue_categories=data.get("issue_categories", ""),
-        )
-
-    def to_dict(self) -> dict:
-        """Convert Task to a dictionary."""
-        return {
-            "task_id": self.task_id,
-            "instance_id": self.instance_id,
-            "problem_statement": self.problem_statement,
-            "patch": self.patch,
-            "test_code": self.test_code,
-            "fail_to_pass": self.test_spec.fail_to_pass,
-            "pass_to_pass": self.test_spec.pass_to_pass,
-            "base_commit": self.base_commit,
-            "repo": self.repo,
-            "language": self.language,
-            "before_repo_set_cmd": self.before_repo_set_cmd,
-            "requirements": self.requirements,
-            "interface": self.interface,
-            "issue_specificity": self.issue_specificity,
-            "issue_categories": self.issue_categories,
-        }
-
 
 @dataclass
 class Dataset:
@@ -110,26 +66,3 @@ class Dataset:
             return name
         return self.dataset_id
 
-    def get_next_task_id(self) -> str:
-        """Get the next available task ID."""
-        existing_nums = []
-        for task in self.tasks:
-            if task.task_id.startswith("task-"):
-                try:
-                    num = int(task.task_id.split("-")[1])
-                    existing_nums.append(num)
-                except (IndexError, ValueError):
-                    pass
-        next_num = max(existing_nums, default=0) + 1
-        return f"task-{next_num}"
-
-    def add_task(self, task: Task) -> None:
-        """Add a task to the dataset."""
-        self.tasks.append(task)
-
-    def get_task(self, task_id: str) -> Task | None:
-        """Get a task by ID."""
-        for task in self.tasks:
-            if task.task_id == task_id:
-                return task
-        return None

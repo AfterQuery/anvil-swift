@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 import typer
+from tqdm import tqdm
 
 from ..agents.harness import (
     AGENT_CONFIGS,
@@ -153,9 +154,6 @@ def run_evaluation(
     rollout_only: bool = False,
 ) -> int:
     """Run full evaluation with an agent on a dataset."""
-    from tqdm import tqdm
-
-    # Load .env early for credential check
     try:
         from dotenv import load_dotenv
         load_dotenv(Path(__file__).resolve().parents[3] / ".env")

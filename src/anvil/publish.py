@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -136,8 +137,6 @@ def _patch_dockerfile_if_needed(dockerfile: Path, username: str, repo: str, cont
 
 def _push_with_retry(tag: str, max_retries: int = 3) -> tuple[bool, str]:
     """Push a Docker image with retries for transient network errors."""
-    import time
-
     for attempt in range(1, max_retries + 1):
         result = subprocess.run(["docker", "push", tag], capture_output=True, text=True)
         if result.returncode == 0:

@@ -13,8 +13,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import typer
+from ruamel.yaml import YAML
 from tqdm import tqdm
 
+try:
+    from pbxproj import XcodeProject
+except ImportError:
+    XcodeProject = None
+
+from ..config import repo_root, source_tasks_dir
 from .xcode_cache import (
     XcodeBuildCache,
     _as_build_for_testing,
@@ -222,15 +229,12 @@ def _validate_pbxproj(worktree_dir: Path, project_rel: str) -> str | None:
 
     # 1) Try the pbxproj library (catches structural issues like duplicate
     #    UUIDs, bad group references, files in wrong build phases).
-    try:
-        from pbxproj import XcodeProject
-
-        XcodeProject.load(str(pbxproj_path))
-        return None
-    except ImportError:
-        pass
-    except Exception as exc:
-        return f"project.pbxproj parse error (pbxproj): {exc}"
+    if XcodeProject is not None:
+        try:
+            XcodeProject.load(str(pbxproj_path))
+            return None
+        except Exception as exc:
+            return f"project.pbxproj parse error (pbxproj): {exc}"
 
     # 2) Fallback: plutil validates the plist syntax (catches missing braces,
     #    bad semicolons, etc. that make Xcode refuse to open the project).
@@ -267,9 +271,11 @@ def _add_file_to_pbxproj(
     if not pbxproj_path.exists():
         return
 
-    try:
-        from pbxproj import XcodeProject
+    if XcodeProject is None:
+        logger.warning("pbxproj not installed: cannot inject %s into target %s", file_path, target_name)
+        return
 
+    try:
         project = XcodeProject.load(str(pbxproj_path))
         # rel_path must be relative to the xcodeproj's parent dir
         # (SOURCE_ROOT), not the worktree root — otherwise pbxproj
@@ -924,9 +930,7 @@ def run_xcode_evals(
 
     src_tasks: Path | None = None
     if dataset_id:
-        from ..config import source_tasks_dir as _src_tasks_dir
-
-        candidate = _src_tasks_dir(dataset_id)
+        candidate = source_tasks_dir(dataset_id)
         if candidate.is_dir():
             src_tasks = candidate
 
@@ -1166,10 +1170,8 @@ def validate_task_tests(
     Returns 0 if all tests behave as expected, 1 on inconsistencies or
     infrastructure errors.
     """
-    from ..config import source_tasks_dir as _src_tasks_dir, repo_root
-
     dataset_tasks_dir = repo_root() / dataset_id / "tasks"
-    src_tasks = _src_tasks_dir(dataset_id)
+    src_tasks = source_tasks_dir(dataset_id)
 
     if not dataset_tasks_dir.exists():
         typer.echo(f"Error: dataset tasks dir not found: {dataset_tasks_dir}")
@@ -1396,7 +1398,5 @@ def validate_task_tests(
 
 def _load_instances_yaml(path: Path) -> list[dict]:
     """Load instances from instances.yaml."""
-    from ruamel.yaml import YAML
-
-    yaml = YAML()
-    return list(yaml.load(path))
+    loader = YAML()
+    return list(loader.load(path))

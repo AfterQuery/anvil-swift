@@ -10,11 +10,6 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def datasets_dir() -> Path:
-    """Return the datasets directory."""
-    return repo_root() / "datasets"
-
-
 def dataset_dir(dataset_id: str) -> Path:
     """Return the directory for a specific dataset."""
     return repo_root() / dataset_id

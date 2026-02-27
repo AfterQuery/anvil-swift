@@ -34,6 +34,7 @@ try:
     import docker
 except Exception:
     docker = None
+import yaml
 import pandas as pd
 from tqdm import tqdm
 
@@ -412,7 +413,6 @@ def main():
     instances_yaml_path = os.path.join(os.path.dirname(args.raw_sample_path), "instances.yaml")
     if os.path.exists(instances_yaml_path):
         try:
-            import yaml
             with open(instances_yaml_path, "r") as f:
                 instances = yaml.safe_load(f)
             # Create mappings of instance_id to image_name and repo_name
