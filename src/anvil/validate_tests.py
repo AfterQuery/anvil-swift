@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 
@@ -13,7 +13,7 @@ def validate_tests(
         typer.Option("--dataset", "-d", help="Dataset ID or path (e.g. datasets/ACHNBrowserUI)"),
     ],
     max_workers: Annotated[
-        Optional[int],
+        int | None,
         typer.Option("--workers", "-w", help="Max parallel xcodebuild processes (default: 2)"),
     ] = None,
 ) -> None:

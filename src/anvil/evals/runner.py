@@ -24,7 +24,7 @@ from ..agents.harness import (
     run_agent_in_modal,
     write_single_result,
 )
-from ..config import eval_output_dir, swe_bench_eval_script, tasks_dir
+from ..config import eval_dir, swe_bench_eval_script, tasks_dir
 from ..util import ensure_dir, model_id_from_model, provider_env_var_from_model
 from .pass_at_k import (
     compute_pass_at_k_summary,
@@ -64,7 +64,7 @@ def _get_completed_rollouts(
 
 
 def _get_completed_evals(
-    base_out: Path, instances: list[dict], k: int, eval_id: str
+    base_out: Path, instances: list[dict], k: int
 ) -> set[tuple[str, int]]:
     """Return set of (instance_id, attempt) pairs that have valid completed evals."""
     completed = set()
@@ -115,7 +115,7 @@ def _cleanup_bad_rollouts(base_out: Path, instances: list[dict], k: int) -> int:
 
 
 def _cleanup_bad_evals(
-    base_out: Path, instances: list[dict], k: int, eval_id: str
+    base_out: Path, instances: list[dict], k: int
 ) -> int:
     """Move bad eval results to __errors/ folder. Returns count moved."""
     errors_dir = base_out / "__errors"
@@ -196,7 +196,7 @@ def run_evaluation(
 
     start_time = time.time()
     eval_id = _eval_id(agent, model)
-    base_out_path = Path(output) if output else eval_output_dir(dataset_id, eval_id)
+    base_out_path = Path(output) if output else eval_dir(dataset_id, eval_id)
     
     # Handle --no-continue: delete existing results directory
     if no_continue and base_out_path.exists():
@@ -225,8 +225,8 @@ def run_evaluation(
         typer.echo(f"Loaded {len(gold_patches)} golden patches")
 
         # Build patches for eval, add attempt=1
-        bad_eval_moved = _cleanup_bad_evals(base_out, instances, k, eval_id)
-        completed_evals = _get_completed_evals(base_out, instances, k, eval_id)
+        bad_eval_moved = _cleanup_bad_evals(base_out, instances, k)
+        completed_evals = _get_completed_evals(base_out, instances, k)
 
         all_patches = []
         for p in gold_patches:
@@ -327,8 +327,8 @@ def run_evaluation(
             return 0
 
         # ---- Evaluation Phase for non-oracle ----
-        bad_eval_moved = _cleanup_bad_evals(base_out, instances, k, eval_id)
-        completed_evals = _get_completed_evals(base_out, instances, k, eval_id)
+        bad_eval_moved = _cleanup_bad_evals(base_out, instances, k)
+        completed_evals = _get_completed_evals(base_out, instances, k)
 
         all_patches = []
         for inst in instances:

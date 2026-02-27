@@ -15,6 +15,7 @@ from ..config import default_minisweagent_config_template, eval_dir
 from ..util import ensure_dir, model_id_from_model, provider_env_var_from_model
 from .harness import (
     AGENT_CONFIGS,
+    AgentResult,
     load_instances,
     run_agents_batch,
     write_results,
@@ -84,7 +85,7 @@ def run_dataset_batch(
         typer.echo(f"  [{status}] {instance_id}")
 
     # Write each result immediately as it completes (task-first structure)
-    def on_result(result) -> None:
+    def on_result(result: AgentResult) -> None:
         result_dir = output_dir / result.instance_id / "attempt_1"
         write_single_result(result, result_dir, eval_id)
 

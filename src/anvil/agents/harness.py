@@ -65,14 +65,6 @@ AGENT_CONFIGS: dict[str, AgentConfig] = {
 }
 
 
-def get_agent_config(agent_name: str) -> AgentConfig:
-    """Get agent configuration by name."""
-    if agent_name not in AGENT_CONFIGS:
-        available = ", ".join(AGENT_CONFIGS.keys())
-        raise ValueError(f"Unknown agent: {agent_name}. Available: {available}")
-    return AGENT_CONFIGS[agent_name]
-
-
 def _sq(s: str) -> str:
     """Shell-escape a string with single quotes."""
     return "'" + (s or "").replace("'", "'\"'\"'") + "'"

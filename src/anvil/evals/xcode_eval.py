@@ -49,6 +49,12 @@ _tls = threading.local()
 # next worker can start. Much faster than the old fixed-delay stagger.
 _build_start_lock: threading.Lock | None = None
 
+# Default timeout for xcodebuild operations (seconds).
+_DEFAULT_XCODEBUILD_TIMEOUT = 600
+
+# Default max parallel xcodebuild workers.
+_DEFAULT_MAX_WORKERS = 3
+
 # Minimum gap between successive xcodebuild launches (seconds).
 _BUILD_GATE_SECONDS = 1
 
@@ -522,7 +528,7 @@ def _run_spm_tests(
         test_dd = dd_dir
     return _run_xcodebuild_tests(
         _build_xcodebuild_test_cmd(xcode_config, worktree_dir, test_dd),
-        timeout=600,
+        timeout=_DEFAULT_XCODEBUILD_TIMEOUT,
     )
 
 
@@ -554,7 +560,7 @@ def _run_app_tests(
         cwd=str(test_cwd),
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=_DEFAULT_XCODEBUILD_TIMEOUT,
     )
 
     if build_result.returncode != 0:
@@ -580,7 +586,7 @@ def _run_app_tests(
         cwd=str(test_cwd),
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=_DEFAULT_XCODEBUILD_TIMEOUT,
     )
 
     output = parse_xcodebuild_output(test_result.stdout, test_result.stderr)
@@ -718,7 +724,7 @@ def eval_single_patch(
                 cwd=str(worktree_dir),
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=_DEFAULT_XCODEBUILD_TIMEOUT,
             )
 
             build_output = parse_build_result(
@@ -935,7 +941,7 @@ def run_xcode_evals(
             src_tasks = candidate
 
     if max_workers is None:
-        max_workers = 3
+        max_workers = _DEFAULT_MAX_WORKERS
 
     eval_results: dict[str, bool] = {}
 
@@ -996,6 +1002,7 @@ def run_xcode_evals(
 
     if not real_patches:
         (output_dir / "eval_results.json").write_text(json.dumps(eval_results))
+        passed_count = sum(1 for v in eval_results.values() if v)
         typer.echo(
             f"Xcode eval complete: {passed_count}/{len(eval_results)} passed"
         )
@@ -1194,7 +1201,7 @@ def validate_task_tests(
         return 0
 
     if max_workers is None:
-        max_workers = min(len(tasks_with_tests), 3)
+        max_workers = min(len(tasks_with_tests), _DEFAULT_MAX_WORKERS)
     max_workers = min(max_workers, len(tasks_with_tests))
 
     typer.echo(

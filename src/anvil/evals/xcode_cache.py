@@ -15,6 +15,13 @@ from ..config import repo_root, source_tasks_dir
 
 logger = logging.getLogger(__name__)
 
+# Default build timeout when not specified in xcode_config (seconds).
+_DEFAULT_BUILD_TIMEOUT = 1200
+
+# Standard Xcode pbxproj constants.
+_PBX_UUID_LENGTH = 24
+_PBX_BUILD_ACTION_MASK = 2147483647  # INT32_MAX — Xcode default for all build phases
+
 
 def _apfs_clone(src: Path, dst: Path) -> None:
     """Copy a directory tree using APFS clonefile (instant COW on macOS).
@@ -94,21 +101,21 @@ class XcodeBuildCache:
     def _repo_cache_dir(self, repo_name: str) -> Path:
         return self.cache_root / repo_name
 
-    def _commit_cache_dir(self, repo_name: str, base_commit: str) -> Path:
+    def commit_cache_dir(self, repo_name: str, base_commit: str) -> Path:
         short = base_commit[:12]
         return self._repo_cache_dir(repo_name) / short
 
-    def _repo_clone_dir(self, repo_name: str) -> Path:
+    def repo_clone_dir(self, repo_name: str) -> Path:
         return self._repo_cache_dir(repo_name) / "_repo"
 
     def _derived_data_dir(self, repo_name: str, base_commit: str) -> Path:
-        return self._commit_cache_dir(repo_name, base_commit) / "DerivedData"
+        return self.commit_cache_dir(repo_name, base_commit) / "DerivedData"
 
     def _test_derived_data_dir(self, repo_name: str, base_commit: str) -> Path:
-        return self._commit_cache_dir(repo_name, base_commit) / "DerivedData-tests"
+        return self.commit_cache_dir(repo_name, base_commit) / "DerivedData-tests"
 
     def _app_test_derived_data_dir(self, repo_name: str, base_commit: str) -> Path:
-        return self._commit_cache_dir(repo_name, base_commit) / "DerivedData-app-tests"
+        return self.commit_cache_dir(repo_name, base_commit) / "DerivedData-app-tests"
 
     def is_warm(self, repo_name: str, base_commit: str) -> bool:
         return _dd_is_populated(self._derived_data_dir(repo_name, base_commit))
@@ -119,7 +126,7 @@ class XcodeBuildCache:
         Call once per repo before warming commits in parallel to avoid
         concurrent clone/fetch races when multiple commits share a repo.
         """
-        clone_dir = self._repo_clone_dir(repo_name)
+        clone_dir = self.repo_clone_dir(repo_name)
         if not clone_dir.exists():
             typer.echo(f"  Cloning {repo_name} into cache...")
             _run_cmd(["git", "clone", str(repo_path.resolve()), str(clone_dir)])
@@ -140,10 +147,10 @@ class XcodeBuildCache:
         dd_dir = self._derived_data_dir(repo_name, base_commit)
         build_cached = self.is_warm(repo_name, base_commit)
 
-        commit_dir = self._commit_cache_dir(repo_name, base_commit)
+        commit_dir = self.commit_cache_dir(repo_name, base_commit)
         commit_dir.mkdir(parents=True, exist_ok=True)
 
-        clone_dir = self._repo_clone_dir(repo_name)
+        clone_dir = self.repo_clone_dir(repo_name)
 
         # Check if test DDs need warming even when the main build is cached.
         needs_test_warm = self._needs_test_warm(xcode_config, repo_name, base_commit)
@@ -171,7 +178,7 @@ class XcodeBuildCache:
             build_cmd = _build_xcodebuild_cmd(
                 xcode_config, work_dir, dd_dir, clean=True, allow_pkg_resolution=True,
             )
-            build_timeout = xcode_config.get("build_timeout", 1200)
+            build_timeout = xcode_config.get("build_timeout", _DEFAULT_BUILD_TIMEOUT)
             result = subprocess.run(
                 build_cmd,
                 cwd=str(work_dir),
@@ -220,7 +227,7 @@ class XcodeBuildCache:
         src = self._package_resolved_path(xcode_config, work_dir)
         if not src or not src.exists():
             return
-        dst = self._commit_cache_dir(repo_name, base_commit) / "Package.resolved"
+        dst = self.commit_cache_dir(repo_name, base_commit) / "Package.resolved"
         shutil.copy2(src, dst)
         logger.info("Saved Package.resolved for %s@%s", repo_name, base_commit[:8])
 
@@ -232,7 +239,7 @@ class XcodeBuildCache:
         target_dir: Path,
     ) -> None:
         """Restore cached Package.resolved into a checkout."""
-        src = self._commit_cache_dir(repo_name, base_commit) / "Package.resolved"
+        src = self.commit_cache_dir(repo_name, base_commit) / "Package.resolved"
         if not src.exists():
             return
         dst = self._package_resolved_path(xcode_config, target_dir)
@@ -303,7 +310,7 @@ class XcodeBuildCache:
         test_cmd, test_cwd = test_cmd_info
         test_cmd = _as_build_for_testing(test_cmd)
 
-        build_timeout = xcode_config.get("build_timeout", 1200)
+        build_timeout = xcode_config.get("build_timeout", _DEFAULT_BUILD_TIMEOUT)
         typer.echo(f"  Warming test DerivedData for {repo_name}@{base_commit[:8]}...")
         result = subprocess.run(
             test_cmd,
@@ -361,7 +368,7 @@ class XcodeBuildCache:
         cmd, cwd = cmd_info
         cmd = _as_build_for_testing(cmd)
 
-        build_timeout = xcode_config.get("build_timeout", 1200)
+        build_timeout = xcode_config.get("build_timeout", _DEFAULT_BUILD_TIMEOUT)
         typer.echo(f"  Warming app-test DerivedData for {repo_name}@{base_commit[:8]}...")
         result = subprocess.run(
             cmd,
@@ -388,7 +395,7 @@ class XcodeBuildCache:
 
         Returns target_dir (the worktree root).
         """
-        clone_dir = self._repo_clone_dir(repo_name)
+        clone_dir = self.repo_clone_dir(repo_name)
         if not clone_dir.exists():
             raise RuntimeError(
                 f"No cached repo for {repo_name}. Run 'anvil warm-xcode-cache' first."
@@ -430,7 +437,7 @@ class XcodeBuildCache:
 
     def cleanup(self, repo_name: str, target_dir: Path) -> None:
         """Remove a worktree created by checkout()."""
-        clone_dir = self._repo_clone_dir(repo_name)
+        clone_dir = self.repo_clone_dir(repo_name)
         if clone_dir.exists():
             _run_cmd(
                 ["git", "-C", str(clone_dir), "worktree", "remove", "--force", str(target_dir)],
@@ -612,7 +619,7 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
         return True
 
     def _uuid(seed: str) -> str:
-        return hashlib.md5(seed.encode()).hexdigest().upper()[:24]
+        return hashlib.md5(seed.encode()).hexdigest().upper()[:_PBX_UUID_LENGTH]
 
     uid = {k: _uuid(f"{app_test_target}-{k}") for k in [
         "group", "info_plist_ref", "placeholder_ref", "placeholder_build",
@@ -694,7 +701,7 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
         "/* End PBXFrameworksBuildPhase section */",
         f"\t\t{uid['frameworks_phase']} /* Frameworks */ = {{\n"
         f"\t\t\tisa = PBXFrameworksBuildPhase;\n"
-        f"\t\t\tbuildActionMask = 2147483647;\n"
+        f"\t\t\tbuildActionMask = {_PBX_BUILD_ACTION_MASK};\n"
         f"\t\t\tfiles = (\n\t\t\t);\n"
         f"\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t}};\n"
         "/* End PBXFrameworksBuildPhase section */",
@@ -779,7 +786,7 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
         "/* End PBXResourcesBuildPhase section */",
         f"\t\t{uid['resources_phase']} /* Resources */ = {{\n"
         f"\t\t\tisa = PBXResourcesBuildPhase;\n"
-        f"\t\t\tbuildActionMask = 2147483647;\n"
+        f"\t\t\tbuildActionMask = {_PBX_BUILD_ACTION_MASK};\n"
         f"\t\t\tfiles = (\n\t\t\t);\n"
         f"\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t}};\n"
         "/* End PBXResourcesBuildPhase section */",
@@ -790,7 +797,7 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
         "/* End PBXSourcesBuildPhase section */",
         f"\t\t{uid['sources_phase']} /* Sources */ = {{\n"
         f"\t\t\tisa = PBXSourcesBuildPhase;\n"
-        f"\t\t\tbuildActionMask = 2147483647;\n"
+        f"\t\t\tbuildActionMask = {_PBX_BUILD_ACTION_MASK};\n"
         f"\t\t\tfiles = (\n"
         f"\t\t\t\t{uid['placeholder_build']} /* {app_test_target}Placeholder.swift in Sources */,\n"
         f"\t\t\t);\n"
