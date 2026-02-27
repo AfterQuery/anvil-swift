@@ -22,15 +22,18 @@ from __future__ import annotations
 import ast
 import csv
 import io
-import os
 import json
+import os
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Annotated
 
 import typer
 import yaml
 
+from ..config import repo_root
 from .models import Task, TestSpec
 
 
@@ -86,8 +89,6 @@ def load_task_from_directory(task_dir: Path) -> Task | None:
     try:
         fail_to_pass = ast.literal_eval(fail_str) if fail_str else []
     except Exception as e:
-        import sys
-
         print(
             f"Warning: Failed to parse fail_to_pass in {task_dir.name}: {e}",
             file=sys.stderr,
@@ -97,8 +98,6 @@ def load_task_from_directory(task_dir: Path) -> Task | None:
     try:
         pass_to_pass = ast.literal_eval(pass_str) if pass_str else []
     except Exception as e:
-        import sys
-
         print(
             f"Warning: Failed to parse pass_to_pass in {task_dir.name}: {e}",
             file=sys.stderr,
@@ -197,7 +196,6 @@ def load_all_tasks(dataset_path: Path) -> list[Task]:
         base_commit = base_commits.get(item.name, "")
 
         if not base_commit:
-            import sys
             print(f"Warning: {item.name}: no base_commit in metadata.yaml — skipping", file=sys.stderr)
             continue
 
@@ -366,12 +364,10 @@ def convert_to_anvil_structure(
 
     # --- Docker artifacts for Xcode datasets (auto-generated from repos/) ---
     if not has_docker:
-        from ..config import repo_root as _repo_root
-        repo_source = _repo_root() / "repos" / project_name
+        repo_source = repo_root() / "repos" / project_name
 
         if repo_source.is_dir():
             # Get the remote URL so the Dockerfile can clone the repo
-            import subprocess
             remote_url = ""
             try:
                 result = subprocess.run(
@@ -539,7 +535,6 @@ def convert_dataset(
     if output_dir:
         output_path = output_dir
     else:
-        from ..config import repo_root
         output_path = repo_root() / "datasets" / dataset_path.name / "tasks"
 
     typer.echo(f"Converting dataset {dataset_path.name} to Anvil format...")
