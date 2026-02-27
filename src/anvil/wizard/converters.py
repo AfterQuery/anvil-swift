@@ -12,8 +12,9 @@ Supports two task directory layouts:
 Docker/Modal layout (instance_info.txt + tasks.csv + task_tests.py):
     task-N/instance_info.txt, task-N/tasks.csv, task-N/task_tests.py
 
-Xcode layout (problem.md + solution.diff, base commits in repo.md):
-    repo.md, task-N/problem.md, task-N/solution.diff
+Xcode layout (metadata.yaml + task-N/ directories):
+    metadata.yaml (base_commits for all tasks)
+    task-N/problem.md, task-N/solution.diff, task-N/tests.swift
 """
 
 from __future__ import annotations
@@ -23,7 +24,6 @@ import csv
 import io
 import os
 import json
-import re
 import shutil
 from pathlib import Path
 from typing import Annotated
@@ -125,35 +125,6 @@ def load_task_from_directory(task_dir: Path) -> Task | None:
     )
 
 
-def _parse_repo_md(repo_md_path: Path) -> dict[str, dict]:
-    """Parse repo.md to extract per-task metadata (base_commit, type, etc.).
-
-    Returns a dict keyed by task number string,
-    e.g. {"1": {"base_commit": "abc...", "type": "Bug Fix"}, ...}
-    """
-    text = repo_md_path.read_text()
-    tasks: dict[str, dict] = {}
-    current_task_num: str | None = None
-
-    for line in text.splitlines():
-        header_match = re.match(r"^(\d+)\.\s+", line)
-        if header_match:
-            current_task_num = header_match.group(1)
-            tasks[current_task_num] = {}
-            continue
-
-        if current_task_num is None:
-            continue
-
-        meta_match = re.match(r"^-\s+(.+?):\s+(.+)$", line)
-        if meta_match:
-            key = meta_match.group(1).strip().lower().replace(" ", "_")
-            value = meta_match.group(2).strip()
-            tasks[current_task_num][key] = value
-
-    return tasks
-
-
 def _load_xcode_task(task_dir: Path, repo_name: str, base_commit: str) -> Task | None:
     """Load a Task from an Xcode-style task directory (problem.md + solution.diff)."""
     problem_path = task_dir / "problem.md"
@@ -175,12 +146,23 @@ def _load_xcode_task(task_dir: Path, repo_name: str, base_commit: str) -> Task |
     )
 
 
-def _load_task_metadata(task_dir: Path) -> dict:
-    """Load per-task metadata from ``metadata.yaml`` inside a task directory."""
-    meta_path = task_dir / "metadata.yaml"
+def _load_base_commits(dataset_path: Path) -> dict[str, str]:
+    """Load base commits from the root ``metadata.yaml``.
+
+    Expects a ``base_commits`` mapping of task-name to commit SHA, e.g.::
+
+        base_commits:
+          task-1: abc123...
+          task-2: def456...
+
+    Returns a dict keyed by task directory name (e.g. ``{"task-1": "abc..."}``).
+    """
+    meta_path = dataset_path / "metadata.yaml"
     if not meta_path.exists():
         return {}
-    return yaml.safe_load(meta_path.read_text()) or {}
+    data = yaml.safe_load(meta_path.read_text()) or {}
+    commits = data.get("base_commits", {})
+    return {str(k): str(v) for k, v in commits.items()}
 
 
 def load_all_tasks(dataset_path: Path) -> list[Task]:
@@ -188,7 +170,7 @@ def load_all_tasks(dataset_path: Path) -> list[Task]:
 
     Tries the Docker/Modal format first (instance_info.txt + tasks.csv +
     task_tests.py).  Falls back to the Xcode format (problem.md +
-    solution.diff) with per-task ``metadata.yaml`` for base commits.
+    solution.diff) with base commits from the root ``metadata.yaml``.
     """
     tasks = []
 
@@ -206,24 +188,17 @@ def load_all_tasks(dataset_path: Path) -> list[Task]:
     if tasks:
         return tasks
 
-    # Xcode format: each task-N/ has problem.md, solution.diff, metadata.yaml
+    # Xcode format: each task-N/ has problem.md, solution.diff
+    # Base commits come from the root metadata.yaml
     repo_name = dataset_path.name
-
-    # Fall back to repo.md for tasks missing metadata.yaml (backward compat)
-    repo_md = dataset_path / "repo.md"
-    repo_md_meta = _parse_repo_md(repo_md) if repo_md.exists() else {}
+    base_commits = _load_base_commits(dataset_path)
 
     for item in task_dirs:
-        meta = _load_task_metadata(item)
-        base_commit = meta.get("base_commit", "")
-
-        if not base_commit:
-            task_num = item.name.split("-")[1]
-            base_commit = repo_md_meta.get(task_num, {}).get("base_commit", "")
+        base_commit = base_commits.get(item.name, "")
 
         if not base_commit:
             import sys
-            print(f"Warning: {item.name}: no base_commit in metadata.yaml or repo.md", file=sys.stderr)
+            print(f"Warning: {item.name}: no base_commit in metadata.yaml — skipping", file=sys.stderr)
             continue
 
         task = _load_xcode_task(item, repo_name, base_commit)
