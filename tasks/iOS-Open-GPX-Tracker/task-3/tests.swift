@@ -56,4 +56,15 @@ final class AnvilTask3F2PTests: XCTestCase {
         XCTAssertFalse(viewController.scaleBar.translatesAutoresizingMaskIntoConstraints,
                        "scaleBar should use Auto Layout (translatesAutoresizingMaskIntoConstraints = false)")
     }
+
+    func testScaleBarIsLinkedToSameMapAsViewController() {
+        let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
+        guard let viewController = storyboard.instantiateInitialViewController() as? ViewController else {
+            XCTFail("Initial view controller is not ViewController")
+            return
+        }
+        viewController.loadViewIfNeeded()
+        XCTAssertTrue(viewController.scaleBar.mapView === viewController.map,
+                      "scaleBar must be linked to the ViewController's map so it updates with zoom")
+    }
 }

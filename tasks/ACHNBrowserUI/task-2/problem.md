@@ -8,13 +8,16 @@ The misalignment affects all three display modes: average prices, min/max prices
 
 ### Acceptance Criteria
 
-1. The AM and PM columns must be consistently aligned under their headers across all rows using a unified grid or column-aligned layout.
+1. The AM and PM columns must be consistently aligned under their headers across all rows.
 2. The unified layout must be used for all three display modes (average, min/max, profits).
-3. The old separate row view files in the `rows/` directory must be removed, along with any references to those components from the turnip price view.
-4. Any workarounds that existed solely to support the old row-based layout should be removed.
-5. Do not change the chart views, island views, or other unrelated sections of the turnip price screen.
-6. Implement the unified layout as a reusable grid view in the shared views directory with configurable row/column counts and optional spacing.
+3. Do not change the chart views, island views, or other unrelated sections of the turnip price screen.
+
+### Required API Surface
+
+The implementation must expose these names (tests depend on them to compile):
+
+- `GridStack` — SwiftUI View; `init(rows:columns:spacing:content:)`; `rows`, `columns`, `spacing`, `content(row:col:)`
 
 ### Xcode Project Note
 
-This is a traditional Xcode project (not SwiftPM). When you add or remove `.swift` files, you must also update `project.pbxproj` to register/unregister them in the build target. Files that exist on disk but are not listed in the Xcode project will not be compiled.
+This is a traditional Xcode project (not SwiftPM). When you add or remove `.swift` files, you must also update `project.pbxproj` to register/unregister them in the build target.

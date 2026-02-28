@@ -10,11 +10,20 @@ This is confusing because the whole point of entering prices is to refine the fo
 
 1. When a user has entered an actual turnip price for a time slot, the display must show that exact value rather than a calculated prediction.
 2. In the min/max view, an entered value must appear as a single number (not a range), since the min and max are identical when the price is known.
-3. Entered values must be visually distinguished from predictions using a different text color.
-4. Predicted values retain existing color coding (low prices in red, high prices highlighted, mid-range in secondary text).
+3. Entered values must be visually distinguished from predictions.
+4. Predicted values retain existing color coding.
 5. Switching between average, min/max, and profit display tabs must not cause visual glitches or show stale data.
 6. Both average-price and min/max-price row types must be able to detect whether a given time slot contains a user-entered value.
 7. The profit calculations should use entered values where available.
+
+### Required API Surface
+
+The implementation must expose these names (tests depend on them to compile):
+
+- `TurnipsPriceRow` — `isEntered(meridian:) -> Bool`
+- `TurnipsAveragePriceRow` — TurnipsPriceRow; `init(label:prices:minMaxPrices:)`; `label`, `prices`, `minMaxPrices`
+- `TurnipsMinMaxPriceRow` — TurnipsPriceRow; `init(label:prices:averagePrices:)`; `label`, `prices`, `averagePrices`
+- `View.eraseToAnyView()`
 
 ### Xcode Project Note
 

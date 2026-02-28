@@ -51,4 +51,58 @@ final class AnvilTask1F2PTests: XCTestCase {
         scaleBar.forcedColor = nil
         XCTAssertNil(scaleBar.forcedColor)
     }
+
+    func testForcedColorUpdatesScaleBarAppearance() {
+        let scaleBar = GPXScaleBar()
+        scaleBar.forcedColor = .white
+        scaleBar.layoutIfNeeded()
+        let barView = scaleBar.subviews.first
+        XCTAssertTrue(barView?.backgroundColor?.isEqual(UIColor.white) == true,
+                     "Setting forcedColor should update the scale bar's visual elements")
+    }
+
+    // MARK: - ViewController wiring (tile server drives label/scalebar color)
+
+    func testViewControllerAppliesBlackToLabelsForLightModeTileServer() {
+        let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
+        guard let vc = storyboard.instantiateInitialViewController() as? ViewController else {
+            XCTFail("Could not load ViewController from storyboard")
+            return
+        }
+        vc.loadViewIfNeeded()
+        vc.map.tileServer = .openStreetMap
+        vc.textColorAdaptations()
+        XCTAssertTrue(vc.signalAccuracyLabel.textColor?.isEqual(UIColor.black) == true,
+                      "Light-mode tile servers must use black overlay labels")
+    }
+
+    func testViewControllerAppliesWhiteToLabelsForDarkModeTileServer() {
+        let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
+        guard let vc = storyboard.instantiateInitialViewController() as? ViewController else {
+            XCTFail("Could not load ViewController from storyboard")
+            return
+        }
+        vc.loadViewIfNeeded()
+        vc.map.tileServer = .appleSatellite
+        vc.textColorAdaptations()
+        XCTAssertTrue(vc.signalAccuracyLabel.textColor?.isEqual(UIColor.white) == true,
+                      "Dark-mode tile servers must use white overlay labels")
+    }
+
+    func testViewControllerAppliesForcedColorToScaleBarForTileServer() {
+        let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
+        guard let vc = storyboard.instantiateInitialViewController() as? ViewController else {
+            XCTFail("Could not load ViewController from storyboard")
+            return
+        }
+        vc.loadViewIfNeeded()
+        guard let scaleBar = vc.map.scaleBar else {
+            XCTFail("Map should have scale bar for color adaptation test")
+            return
+        }
+        vc.map.tileServer = .openStreetMap
+        vc.textColorAdaptations()
+        XCTAssertTrue(scaleBar.forcedColor?.isEqual(UIColor.black) == true,
+                     "Scale bar forcedColor must be driven by tile server selection")
+    }
 }

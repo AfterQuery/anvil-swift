@@ -9,14 +9,26 @@ Additionally, the Collection tab's segmented picker currently has four top-level
 ### Acceptance Criteria
 
 1. Users can create, view, and delete custom design entries with name, code, and description.
-2. Design codes are validated against the `MA`/`MO` prefix format and formatted to the `XX-XXXX-XXXX-XXXX` pattern.
-3. Saved designs appear in a dedicated list within the Collection tab, showing formatted codes and a creator/item category label.
+2. Design codes are validated against the MA/MO prefix format and formatted consistently.
+3. Saved designs appear in a dedicated list within the Collection tab.
 4. The Collection picker no longer truncates on small screens.
 5. Critters and designs are accessible via a secondary navigation point within Collection.
 6. Empty collection states display a helpful message to the user.
 7. All design data persists across app launches.
 8. Existing collection features (items, villagers, lists) remain functional.
 9. The app builds and runs without regressions.
+
+### Required API Surface
+
+The implementation must expose these names (tests depend on them to compile):
+
+- `Design` — Backend; `title`, `code`, `description`, `hasValidCode`; Identifiable, Equatable
+- `UserCollection.designs`
+- `DesignFormViewModel(design: Design?)`, `design`
+- `DesignRowViewModel(design: Design)`, `category`, `code`
+- `CollectionMoreDetailViewModel`, `rows`, `Row.critters`, `Row.designs`
+- `Tabs.more`
+- `MessageView(string:)`, `MessageView(collectionName:)`, `MessageView(noResultsFor:)`
 
 ### Xcode Project Note
 

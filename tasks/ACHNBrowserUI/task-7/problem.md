@@ -16,6 +16,15 @@ Additionally, catalog browsing is fragmented across multiple top-level tabs (Ite
 6. Existing functionality (villagers, collection) remains intact.
 7. The app builds and runs without regressions.
 
+### Required API Surface
+
+The implementation must expose these names (tests depend on them to compile):
+
+- `TurnipsViewModel` — ObservableObject; `islands`, `fetch()`
+- `TabbarView.Tab.turnips`
+- `Island.islandDescription`
+- `CategoriesView(categories:)`, `CategoryDetailView(categories:)`, `ItemsListView(viewModel:)`
+
 ### Xcode Project Note
 
 This is a traditional Xcode project (not SwiftPM). New `.swift` files must be registered in `project.pbxproj` or they will not compile.

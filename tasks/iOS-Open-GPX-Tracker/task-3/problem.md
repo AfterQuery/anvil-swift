@@ -9,12 +9,12 @@ Additionally, the codebase contains obsolete `#available(iOS 10, *)` version che
 ### Acceptance Criteria
 
 1. A scale indicator must be visible on the map and update automatically as the user zooms in and out.
-2. The indicator must be properly positioned using constraints, not hardcoded frames.
-3. Obsolete `#available(iOS 10, *)` checks must be removed.
+2. The indicator must be properly positioned and adapt to layout changes.
+3. Obsolete version checks no longer needed for the app's deployment target must be removed.
 4. The user-facing alert behavior must remain the same.
 
 ### Required API Surface
 
-The implementation must expose these specific names (tests depend on them):
+The implementation must expose this name (tests depend on it to compile):
 
-- `ViewController.scaleBar` — stored property of type `MKScaleView` on `ViewController`. Must be connected to the map, added to the view hierarchy, and use Auto Layout.
+- `ViewController.scaleBar` — MKScaleView

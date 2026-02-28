@@ -20,6 +20,6 @@ For example:
 
 The implementation must expose these names (tests depend on them to compile):
 
-- `GPXTileServer.GPXTileServerColorMode` — nested enum with cases `.lightMode`, `.system`, `.darkMode`.
-- `GPXTileServer.colorMode` — computed property returning `GPXTileServerColorMode`.
-- `GPXScaleBar.forcedColor` — optional `UIColor?` property.
+- `GPXTileServer.GPXTileServerColorMode` — `.lightMode`, `.system`, `.darkMode`
+- `GPXTileServer.colorMode`
+- `GPXScaleBar.forcedColor`

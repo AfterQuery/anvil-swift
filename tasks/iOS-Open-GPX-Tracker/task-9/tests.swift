@@ -60,4 +60,20 @@ final class AnvilTask9F2PTests: XCTestCase {
         XCTAssertEqual(prefs.locationActivityType, .other,
                        "Default activity type should be .other (Automatic)")
     }
+
+    func testLocationManagerUsesActivityTypeFromPreferences() {
+        let prefs = Preferences.shared
+        let original = prefs.locationActivityType
+        prefs.locationActivityType = .fitness
+        defer { prefs.locationActivityType = original }
+
+        let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
+        guard let vc = storyboard.instantiateInitialViewController() as? ViewController else {
+            XCTFail("Could not load ViewController from storyboard")
+            return
+        }
+        vc.loadViewIfNeeded()
+        XCTAssertEqual(vc.locationManager.activityType, .fitness,
+                       "Location manager must use the activity type from Preferences for tracking")
+    }
 }

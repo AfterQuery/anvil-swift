@@ -55,6 +55,38 @@ final class AnvilTask6F2PTests: XCTestCase {
         wait(for: [expectation], timeout: 2.0)
     }
 
+    func testReloadTableDataIsCalledWhenURLNotificationFires() {
+        class SpyVC: GPXFilesTableViewController {
+            var reloadTableDataCalled = false
+            @objc override func reloadTableData() {
+                reloadTableDataCalled = true
+                super.reloadTableData()
+            }
+        }
+        let vc = SpyVC()
+        vc.loadViewIfNeeded()
+        NotificationCenter.default.post(name: .didReceiveFileFromURL, object: nil)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        XCTAssertTrue(vc.reloadTableDataCalled,
+                      "GPXFilesTableViewController must observe didReceiveFileFromURL and call reloadTableData")
+    }
+
+    func testReloadTableDataIsCalledWhenAppleWatchNotificationFires() {
+        class SpyVC: GPXFilesTableViewController {
+            var reloadTableDataCalled = false
+            @objc override func reloadTableData() {
+                reloadTableDataCalled = true
+                super.reloadTableData()
+            }
+        }
+        let vc = SpyVC()
+        vc.loadViewIfNeeded()
+        NotificationCenter.default.post(name: .didReceiveFileFromAppleWatch, object: nil)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        XCTAssertTrue(vc.reloadTableDataCalled,
+                      "GPXFilesTableViewController must observe didReceiveFileFromAppleWatch and call reloadTableData")
+    }
+
     // MARK: - WCSession delegation moved to AppDelegate
 
     func testViewControllerDoesNotRespondToWCSessionDelegateMethods() {

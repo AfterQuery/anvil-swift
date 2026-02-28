@@ -13,15 +13,14 @@ The **iOS-Open-GPX-Tracker** app has two user-facing issues related to preferenc
 - A "Keep screen always on" toggle is available in the app's preferences under a new "Screen" section.
 - When enabled, the device screen stays on while the app is in the foreground.
 - The preference persists across app launches and is applied when the app starts.
-- Opening the preferences screen shows a loading toast while the view controller initializes, so the user gets immediate feedback even if initialization is slow.
-- The loading toast disappears once the preferences screen is ready to present.
-- New preference strings ("Screen" section header and "Keep screen always on" label) are localized for all supported languages.
+- Opening the preferences screen shows a loading indicator while it initializes, so the user gets immediate feedback even if initialization is slow.
+- The loading indicator disappears once the preferences screen is ready to present.
 
 ### Acceptance Criteria
 
 1. A new preferences section for screen behavior is visible in the preferences table.
 2. Toggling the setting keeps the screen awake or restores default idle timer behavior.
-3. The preference is persisted to UserDefaults and restored on app launch.
+3. The preference is persisted and restored on app launch.
 4. A loading indicator appears while the preferences screen loads and disappears once it is presented.
 5. The app builds and runs without regressions.
 
@@ -29,9 +28,8 @@ The **iOS-Open-GPX-Tracker** app has two user-facing issues related to preferenc
 
 The implementation must expose these names (tests depend on them to compile):
 
-- `Preferences.shared.keepScreenAlwaysOn` — `Bool` property.
-- `kDefaultsKeyKeepScreenAlwaysOn` — string constant.
-- `kScreenSection` — new integer constant for the screen preferences section (must precede the existing `kCacheSection`).
-- `Toast.kDisabledDelay` — static `Double` constant with a negative sentinel value indicating a persistent toast that should not auto-dismiss.
-- `Toast.showLoading(_: String)` — static method.
-- `Toast.hideLoading()` — static method.
+- `Preferences.shared.keepScreenAlwaysOn`
+- `kDefaultsKeyKeepScreenAlwaysOn`
+- `kScreenSection`
+- `Toast.kDisabledDelay`
+- `Toast.showLoading(_:)`, `Toast.hideLoading()`

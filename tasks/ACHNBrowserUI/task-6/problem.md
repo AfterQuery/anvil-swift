@@ -7,14 +7,9 @@ The **ACHNBrowserUI** app has no centralized overview of the player's progress. 
 ### Expected Behavior
 
 - A Dashboard screen is accessible from the app's main tab navigation and serves as the default landing view.
-- The dashboard displays:
-  - Active critter counts (fish and bugs) showing caught vs total, based on the user's hemisphere setting.
-  - Collection progress for fish, bugs, and fossils.
-  - The top Turnip Exchange island listing.
-  - Recent Nookazon marketplace listings with item name, image, and listing details.
+- The dashboard displays active critter counts, collection progress for fish/bugs/fossils, the top Turnip Exchange island listing, and recent Nookazon marketplace listings.
 - All data loads asynchronously with appropriate loading states.
 - Existing features (catalog, turnips, villagers, collection) remain fully functional.
-- Reused UI components (turnip cells, listing rows, item images) render correctly when embedded in the new dashboard context.
 
 ### Acceptance Criteria
 
@@ -22,6 +17,16 @@ The **ACHNBrowserUI** app has no centralized overview of the player's progress. 
 2. Critter counts and collection progress render correctly from existing data models and services.
 3. Turnip island and marketplace listings populate using existing services.
 4. The app builds and runs without regressions.
+
+### Required API Surface
+
+The implementation must expose these names (tests depend on them to compile):
+
+- `DashboardViewModel` — ObservableObject; `recentListings`, `island`, `fishes`, `bugs`, `fossils`, `fetchListings()`, `fetchIsland()`, `fetchCritters()`
+- `TabbarView.Tab.dashboard`
+- `Categories.fish()`, `Categories.bugs()`
+- `Listing.name`, `Listing.img`
+- `NookazonService.recentListings()`
 
 ### Xcode Project Note
 

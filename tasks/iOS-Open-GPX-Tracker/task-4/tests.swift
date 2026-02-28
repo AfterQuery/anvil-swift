@@ -37,6 +37,20 @@ final class AnvilTask4F2PTests: XCTestCase {
                                     "Multiple subviews should use Auto Layout after addConstraints(_:)")
     }
 
+    func testAddConstraintsAddsSubstantialLayout() {
+        let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
+        guard let vc = storyboard.instantiateInitialViewController() as? ViewController else {
+            XCTFail("Could not load ViewController from storyboard")
+            return
+        }
+        vc.loadViewIfNeeded()
+        let before = countActiveConstraints(in: vc.view)
+        vc.addConstraints(false)
+        let after = countActiveConstraints(in: vc.view)
+        XCTAssertGreaterThanOrEqual(after - before, 5,
+                                    "addConstraints(_:) must add enough constraints for proper layout (buttons, compass, labels)")
+    }
+
     // MARK: - Helpers
 
     private func countActiveConstraints(in view: UIView) -> Int {

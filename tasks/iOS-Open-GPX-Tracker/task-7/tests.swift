@@ -75,4 +75,24 @@ final class AnvilTask7F2PTests: XCTestCase {
     func testToastHideLoadingDoesNotCrashWhenNothingShown() {
         Toast.hideLoading()
     }
+
+    // MARK: - keepScreenAlwaysOn wires to idle timer
+
+    func testKeepScreenAlwaysOnDisablesIdleTimerWhenViewControllerLoads() {
+        let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
+        guard let vc = storyboard.instantiateInitialViewController() as? ViewController else {
+            XCTFail("Could not load ViewController from storyboard")
+            return
+        }
+        let prefs = Preferences.shared
+        let original = prefs.keepScreenAlwaysOn
+        prefs.keepScreenAlwaysOn = true
+        vc.loadViewIfNeeded()
+        XCTAssertTrue(UIApplication.shared.isIdleTimerDisabled,
+                      "When keepScreenAlwaysOn is true, isIdleTimerDisabled must be set so screen stays on")
+        prefs.keepScreenAlwaysOn = original
+        if !original {
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
+    }
 }

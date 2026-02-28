@@ -4,111 +4,54 @@ import UIKit
 
 final class AnvilTask2F2PTests: XCTestCase {
 
-    // MARK: - UIAlertViewDelegate conformance removed
+    // MARK: - Localization keys return translated strings (not raw keys)
 
-    func testMapViewDelegateDoesNotConformToUIAlertViewDelegate() {
-        guard let proto = NSProtocolFromString("UIAlertViewDelegate") else { return }
-        XCTAssertFalse(MapViewDelegate.conforms(to: proto),
-                       "MapViewDelegate should no longer declare UIAlertViewDelegate conformance")
+    func testStartTrackingKeyReturnsTranslatedString() {
+        let value = NSLocalizedString("START_TRACKING", comment: "")
+        XCTAssertEqual(value, "Start Tracking",
+                       "START_TRACKING must be localized; raw key indicates missing Localizable.strings")
     }
 
-    func testViewControllerDoesNotConformToUIAlertViewDelegate() {
-        guard let proto = NSProtocolFromString("UIAlertViewDelegate") else { return }
-        XCTAssertFalse(ViewController.conforms(to: proto),
-                       "ViewController should no longer declare UIAlertViewDelegate conformance")
+    func testNoFilesKeyReturnsTranslatedString() {
+        let value = NSLocalizedString("NO_FILES", comment: "")
+        XCTAssertEqual(value, "No gpx files",
+                       "NO_FILES must be localized; raw key indicates missing Localizable.strings")
     }
 
-    // MARK: - UIAlertViewDelegate callback methods removed
-
-    func testMapViewDelegateNoLongerImplementsAlertViewCallback() {
-        let sel = NSSelectorFromString("alertView:clickedButtonAtIndex:")
-        XCTAssertFalse(MapViewDelegate.instancesRespond(to: sel),
-                       "MapViewDelegate should not implement UIAlertViewDelegate methods after migration")
+    func testNoLocationKeyReturnsTranslatedString() {
+        let value = NSLocalizedString("NO_LOCATION", comment: "")
+        XCTAssertEqual(value, "Not getting location",
+                       "NO_LOCATION must be localized; raw key indicates missing Localizable.strings")
     }
 
-    func testViewControllerNoLongerImplementsAlertViewCallback() {
-        let sel = NSSelectorFromString("alertView:clickedButtonAtIndex:")
-        XCTAssertFalse(ViewController.instancesRespond(to: sel),
-                       "ViewController should not implement UIAlertViewDelegate methods after migration")
+    // MARK: - Shared constants use localization system
+
+    func testKNoFilesUsesLocalization() {
+        XCTAssertEqual(kNoFiles, NSLocalizedString("NO_FILES", comment: ""),
+                       "kNoFiles must use NSLocalizedString for translation support")
     }
 
-    // MARK: - Alert presentation methods still functional after migration
+    func testKNotGettingLocationTextUsesLocalization() {
+        XCTAssertEqual(kNotGettingLocationText, NSLocalizedString("NO_LOCATION", comment: ""),
+                       "kNotGettingLocationText must use NSLocalizedString for translation support")
+    }
 
-    func testViewControllerLoadsAfterMigration() {
-        let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
-        guard let vc = storyboard.instantiateInitialViewController() as? ViewController else {
-            XCTFail("ViewController should still load from storyboard after migration")
+    // MARK: - Additional language support
+
+    func testGermanLocalizationExists() {
+        let path = Bundle.main.path(forResource: "Localizable", ofType: "strings", inDirectory: "de.lproj")
+        XCTAssertNotNil(path,
+                        "de.lproj/Localizable.strings must exist for German localization")
+    }
+
+    func testGermanLocalizationContainsTranslations() {
+        guard let dePath = Bundle.main.path(forResource: "Localizable", ofType: "strings", inDirectory: "de.lproj"),
+              let deStrings = NSDictionary(contentsOfFile: dePath) as? [String: String],
+              let deStartTracking = deStrings["START_TRACKING"] else {
+            XCTFail("German Localizable.strings must exist and contain START_TRACKING")
             return
         }
-        vc.loadViewIfNeeded()
-        XCTAssertNotNil(vc.view, "ViewController view should load without UIAlertViewDelegate")
-    }
-
-    func testMapViewDelegateCanBeInstantiated() {
-        let delegate = MapViewDelegate()
-        XCTAssertNotNil(delegate)
-    }
-
-    func testMapViewDelegateStillHandlesCalloutAccessory() {
-        let sel = NSSelectorFromString("mapView:annotationView:calloutAccessoryControlTapped:")
-        XCTAssertTrue(MapViewDelegate.instancesRespond(to: sel),
-                      "MapViewDelegate should still handle callout accessory taps after migration")
-    }
-
-    // MARK: - Alert-presenting methods survive migration
-
-    func testViewControllerStillHasLocationDisabledAlert() {
-        let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
-        guard let vc = storyboard.instantiateInitialViewController() as? ViewController else {
-            XCTFail("ViewController should still load from storyboard")
-            return
-        }
-        vc.loadViewIfNeeded()
-        let _: () -> Void = vc.displayLocationServicesDisabledAlert
-    }
-
-    func testViewControllerDoesNotConformToUIAlertViewDelegateViaExtension() {
-        let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
-        guard let vc = storyboard.instantiateInitialViewController() as? ViewController else {
-            XCTFail("ViewController should still load from storyboard")
-            return
-        }
-        vc.loadViewIfNeeded()
-        let clickedSel = NSSelectorFromString("alertView:clickedButtonAtIndex:")
-        let willDismissSel = NSSelectorFromString("alertView:willDismissWithButtonIndex:")
-        XCTAssertFalse(vc.responds(to: clickedSel),
-                       "ViewController must not implement alertView:clickedButtonAtIndex: after migration")
-        XCTAssertFalse(vc.responds(to: willDismissSel),
-                       "ViewController must not implement alertView:willDismissWithButtonIndex: after migration")
-    }
-
-    // MARK: - Old delegate callbacks fully removed
-
-    func testNoUIAlertViewDelegateMethodsOnViewController() {
-        let vcClass: AnyClass = ViewController.self
-        var methodCount: UInt32 = 0
-        if let methods = class_copyMethodList(vcClass, &methodCount) {
-            for i in 0..<Int(methodCount) {
-                let selector = method_getName(methods[i])
-                let name = NSStringFromSelector(selector)
-                XCTAssertFalse(name.contains("alertView"),
-                               "ViewController should not have any alertView delegate methods, found: \(name)")
-            }
-            free(methods)
-        }
-    }
-
-    func testNoUIAlertViewDelegateMethodsOnMapViewDelegate() {
-        let cls: AnyClass = MapViewDelegate.self
-        var methodCount: UInt32 = 0
-        if let methods = class_copyMethodList(cls, &methodCount) {
-            for i in 0..<Int(methodCount) {
-                let selector = method_getName(methods[i])
-                let name = NSStringFromSelector(selector)
-                XCTAssertFalse(name.contains("alertView"),
-                               "MapViewDelegate should not have any alertView delegate methods, found: \(name)")
-            }
-            free(methods)
-        }
+        XCTAssertNotEqual(deStartTracking, "START_TRACKING",
+                          "German file must contain translated value, not raw key")
     }
 }

@@ -9,7 +9,7 @@ Additionally, the app has no lightweight, non-intrusive notification system for 
 ### Expected Behavior
 
 - When the app launches and detects a recoverable session, it automatically loads the session without presenting a dialog.
-- A non-blocking toast notification briefly appears on screen informing the user that the previous session was recovered.
+- A non-blocking toast notification briefly appears informing the user that the previous session was recovered.
 - A reusable toast notification system is available with multiple severity levels and auto-dismissal.
 - The app title bar updates to display the current session filename instead of always showing the default app title.
 - The app title reverts to the default when the session is reset.
@@ -26,9 +26,10 @@ Additionally, the app has no lightweight, non-intrusive notification system for 
 
 The implementation must expose these names (tests depend on them to compile):
 
-- `Toast` — class with static methods `regular(_: String)`, `info(_: String)`, `warning(_: String)`, `success(_: String)`, `error(_: String)`. Each method must add a visible label to the key window.
-- `Toast.Position` — nested enum with cases `.bottom`, `.center`, `.top`.
-- `Toast.kDelayShort`, `Toast.kDelayLong` — static `Double` constants.
-- `ToastLabel` — `UILabel` subclass with convenience initializer `init(text: String)`. Must have centered text alignment and rounded corners.
-- `kAppTitle` — string constant.
-- `CoreDataAlertView` must be **deleted** — the blocking recovery dialog is replaced by automatic loading with a toast notification.
+- `Toast` — `regular(_:)`, `info(_:)`, `warning(_:)`, `success(_:)`, `error(_:)`
+- `Toast.Position` — `.bottom`, `.center`, `.top`
+- `Toast.kDelayShort`, `Toast.kDelayLong`
+- `ToastLabel(text:)`
+- `kAppTitle`
+- `ViewController.lastGpxFilename`, `ViewController.appTitleLabel`
+- `CoreDataAlertView` must be **deleted**

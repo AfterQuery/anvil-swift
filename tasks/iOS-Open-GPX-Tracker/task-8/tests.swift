@@ -85,4 +85,19 @@ final class AnvilTask8F2PTests: XCTestCase {
         XCTAssertNil(alertViewClass,
                      "CoreDataAlertView should be removed — recovery must be automatic, not dialog-based")
     }
+
+    // MARK: - Session title reflects filename
+
+    func testViewControllerAppTitleLabelReflectsSessionFilename() {
+        let storyboard = UIStoryboard(name: "Main", bundle: Bundle(for: ViewController.self))
+        guard let vc = storyboard.instantiateInitialViewController() as? ViewController else {
+            XCTFail("Could not load ViewController from storyboard")
+            return
+        }
+        vc.loadViewIfNeeded()
+        let sessionName = "recovered-session"
+        vc.lastGpxFilename = sessionName
+        XCTAssertTrue(vc.appTitleLabel.text?.contains(sessionName) == true,
+                      "App title label must reflect current session filename when lastGpxFilename is set")
+    }
 }

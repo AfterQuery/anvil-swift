@@ -6,22 +6,19 @@ In the **iOS-Open-GPX-Tracker** app, there is a bug regarding how the UI handles
 
 ### Observed Behavior
 
-- **Button Bar Overlap**: When transitioning between portrait and landscape on iPad, the bottom button bar (containing "Start Tracking," "Save," and "Reset") fails to recalculate its spacing, resulting in buttons overlapping or becoming too compressed to use.
-- **Compass Misalignment**: The compass view moves out of its designated position upon rotation, sometimes disappearing or floating at incorrect coordinates.
-- **Label Truncation**: Status labels (such as the time and coordinate labels at the top) may truncate or have incorrect padding from the edges when the width changes.
-- **Static Layout**: The current implementation relies on manual frame calculations and device-specific checks (like `IsIPhoneX`) that don't account for the dynamic size classes of various iPad models.
+- **Button Bar Overlap**: When transitioning between portrait and landscape on iPad, the bottom button bar fails to recalculate its spacing, resulting in buttons overlapping or becoming too compressed.
+- **Compass Misalignment**: The compass view moves out of its designated position upon rotation.
+- **Label Truncation**: Status labels may truncate or have incorrect padding when the width changes.
 
 ### Acceptance Criteria
 
-1. UI elements must adapt dynamically to size changes instead of relying on manual frame calculations.
-2. Buttons must not use hardcoded frame or center assignments — their positions must be defined relative to the view.
-3. Status labels must not use hardcoded frame assignments — they must remain anchored to their relative positions as the view resizes.
-4. The view controller must respond to orientation transitions and update the layout accordingly, without requiring arbitrary delays.
-5. The compass must reposition correctly when the orientation changes, remaining in its designated location.
-6. The layout must work correctly across different screen sizes (including iPad Pro models and iPhone X+) without device-specific conditionals.
+1. UI elements must adapt dynamically to size and orientation changes.
+2. Buttons, labels, and the compass must maintain correct positions and spacing across orientation transitions.
+3. The layout must work correctly across different screen sizes (iPad Pro, iPhone X+, etc.).
+4. The view controller must update layout when orientation changes.
 
 ### Required API Surface
 
-The implementation must expose this specific name (tests depend on it):
+The implementation must expose this name (tests depend on it to compile):
 
-- `ViewController.addConstraints(_ isIPhoneX: Bool)` — method on `ViewController` that accepts a `Bool` parameter and sets up Auto Layout constraints. The method must actually add constraints (increasing the total constraint count) and disable `translatesAutoresizingMaskIntoConstraints` on multiple subviews.
+- `ViewController.addConstraints(_ isIPhoneX: Bool)`

@@ -15,3 +15,12 @@ This makes it difficult to track per-variant collection progress.
 5. Liking the first variant of an item must automatically add the parent item to the collection. Unliking the last variant must automatically remove it.
 6. The icon state must update immediately when variants are toggled.
 7. Items with zero or one variant must retain the existing binary like behavior and not show partial states.
+
+### Required API Surface
+
+The implementation must expose these names (tests depend on them to compile):
+
+- `Item.hasSomeVariations`
+- `VariantsCompletionStatus` — `.unstarted`, `.partial`, `.complete`
+- `[String: [Variant]].completionStatus(for:)`
+- `UserCollection.toggleVariant(item:variant:) -> Bool`

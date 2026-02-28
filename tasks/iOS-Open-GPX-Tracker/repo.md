@@ -4,28 +4,24 @@ Mobile GPS Logger: https://github.com/merlos/iOS-Open-GPX-Tracker
 
 1. Fix Scale Bar Color: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/296
 
-- Type: Bug Fix
 - Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/296.diff -o solution.diff
 - Patch Commit: 972b742
 - Base Commit: 3d3ae151d854187f5e0090dc08faf4246473df7d
 
-2. Migrate to UIAlertController: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/86
+2. Add localization support: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/118
 
-- Type: Refactor
-- Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/86.diff -o solution.diff
-- Patch Commit: 7072e70
-- Base Commit: 19f7c55db93c8526649b783c7bd8a3e480bf5628
+- Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/118.diff -o solution.diff
+- Patch Commit: ac0e67a
+- Base Commit: 9ca33065e6a0d56f4a5db17ae20e9d143aa86e2f
 
 3. Add Scale View on Map: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/285
 
-- Type: Feature
 - Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/285.diff -o solution.diff
 - Patch Commit: 93e20d4
 - Base Commit: 72c1e361d4ab27c71e46d1384dcaa29dea667f3c
 
 4. Fix Width Height IPad Orientation: https://github.com/merlos/iOS-Open-GPX-Tracker/pull/111
 
-- Type: Fix
 - Patch: curl -L https://github.com/merlos/iOS-Open-GPX-Tracker/pull/111.diff -o solution.diff
 - Patch Commit: 1d3f1b7
 - Base Commit: fa320f1cc5cfe1e58ac538c22e5165a08dc34b8a
@@ -82,11 +78,11 @@ Mobile GPS Logger: https://github.com/merlos/iOS-Open-GPX-Tracker
 ```bash
 source .venv/bin/activate
 
-# Step 1: (Run only once) Warm Xcode build cache (~5 min per unique base commit)
-anvil warm-xcode-cache --dataset datasets/iOS-Open-GPX-Tracker
-
-# Step 2: Convert dataset (reads tasks/, writes to datasets/)
+# Step 1: Convert dataset (reads tasks/, writes to datasets/)
 anvil convert-dataset --dataset tasks/iOS-Open-GPX-Tracker
+
+# Step 2: (Run only once) Warm Xcode build cache (~5 min per unique base commit)
+anvil warm-xcode-cache --dataset datasets/iOS-Open-GPX-Tracker
 
 # Step 3: Validate task tests fail on unpatched base commits
 anvil validate-tests --dataset datasets/iOS-Open-GPX-Tracker
@@ -111,6 +107,4 @@ anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent -
 anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/qwen/qwen3-coder-next --n-attempts 4 --no-continue
 
 anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --n-attempts 4 --no-continue
-
-anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/meta-llama/llama-4-maverick --n-attempts 4 --no-continue
 ```

@@ -6,23 +6,21 @@ In the **iOS-Open-GPX-Tracker** app, when a user receives a GPX file via AirDrop
 
 ### Expected Behavior
 
-- When a GPX file is received via AirDrop (URL import), the file list table view automatically reloads to show the new file.
-- When a GPX file is received from the Apple Watch, the file list table view automatically reloads and an alert notifies the user of the received file.
+- When a GPX file is received via AirDrop or from the Apple Watch, the file list table view automatically reloads to show the new file.
+- The user is notified when a file is received from Apple Watch.
 - File transfers from the Apple Watch work regardless of which view is active.
-- The main view controller no longer manages WCSession directly.
 
 ### Acceptance Criteria
 
 1. The file list updates immediately when a file arrives via AirDrop or Apple Watch transfer.
-2. WCSession delegation is moved out of the ViewController.
-3. The user is notified when a file is received from Apple Watch.
-4. The app builds and runs without regressions.
+2. The user is notified when a file is received from Apple Watch.
+3. The app builds and runs without regressions.
 
 ### Required API Surface
 
 The implementation must expose these names (tests depend on them to compile):
 
-- `Notification.Name.didReceiveFileFromURL` — static extension on `Notification.Name`.
-- `Notification.Name.didReceiveFileFromAppleWatch` — static extension on `Notification.Name`.
-- `GPXFilesTableViewController.reloadTableData()` — instance method (must be `@objc`) to refresh the file list table. The controller must observe both notification names and call this method when they fire.
-- `AppDelegate` must conform to `WCSessionDelegate` and implement `session(_:didReceive:)` for Apple Watch file transfers.
+- `Notification.Name.didReceiveFileFromURL`
+- `Notification.Name.didReceiveFileFromAppleWatch`
+- `GPXFilesTableViewController.reloadTableData()`
+- `AppDelegate` — must conform to `WCSessionDelegate`

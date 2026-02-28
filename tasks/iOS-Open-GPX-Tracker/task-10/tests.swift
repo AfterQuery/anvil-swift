@@ -46,4 +46,34 @@ final class AnvilTask10F2PTests: XCTestCase {
         XCTAssertTrue(vc is UIDocumentPickerDelegate,
                       "PreferencesTableViewController should conform to UIDocumentPickerDelegate")
     }
+
+    func testGPXFilesFolderURLPersistsWhenSet() {
+        let prefs = Preferences.shared
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        prefs.gpxFilesFolderURL = tempDir
+        XCTAssertEqual(prefs.gpxFilesFolderURL?.path, tempDir.path,
+                       "gpxFilesFolderURL must persist when set (for custom output folder)")
+        prefs.gpxFilesFolderURL = nil
+    }
+
+    func testGPXFileManagerUsesCustomFolderWhenSet() {
+        let prefs = Preferences.shared
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        defer { prefs.gpxFilesFolderURL = nil }
+
+        prefs.gpxFilesFolderURL = tempDir
+        XCTAssertEqual(GPXFileManager.GPXFilesFolderURL.path, tempDir.path,
+                       "GPXFileManager must use custom folder for saves when gpxFilesFolderURL is set")
+    }
+
+    func testDocumentPickerDelegateMethodExistsForFolderSelection() {
+        let sel = NSSelectorFromString("documentPicker:didPickDocumentsAtURLs:")
+        XCTAssertTrue(PreferencesTableViewController.instancesRespond(to: sel),
+                      "Must implement documentPicker:didPickDocumentsAtURLs: to handle folder selection")
+    }
 }

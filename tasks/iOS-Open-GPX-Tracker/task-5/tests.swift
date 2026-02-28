@@ -22,11 +22,27 @@ final class AnvilTask5F2PTests: XCTestCase {
                           "Malformed input should not produce the same formatted date as valid input")
     }
 
-    func testDefaultDateFormatGetDateReturnsNonEmpty() {
+    func testInvalidFormatDoesNotCrash() {
+        let formatter = DefaultDateFormat()
+        let invalidFormats = ["{dd}-{MMM", "{{broken", "}", "invalid{dd", ""]
+        for invalid in invalidFormats {
+            let processed = formatter.getDateFormat(unprocessed: invalid)
+            _ = formatter.getDate(processedFormat: processed)
+            // Must not crash; if we get here, the test passes
+        }
+    }
+
+    func testDefaultDateFormatProducesRecognizableDateStructure() {
         let formatter = DefaultDateFormat()
         let processed = formatter.getDateFormat(unprocessed: "{dd}-{MMM}-{yyyy}")
         let date = formatter.getDate(processedFormat: processed)
         XCTAssertFalse(date.isEmpty, "Formatted date should not be empty")
+        // Output should look like "25-Feb-2025" — digits, separator, letters, separator, digits
+        let components = date.split(separator: "-")
+        XCTAssertEqual(components.count, 3,
+                       "dd-MMM-yyyy format should produce 3 hyphen-separated components")
+        XCTAssertTrue(components[0].allSatisfy(\.isNumber), "Day component should be numeric")
+        XCTAssertTrue(components[2].allSatisfy(\.isNumber), "Year component should be numeric")
     }
 
     // MARK: - DateField struct
@@ -35,6 +51,12 @@ final class AnvilTask5F2PTests: XCTestCase {
         let field = DateField(type: "Year", patterns: ["YY", "YYYY"], subtitles: nil)
         XCTAssertEqual(field.type, "Year")
         XCTAssertEqual(field.patterns.count, 2)
+    }
+
+    func testDateFieldSubtitlesDictionary() {
+        let field = DateField(type: "Month", patterns: ["M", "MM"], subtitles: ["M": "Single", "MM": "Padded"])
+        XCTAssertEqual(field.subtitles?["M"], "Single")
+        XCTAssertEqual(field.subtitles?["MM"], "Padded")
     }
 
     // MARK: - String extension
@@ -64,5 +86,13 @@ final class AnvilTask5F2PTests: XCTestCase {
     func testDefaultNameSetupViewControllerExists() {
         let vc = DefaultNameSetupViewController(style: .grouped)
         XCTAssertNotNil(vc)
+    }
+
+    func testDefaultNameSetupViewControllerHasDateFormatSetupContent() {
+        let vc = DefaultNameSetupViewController(style: .grouped)
+        vc.loadViewIfNeeded()
+        let sections = vc.numberOfSections(in: vc.tableView)
+        XCTAssertGreaterThanOrEqual(sections, 1,
+                                   "DefaultNameSetupViewController should have at least one section for date format setup")
     }
 }

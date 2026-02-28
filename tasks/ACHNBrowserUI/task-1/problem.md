@@ -14,3 +14,11 @@ This makes it difficult to quickly plan a catching session.
 4. Both fish and bugs should be handled consistently.
 5. French localization strings must be provided for the new section titles.
 6. The existing behavior for other sections (e.g., "New this month", "Leaving this month", "Caught") must remain unchanged.
+
+### Required API Surface
+
+The implementation must expose these names (tests depend on them to compile):
+
+- `Item.isActiveAtThisHour()`, `Item.isActiveThisMonth()`, `[Item].filterActiveThisMonth()`
+- `ActiveCrittersViewModel.CritterInfo` — `toCatchNow`, `toCatchLater`
+- French: `"To catch now"`, `"To catch later"` in `fr.lproj/Localizable.strings`

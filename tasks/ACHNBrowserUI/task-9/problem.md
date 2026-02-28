@@ -13,10 +13,10 @@ The **ACHNBrowserUI** project supports multiple languages, but the localization 
 ### Expected Behavior
 
 - Each translation key appears exactly once per language file — no duplicates.
-- All `.strings` files use consistent UTF-8 encoding with no stray control characters.
+- All `.strings` files use consistent encoding with no stray control characters.
 - Syntax errors in `.strings` files are corrected so all translations parse and load.
 - The Traditional Chinese locale uses a valid Apple locale identifier and its translations load correctly at runtime.
-- The Japanese `InfoPlist.strings` is removed (it contained incorrect content from another language).
+- Misattributed locale resources are removed or corrected.
 - Translation keys match the casing used in the application code.
 - The project builds and all localized strings render correctly for supported languages.
 
