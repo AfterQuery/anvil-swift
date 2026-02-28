@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -196,13 +198,7 @@ class XcodeBuildCache:
                 allow_pkg_resolution=True,
             )
             build_timeout = xcode_config.get("build_timeout", _DEFAULT_BUILD_TIMEOUT)
-            result = subprocess.run(
-                build_cmd,
-                cwd=str(work_dir),
-                capture_output=True,
-                text=True,
-                timeout=build_timeout,
-            )
+            result = _run_xcodebuild(build_cmd, str(work_dir), build_timeout)
 
             if result.returncode != 0:
                 summary = _format_build_errors(result.stderr)
@@ -338,13 +334,7 @@ class XcodeBuildCache:
 
         build_timeout = xcode_config.get("build_timeout", _DEFAULT_BUILD_TIMEOUT)
         typer.echo(f"  Warming test DerivedData for {repo_name}@{base_commit[:8]}...")
-        result = subprocess.run(
-            test_cmd,
-            cwd=str(test_cwd),
-            capture_output=True,
-            text=True,
-            timeout=build_timeout,
-        )
+        result = _run_xcodebuild(test_cmd, str(test_cwd), build_timeout)
         dummy_file.unlink(missing_ok=True)
 
         if result.returncode != 0:
@@ -403,13 +393,7 @@ class XcodeBuildCache:
         typer.echo(
             f"  Warming app-test DerivedData for {repo_name}@{base_commit[:8]}..."
         )
-        result = subprocess.run(
-            cmd,
-            cwd=str(cwd),
-            capture_output=True,
-            text=True,
-            timeout=build_timeout,
-        )
+        result = _run_xcodebuild(cmd, str(cwd), build_timeout)
         dummy_file.unlink(missing_ok=True)
 
         if result.returncode != 0:
@@ -1114,6 +1098,33 @@ def _run_cmd(
         check=check,
         **kwargs,
     )
+
+
+def _run_xcodebuild(
+    cmd: list[str],
+    cwd: str,
+    timeout: int,
+) -> subprocess.CompletedProcess:
+    """Run xcodebuild, killing the entire process group on timeout."""
+    logger.debug("Running xcodebuild: %s", " ".join(cmd))
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        stdout, stderr = proc.communicate()
+        raise subprocess.TimeoutExpired(cmd, timeout, output=stdout, stderr=stderr)
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
 
 
 def load_xcode_config(dataset_tasks_dir: Path, dataset_id: str | None = None) -> dict:

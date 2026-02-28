@@ -28,6 +28,7 @@ from .xcode_cache import (
     _build_xcodebuild_app_test_cmd,
     _build_xcodebuild_cmd,
     _build_xcodebuild_test_cmd,
+    _run_xcodebuild,
     inject_app_test_target,
     load_xcode_config,
     resolve_test_package_path,
@@ -492,13 +493,7 @@ def _run_xcodebuild_tests(
         return None
 
     test_cmd, test_cwd = cmd_info
-    test_result = subprocess.run(
-        test_cmd,
-        cwd=str(test_cwd),
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
+    test_result = _run_xcodebuild(test_cmd, str(test_cwd), timeout)
     output = parse_xcodebuild_output(test_result.stdout, test_result.stderr)
     if test_result.returncode != 0 and not output["tests"]:
         output = {
@@ -555,13 +550,7 @@ def _run_app_tests(
     _gate_build_start()
 
     build_cmd = _as_build_for_testing(test_cmd)
-    build_result = subprocess.run(
-        build_cmd,
-        cwd=str(test_cwd),
-        capture_output=True,
-        text=True,
-        timeout=_DEFAULT_XCODEBUILD_TIMEOUT,
-    )
+    build_result = _run_xcodebuild(build_cmd, str(test_cwd), _DEFAULT_XCODEBUILD_TIMEOUT)
 
     if build_result.returncode != 0:
         output = parse_xcodebuild_output(build_result.stdout, build_result.stderr)
@@ -581,13 +570,7 @@ def _run_app_tests(
 
     # Phase 2: test-without-building (fast, no build contention).
     run_cmd = ["test-without-building" if c == "test" else c for c in test_cmd]
-    test_result = subprocess.run(
-        run_cmd,
-        cwd=str(test_cwd),
-        capture_output=True,
-        text=True,
-        timeout=_DEFAULT_XCODEBUILD_TIMEOUT,
-    )
+    test_result = _run_xcodebuild(run_cmd, str(test_cwd), _DEFAULT_XCODEBUILD_TIMEOUT)
 
     output = parse_xcodebuild_output(test_result.stdout, test_result.stderr)
     if test_result.returncode != 0 and not output["tests"]:
@@ -719,12 +702,8 @@ def eval_single_patch(
                 xcode_config, worktree_dir, dd_dir, clean=False,
             )
 
-            build_result = subprocess.run(
-                build_cmd,
-                cwd=str(worktree_dir),
-                capture_output=True,
-                text=True,
-                timeout=_DEFAULT_XCODEBUILD_TIMEOUT,
+            build_result = _run_xcodebuild(
+                build_cmd, str(worktree_dir), _DEFAULT_XCODEBUILD_TIMEOUT
             )
 
             build_output = parse_build_result(
