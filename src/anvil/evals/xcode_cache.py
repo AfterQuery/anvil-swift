@@ -62,7 +62,9 @@ def _remove_worktree(clone_dir: Path, work_dir: Path) -> None:
         shutil.rmtree(work_dir, ignore_errors=True)
 
 
-def _format_build_errors(stderr: str, max_lines: int = 10, fallback_chars: int = 500) -> str:
+def _format_build_errors(
+    stderr: str, max_lines: int = 10, fallback_chars: int = 500
+) -> str:
     """Extract error lines from xcodebuild stderr, with a fallback tail."""
     error_lines = [ln for ln in stderr.splitlines() if "error:" in ln.lower()]
     if error_lines:
@@ -169,14 +171,29 @@ class XcodeBuildCache:
             _remove_worktree(clone_dir, work_dir)
 
         typer.echo(f"  Creating worktree at {base_commit[:8]}...")
-        _run_cmd(["git", "-C", str(clone_dir), "worktree", "add", "--detach", str(work_dir), base_commit])
+        _run_cmd(
+            [
+                "git",
+                "-C",
+                str(clone_dir),
+                "worktree",
+                "add",
+                "--detach",
+                str(work_dir),
+                base_commit,
+            ]
+        )
 
         if not build_cached:
             typer.echo(f"  Building {repo_name} (full clean build)...")
             dd_dir.mkdir(parents=True, exist_ok=True)
 
             build_cmd = _build_xcodebuild_cmd(
-                xcode_config, work_dir, dd_dir, clean=True, allow_pkg_resolution=True,
+                xcode_config,
+                work_dir,
+                dd_dir,
+                clean=True,
+                allow_pkg_resolution=True,
             )
             build_timeout = xcode_config.get("build_timeout", _DEFAULT_BUILD_TIMEOUT)
             result = subprocess.run(
@@ -189,9 +206,14 @@ class XcodeBuildCache:
 
             if result.returncode != 0:
                 summary = _format_build_errors(result.stderr)
-                typer.echo(f"  Build failed for {repo_name}@{base_commit[:8]}:\n{summary}", err=True)
+                typer.echo(
+                    f"  Build failed for {repo_name}@{base_commit[:8]}:\n{summary}",
+                    err=True,
+                )
                 shutil.rmtree(dd_dir, ignore_errors=True)
-                raise RuntimeError(f"xcodebuild failed for {repo_name}@{base_commit[:8]}")
+                raise RuntimeError(
+                    f"xcodebuild failed for {repo_name}@{base_commit[:8]}"
+                )
 
         self._warm_test_dd(xcode_config, work_dir, repo_name, base_commit)
         self._save_package_resolved(xcode_config, work_dir, repo_name, base_commit)
@@ -249,13 +271,19 @@ class XcodeBuildCache:
         shutil.copy2(src, dst)
         logger.info("Restored Package.resolved for %s@%s", repo_name, base_commit[:8])
 
-    def _needs_test_warm(self, xcode_config: dict, repo_name: str, base_commit: str) -> bool:
+    def _needs_test_warm(
+        self, xcode_config: dict, repo_name: str, base_commit: str
+    ) -> bool:
         """Check if any test DerivedData directories need warming."""
         if xcode_config.get("test_scheme"):
-            if not _dd_is_populated(self._test_derived_data_dir(repo_name, base_commit)):
+            if not _dd_is_populated(
+                self._test_derived_data_dir(repo_name, base_commit)
+            ):
                 return True
         if xcode_config.get("app_test_scheme"):
-            if not _dd_is_populated(self._app_test_derived_data_dir(repo_name, base_commit)):
+            if not _dd_is_populated(
+                self._app_test_derived_data_dir(repo_name, base_commit)
+            ):
                 return True
         return False
 
@@ -297,9 +325,7 @@ class XcodeBuildCache:
         dummy_dir = work_dir / resolved_pkg / test_files_dest
         dummy_dir.mkdir(parents=True, exist_ok=True)
         dummy_file = dummy_dir / "_anvil_warmup.swift"
-        dummy_file.write_text(
-            "import XCTest\nclass AnvilWarmupTests: XCTestCase {}\n"
-        )
+        dummy_file.write_text("import XCTest\nclass AnvilWarmupTests: XCTestCase {}\n")
 
         test_dd_dir.mkdir(parents=True, exist_ok=True)
         test_cmd_info = _build_xcodebuild_test_cmd(xcode_config, work_dir, test_dd_dir)
@@ -322,7 +348,9 @@ class XcodeBuildCache:
         dummy_file.unlink(missing_ok=True)
 
         if result.returncode != 0:
-            summary = _format_build_errors(result.stderr, max_lines=5, fallback_chars=300)
+            summary = _format_build_errors(
+                result.stderr, max_lines=5, fallback_chars=300
+            )
             typer.echo(f"  Test warm failed (non-fatal): {summary}", err=True)
             shutil.rmtree(test_dd_dir, ignore_errors=True)
 
@@ -359,7 +387,10 @@ class XcodeBuildCache:
 
         app_test_dd.mkdir(parents=True, exist_ok=True)
         cmd_info = _build_xcodebuild_app_test_cmd(
-            xcode_config, work_dir, app_test_dd, allow_pkg_resolution=True,
+            xcode_config,
+            work_dir,
+            app_test_dd,
+            allow_pkg_resolution=True,
         )
         if not cmd_info:
             dummy_file.unlink(missing_ok=True)
@@ -369,7 +400,9 @@ class XcodeBuildCache:
         cmd = _as_build_for_testing(cmd)
 
         build_timeout = xcode_config.get("build_timeout", _DEFAULT_BUILD_TIMEOUT)
-        typer.echo(f"  Warming app-test DerivedData for {repo_name}@{base_commit[:8]}...")
+        typer.echo(
+            f"  Warming app-test DerivedData for {repo_name}@{base_commit[:8]}..."
+        )
         result = subprocess.run(
             cmd,
             cwd=str(cwd),
@@ -380,7 +413,9 @@ class XcodeBuildCache:
         dummy_file.unlink(missing_ok=True)
 
         if result.returncode != 0:
-            summary = _format_build_errors(result.stderr, max_lines=5, fallback_chars=300)
+            summary = _format_build_errors(
+                result.stderr, max_lines=5, fallback_chars=300
+            )
             typer.echo(f"  App-test warm failed (non-fatal): {summary}", err=True)
             shutil.rmtree(app_test_dd, ignore_errors=True)
 
@@ -404,10 +439,18 @@ class XcodeBuildCache:
         if target_dir.exists():
             self.cleanup(repo_name, target_dir)
 
-        _run_cmd([
-            "git", "-C", str(clone_dir),
-            "worktree", "add", "--detach", str(target_dir), base_commit,
-        ])
+        _run_cmd(
+            [
+                "git",
+                "-C",
+                str(clone_dir),
+                "worktree",
+                "add",
+                "--detach",
+                str(target_dir),
+                base_commit,
+            ]
+        )
 
         _clone_dd_if_populated(
             self._derived_data_dir(repo_name, base_commit),
@@ -440,7 +483,15 @@ class XcodeBuildCache:
         clone_dir = self.repo_clone_dir(repo_name)
         if clone_dir.exists():
             _run_cmd(
-                ["git", "-C", str(clone_dir), "worktree", "remove", "--force", str(target_dir)],
+                [
+                    "git",
+                    "-C",
+                    str(clone_dir),
+                    "worktree",
+                    "remove",
+                    "--force",
+                    str(target_dir),
+                ],
                 check=False,
             )
         if target_dir.exists():
@@ -509,13 +560,18 @@ def _build_xcodebuild_cmd(
     cmd.append("build")
 
     cmd.extend(_resolve_project_args(xcode_config, work_dir))
-    cmd.extend([
-        "-scheme", scheme,
-        "-destination", destination,
-        "-derivedDataPath", str(derived_data_dir),
-        "-quiet",
-        *_XCODEBUILD_NO_SIGN_FLAGS,
-    ])
+    cmd.extend(
+        [
+            "-scheme",
+            scheme,
+            "-destination",
+            destination,
+            "-derivedDataPath",
+            str(derived_data_dir),
+            "-quiet",
+            *_XCODEBUILD_NO_SIGN_FLAGS,
+        ]
+    )
     if not allow_pkg_resolution:
         cmd.append("-disableAutomaticPackageResolution")
 
@@ -572,12 +628,17 @@ def _build_xcodebuild_test_cmd(
         cwd = work_dir
         cmd.extend(_resolve_project_args(xcode_config, work_dir))
 
-    cmd.extend([
-        "-scheme", test_scheme,
-        "-destination", test_destination,
-        "-derivedDataPath", str(derived_data_dir),
-        *_XCODEBUILD_NO_SIGN_FLAGS,
-    ])
+    cmd.extend(
+        [
+            "-scheme",
+            test_scheme,
+            "-destination",
+            test_destination,
+            "-derivedDataPath",
+            str(derived_data_dir),
+            *_XCODEBUILD_NO_SIGN_FLAGS,
+        ]
+    )
     if not allow_pkg_resolution:
         cmd.append("-disableAutomaticPackageResolution")
 
@@ -621,35 +682,53 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
     def _uuid(seed: str) -> str:
         return hashlib.md5(seed.encode()).hexdigest().upper()[:_PBX_UUID_LENGTH]
 
-    uid = {k: _uuid(f"{app_test_target}-{k}") for k in [
-        "group", "info_plist_ref", "placeholder_ref", "placeholder_build",
-        "product_ref", "sources_phase", "resources_phase", "frameworks_phase",
-        "target", "config_debug", "config_release", "config_list",
-        "target_dep", "container_proxy",
-    ]}
+    uid = {
+        k: _uuid(f"{app_test_target}-{k}")
+        for k in [
+            "group",
+            "info_plist_ref",
+            "placeholder_ref",
+            "placeholder_build",
+            "product_ref",
+            "sources_phase",
+            "resources_phase",
+            "frameworks_phase",
+            "target",
+            "config_debug",
+            "config_release",
+            "config_list",
+            "target_dep",
+            "container_proxy",
+        ]
+    }
 
     # Discover the host app target UUID and project object UUID from pbxproj
-    m = re.search(r'(\w{24}) /\* ' + re.escape(xcode_config.get("scheme", "")) + r' \*/ = \{\s*isa = PBXNativeTarget;', pbx)
+    m = re.search(
+        r"(\w{24}) /\* "
+        + re.escape(xcode_config.get("scheme", ""))
+        + r" \*/ = \{\s*isa = PBXNativeTarget;",
+        pbx,
+    )
     if not m:
         logger.warning("Could not find host app target in pbxproj")
         return False
     host_target_uuid = m.group(1)
 
-    m = re.search(r'rootObject = (\w{24})', pbx)
+    m = re.search(r"rootObject = (\w{24})", pbx)
     if not m:
         return False
     project_uuid = m.group(1)
 
     # Find the Products group UUID
-    m = re.search(r'productRefGroup = (\w{24})', pbx)
+    m = re.search(r"productRefGroup = (\w{24})", pbx)
     products_group_uuid = m.group(1) if m else None
 
     # Find the main group UUID
-    m = re.search(r'mainGroup = (\w{24})', pbx)
+    m = re.search(r"mainGroup = (\w{24})", pbx)
     main_group_uuid = m.group(1) if m else None
 
     # Discover the app's PRODUCT_NAME for TEST_HOST
-    m = re.search(r'productReference = \w{24} /\* (.+?)\.app \*/', pbx)
+    m = re.search(r"productReference = \w{24} /\* (.+?)\.app \*/", pbx)
     app_product_name = m.group(1) if m else xcode_config.get("scheme", "")
 
     # 1. PBXBuildFile
@@ -688,9 +767,9 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
     pbx = pbx.replace(
         "/* End PBXFileReference section */",
         f"\t\t{uid['info_plist_ref']} /* Info.plist */ = "
-        f"{{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = \"<group>\"; }};\n"
+        f'{{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; }};\n'
         f"\t\t{uid['placeholder_ref']} /* {app_test_target}Placeholder.swift */ = "
-        f"{{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {app_test_target}Placeholder.swift; sourceTree = \"<group>\"; }};\n"
+        f'{{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {app_test_target}Placeholder.swift; sourceTree = "<group>"; }};\n'
         f"\t\t{uid['product_ref']} /* {app_test_target}.xctest */ = "
         f"{{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = {app_test_target}.xctest; sourceTree = BUILT_PRODUCTS_DIR; }};\n"
         "/* End PBXFileReference section */",
@@ -719,7 +798,7 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
         f"\t\t\t\t{uid['placeholder_ref']} /* {app_test_target}Placeholder.swift */,\n"
         f"\t\t\t);\n"
         f"\t\t\tpath = {group_rel_path};\n"
-        f"\t\t\tsourceTree = \"<group>\";\n\t\t}};\n"
+        f'\t\t\tsourceTree = "<group>";\n\t\t}};\n'
         "/* End PBXGroup section */",
     )
 
@@ -732,12 +811,17 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
         )
         # Add product ref to Products group children (before closing paren)
         products_children_end = re.search(
-            rf'{products_group_uuid} /\* Products \*/ = \{{\s*isa = PBXGroup;\s*children = \((.*?)\);',
-            pbx, re.DOTALL,
+            rf"{products_group_uuid} /\* Products \*/ = \{{\s*isa = PBXGroup;\s*children = \((.*?)\);",
+            pbx,
+            re.DOTALL,
         )
         if products_children_end:
             insert_pos = products_children_end.end(1)
-            pbx = pbx[:insert_pos] + f"\n\t\t\t\t{uid['product_ref']} /* {app_test_target}.xctest */," + pbx[insert_pos:]
+            pbx = (
+                pbx[:insert_pos]
+                + f"\n\t\t\t\t{uid['product_ref']} /* {app_test_target}.xctest */,"
+                + pbx[insert_pos:]
+            )
 
     # 6. PBXNativeTarget
     pbx = pbx.replace(
@@ -757,20 +841,21 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
         f"\t\t\tname = {app_test_target};\n"
         f"\t\t\tproductName = {app_test_target};\n"
         f"\t\t\tproductReference = {uid['product_ref']} /* {app_test_target}.xctest */;\n"
-        f"\t\t\tproductType = \"com.apple.product-type.bundle.unit-test\";\n"
+        f'\t\t\tproductType = "com.apple.product-type.bundle.unit-test";\n'
         f"\t\t}};\n"
         "/* End PBXNativeTarget section */",
     )
 
     # 7. Add to project targets list
     pbx = re.sub(
-        rf'(targets = \([^)]*{re.escape(host_target_uuid)}[^)]*)\);',
+        rf"(targets = \([^)]*{re.escape(host_target_uuid)}[^)]*)\);",
         rf'\1\t\t\t\t{uid["target"]} /* {app_test_target} */,\n\t\t\t);',
-        pbx, count=1,
+        pbx,
+        count=1,
     )
 
     # 8. TargetAttributes
-    m = re.search(r'(TargetAttributes = \{.*?)((\s*\};){2})', pbx, re.DOTALL)
+    m = re.search(r"(TargetAttributes = \{.*?)((\s*\};){2})", pbx, re.DOTALL)
     if m:
         insert_at = m.start(2)
         attr_block = (
@@ -833,32 +918,35 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
 
     dev_team = xcode_config.get("development_team", "")
     if not dev_team:
-        m = re.search(r'DEVELOPMENT_TEAM\s*=\s*(\w+)', pbx)
+        m = re.search(r"DEVELOPMENT_TEAM\s*=\s*(\w+)", pbx)
         dev_team = m.group(1) if m else ""
 
     dev_team_line = f"\t\t\t\tDEVELOPMENT_TEAM = {dev_team};\n" if dev_team else ""
 
-    for cfg_uuid, cfg_name in [(uid['config_debug'], 'Debug'), (uid['config_release'], 'Release')]:
+    for cfg_uuid, cfg_name in [
+        (uid["config_debug"], "Debug"),
+        (uid["config_release"], "Release"),
+    ]:
         pbx = pbx.replace(
             "/* End XCBuildConfiguration section */",
             f"\t\t{cfg_uuid} /* {cfg_name} */ = {{\n"
             f"\t\t\tisa = XCBuildConfiguration;\n"
             f"\t\t\tbuildSettings = {{\n"
-            f"\t\t\t\tBUNDLE_LOADER = \"$(TEST_HOST)\";\n"
+            f'\t\t\t\tBUNDLE_LOADER = "$(TEST_HOST)";\n'
             f"\t\t\t\tCODE_SIGN_STYLE = Automatic;\n"
             f"{dev_team_line}"
             f"\t\t\t\tINFOPLIST_FILE = {app_test_target}/Info.plist;\n"
             f"\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = {iphoneos_target};\n"
             f"\t\t\t\tLD_RUNPATH_SEARCH_PATHS = (\n"
-            f"\t\t\t\t\t\"$(inherited)\",\n"
-            f"\t\t\t\t\t\"@executable_path/Frameworks\",\n"
-            f"\t\t\t\t\t\"@loader_path/Frameworks\",\n"
+            f'\t\t\t\t\t"$(inherited)",\n'
+            f'\t\t\t\t\t"@executable_path/Frameworks",\n'
+            f'\t\t\t\t\t"@loader_path/Frameworks",\n'
             f"\t\t\t\t);\n"
             f"\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = {bundle_id};\n"
-            f"\t\t\t\tPRODUCT_NAME = \"$(TARGET_NAME)\";\n"
+            f'\t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";\n'
             f"\t\t\t\tSWIFT_VERSION = 5.0;\n"
-            f"\t\t\t\tTARGETED_DEVICE_FAMILY = \"1,2\";\n"
-            f"\t\t\t\tTEST_HOST = \"$(BUILT_PRODUCTS_DIR)/{app_product_name}.app/{app_product_name}\";\n"
+            f'\t\t\t\tTARGETED_DEVICE_FAMILY = "1,2";\n'
+            f'\t\t\t\tTEST_HOST = "$(BUILT_PRODUCTS_DIR)/{app_product_name}.app/{app_product_name}";\n'
             f"\t\t\t}};\n"
             f"\t\t\tname = {cfg_name};\n\t\t}};\n"
             "/* End XCBuildConfiguration section */",
@@ -882,19 +970,22 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
 
     # Update scheme to include test target in TestAction
     scheme_dir = work_dir / project_rel / "xcshareddata" / "xcschemes"
-    scheme_name = xcode_config.get("app_test_scheme", xcode_config.get("scheme", "")) + ".xcscheme"
+    scheme_name = (
+        xcode_config.get("app_test_scheme", xcode_config.get("scheme", ""))
+        + ".xcscheme"
+    )
     scheme_path = scheme_dir / scheme_name
     if scheme_path.exists():
         scheme_xml = scheme_path.read_text()
         if app_test_target not in scheme_xml:
             testable_entry = (
                 f"         <TestableReference\n"
-                f"            skipped = \"NO\">\n"
+                f'            skipped = "NO">\n'
                 f"            <BuildableReference\n"
-                f"               BuildableIdentifier = \"primary\"\n"
+                f'               BuildableIdentifier = "primary"\n'
                 f"               BlueprintIdentifier = \"{uid['target']}\"\n"
-                f"               BuildableName = \"{app_test_target}.xctest\"\n"
-                f"               BlueprintName = \"{app_test_target}\"\n"
+                f'               BuildableName = "{app_test_target}.xctest"\n'
+                f'               BlueprintName = "{app_test_target}"\n'
                 f"               ReferencedContainer = \"container:{project_rel.split('/')[-1]}\">\n"
                 f"            </BuildableReference>\n"
                 f"         </TestableReference>\n"
@@ -922,20 +1013,39 @@ def inject_app_test_target(xcode_config: dict, work_dir: Path) -> bool:
             '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
             '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
             '<plist version="1.0">\n<dict>\n'
-            '\t<key>CFBundleDevelopmentRegion</key>\n\t<string>$(DEVELOPMENT_LANGUAGE)</string>\n'
-            '\t<key>CFBundleExecutable</key>\n\t<string>$(EXECUTABLE_NAME)</string>\n'
-            '\t<key>CFBundleIdentifier</key>\n\t<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>\n'
-            '\t<key>CFBundleInfoDictionaryVersion</key>\n\t<string>6.0</string>\n'
-            '\t<key>CFBundleName</key>\n\t<string>$(PRODUCT_NAME)</string>\n'
-            '\t<key>CFBundlePackageType</key>\n\t<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>\n'
-            '\t<key>CFBundleShortVersionString</key>\n\t<string>1.0</string>\n'
-            '\t<key>CFBundleVersion</key>\n\t<string>1</string>\n'
-            '</dict>\n</plist>\n'
+            "\t<key>CFBundleDevelopmentRegion</key>\n\t<string>$(DEVELOPMENT_LANGUAGE)</string>\n"
+            "\t<key>CFBundleExecutable</key>\n\t<string>$(EXECUTABLE_NAME)</string>\n"
+            "\t<key>CFBundleIdentifier</key>\n\t<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>\n"
+            "\t<key>CFBundleInfoDictionaryVersion</key>\n\t<string>6.0</string>\n"
+            "\t<key>CFBundleName</key>\n\t<string>$(PRODUCT_NAME)</string>\n"
+            "\t<key>CFBundlePackageType</key>\n\t<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>\n"
+            "\t<key>CFBundleShortVersionString</key>\n\t<string>1.0</string>\n"
+            "\t<key>CFBundleVersion</key>\n\t<string>1</string>\n"
+            "</dict>\n</plist>\n"
         )
 
     placeholder_path = test_dir / f"{app_test_target}Placeholder.swift"
     if not placeholder_path.exists():
-        module_name = xcode_config.get("app_test_module", xcode_config.get("scheme", ""))
+        # Detect the actual Swift module name from the pbxproj's app product reference
+        # Falls back to app_test_module from config if detection fails.
+        module_name = xcode_config.get(
+            "app_test_module", xcode_config.get("scheme", "")
+        )
+        # Match the app product used by the host target, avoiding TV/watch extensions.
+        host_target_scheme = xcode_config.get(
+            "app_test_scheme", xcode_config.get("scheme", "")
+        )
+        host_m = re.search(
+            rf"productName\s*=\s*{re.escape(host_target_scheme)};.*?"
+            r"productReference\s*=\s*\w+ /\*\s*([^*]+?\.app)\s*\*/",
+            pbx,
+            re.DOTALL,
+        )
+        if host_m:
+            product_name = host_m.group(1).strip()[:-4]  # strip .app
+            detected = product_name.replace(" ", "_").replace("-", "_")
+            if detected:
+                module_name = detected
         placeholder_path.write_text(
             f"import XCTest\n@testable import {module_name}\n\n"
             f"final class {app_test_target}Placeholder: XCTestCase {{\n"
@@ -974,12 +1084,17 @@ def _build_xcodebuild_app_test_cmd(
 
     cmd = ["xcodebuild", "test"]
     cmd.extend(_resolve_project_args(xcode_config, work_dir))
-    cmd.extend([
-        "-scheme", app_test_scheme,
-        "-destination", dest,
-        "-derivedDataPath", str(derived_data_dir),
-        *_XCODEBUILD_ADHOC_SIGN_FLAGS,
-    ])
+    cmd.extend(
+        [
+            "-scheme",
+            app_test_scheme,
+            "-destination",
+            dest,
+            "-derivedDataPath",
+            str(derived_data_dir),
+            *_XCODEBUILD_ADHOC_SIGN_FLAGS,
+        ]
+    )
     if not allow_pkg_resolution:
         cmd.append("-disableAutomaticPackageResolution")
 
@@ -988,7 +1103,9 @@ def _build_xcodebuild_app_test_cmd(
     return cmd, work_dir
 
 
-def _run_cmd(cmd: list[str], check: bool = True, **kwargs) -> subprocess.CompletedProcess:
+def _run_cmd(
+    cmd: list[str], check: bool = True, **kwargs
+) -> subprocess.CompletedProcess:
     logger.debug("Running: %s", " ".join(cmd))
     return subprocess.run(
         cmd,

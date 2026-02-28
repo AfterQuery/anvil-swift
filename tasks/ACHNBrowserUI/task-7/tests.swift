@@ -1,6 +1,6 @@
 import XCTest
 import SwiftUI
-@testable import AC_Helper
+@testable import ACHNBrowserUI
 
 final class AnvilTask7F2PTests: XCTestCase {
 

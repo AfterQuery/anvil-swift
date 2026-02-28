@@ -2,7 +2,6 @@ import XCTest
 import SwiftUI
 import Combine
 @testable import AC_Helper
-import Backend
 
 final class AnvilTask6F2PTests: XCTestCase {
 

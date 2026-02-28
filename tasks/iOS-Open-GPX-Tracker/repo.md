@@ -111,4 +111,6 @@ anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent -
 anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/qwen/qwen3-coder-next --n-attempts 4 --no-continue
 
 anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/deepseek/deepseek-v3.2 --n-attempts 4 --no-continue
+
+anvil run-evals --dataset datasets/iOS-Open-GPX-Tracker --agent mini-swe-agent --model openrouter/meta-llama/llama-4-maverick --n-attempts 4 --no-continue
 ```
