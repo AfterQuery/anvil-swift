@@ -68,10 +68,16 @@ def warm_xcode_cache(
     pruned_repos: set[str] = set()
     for rc in seen:
         commit_dir = cache.commit_cache_dir(rc.repo_name, rc.base_commit)
-        if commit_dir.exists():
-            shutil.rmtree(commit_dir)
-            typer.echo(f"  Deleted cache for {rc.repo_name}@{rc.base_commit[:8]}")
-            pruned_repos.add(rc.repo_name)
+        if not commit_dir.exists():
+            continue
+        # Skip commits that are already fully cached (main build + all test DDs).
+        if cache.is_warm(rc.repo_name, rc.base_commit) and not cache._needs_test_warm(
+            xcode_config, rc.repo_name, rc.base_commit
+        ):
+            continue
+        shutil.rmtree(commit_dir)
+        typer.echo(f"  Deleted incomplete cache for {rc.repo_name}@{rc.base_commit[:8]}")
+        pruned_repos.add(rc.repo_name)
 
     for repo_name in pruned_repos:
         clone_dir = cache.repo_clone_dir(repo_name)
