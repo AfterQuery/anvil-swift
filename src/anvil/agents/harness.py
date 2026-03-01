@@ -88,6 +88,9 @@ def _build_agent_script(
         "\n\n## Important constraints\n"
         "- Do NOT create, modify, or delete any test files or test cases. "
         "The existing test suite will be used to verify your implementation.\n"
+        "\n## Efficiency constraint\n"
+        "Start implementing changes within the first 5-8 steps. "
+        "Keep analysis brief; prefer quick exploration followed by edits.\n"
     )
 
     if "pbxproj" in task.lower() or "xcode project" in task.lower():
@@ -153,6 +156,7 @@ model:
 agent:
   max_steps: 50
   max_thoughts: 100
+  cost_limit: 0
 ANVIL_CFG_EOF""",
         # Redirect stdin from /dev/null so that if mini-swe-agent hits cost/step
         # limits and drops to an interactive prompt (InteractiveAgent catches
