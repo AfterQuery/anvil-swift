@@ -58,12 +58,12 @@ Animal Crossing Helper: https://github.com/Dimillian/ACHNBrowserUI
 - Patch Commit: 4af12fb
 - Base Commit: ceba2fddea5304b2b248e5de72568d3afdfbb97a
 
-9. Localization Cleanup: https://github.com/Dimillian/ACHNBrowserUI/pull/219
+9. Today Villager Visits: https://github.com/Dimillian/ACHNBrowserUI/pull/240
 
-- Type: Fix
-- Patch: curl -L https://github.com/Dimillian/ACHNBrowserUI/pull/219.diff -o solution.diff
-- Patch Commit: a26c0ab
-- Base Commit: 2d57ebf5f23c3676756debf5dfdc481ebdea79e8
+- Type: Feature
+- Patch: curl -L https://github.com/Dimillian/ACHNBrowserUI/pull/240.diff -o solution.diff
+- Patch Commit: 63f81c5
+- Base Commit: 47fa650a090d2fe4e602069169f41057ad551302
 
 10. Add Creator / Custom Design Items: https://github.com/Dimillian/ACHNBrowserUI/pull/189
 
@@ -79,6 +79,14 @@ Animal Crossing Helper: https://github.com/Dimillian/ACHNBrowserUI
 - `Packages/Backend/Tests/BackendTests/ItemsTests.swift` — JSON decoding for ItemResponse
 - `Packages/Backend/Tests/BackendTests/CrittersTests.swift` — critter/fish decoding, active months, categories
 - `Packages/Backend/Tests/BackendTests/CollectionTest.swift` — UserCollection toggle functionality
+
+## Scraping PRs
+
+```bash
+python3 scripts/fetch_merged_prs.py Dimillian/ACHNBrowserUI --scan-limit 20
+
+python3 scripts/fetch_merged_prs.py Dimillian/ACHNBrowserUI --min-changes 200 --max-changes 700 --scan-limit 20
+```
 
 ## Commands
 

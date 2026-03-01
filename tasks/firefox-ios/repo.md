@@ -30,12 +30,12 @@ Firefox for iOS: https://github.com/mozilla-mobile/firefox-ios
 - Patch Commit: 1da9193
 - Base Commit: 30c75403d6b6680f3e4215f44351c7bb226484ec
 
-5. Fix Homepage Appearance Lifecycle Events: https://github.com/mozilla-mobile/firefox-ios/pull/31825
+5. Certificate Modal for Native Error Pages: https://github.com/mozilla-mobile/firefox-ios/pull/31930
 
-- Type: Fix
-- Patch: curl -L https://github.com/mozilla-mobile/firefox-ios/pull/31825.diff -o solution.diff
-- Patch Commit: 8077234
-- Base Commit: 1a4def9884b9f23be656511286e446e7eb978cd1
+- Type: Feature
+- Patch: curl -L https://github.com/mozilla-mobile/firefox-ios/pull/31930.diff -o solution.diff
+- Patch Commit: 3e0a361
+- Base Commit: c093d34a32d72cab7696fef7e8a3144eddfb708d
 
 6. Improve Skeleton Bars Performance: https://github.com/mozilla-mobile/firefox-ios/pull/32102
 
@@ -65,12 +65,12 @@ Firefox for iOS: https://github.com/mozilla-mobile/firefox-ios
 - Patch Commit: 11ab43e
 - Base Commit: 34d4d846810c903d88007c1f1f5e2c4e8563e9bb
 
-10. Fix Animation on Use Saved Cards: https://github.com/mozilla-mobile/firefox-ios/pull/31888
+10. Certificate Modal for Native Error Pages: https://github.com/mozilla-mobile/firefox-ios/pull/31930
 
-- Type: Fix
-- Patch: curl -L https://github.com/mozilla-mobile/firefox-ios/pull/31888.diff -o solution.diff
-- Patch Commit: 77b3f2d
-- Base Commit: 1f59a5f538dc38cbbb3798325ae8778f75621367
+- Type: Feature
+- Patch: curl -L https://github.com/mozilla-mobile/firefox-ios/pull/31930.diff -o solution.diff
+- Patch Commit: 3e0a361
+- Base Commit: c093d34a32d72cab7696fef7e8a3144eddfb708d
 
 ## Existing Unit Tests
 
@@ -83,6 +83,14 @@ Firefox for iOS: https://github.com/mozilla-mobile/firefox-ios
 **Test class convention** — `validate-tests` categorizes by class name:
 - Classes containing `F2P` (e.g. `AnvilTask1F2PTests`) — **fail-to-pass** (must fail on base)
 - All other classes (repo tests, P2P classes, etc.) — **pass-to-pass** (must pass on base)
+
+## Scraping PRs
+
+```bash
+python3 scripts/fetch_merged_prs.py mozilla-mobile/firefox-ios --scan-limit 20
+
+python3 scripts/fetch_merged_prs.py mozilla-mobile/firefox-ios --min-changes 200 --max-changes 700 --scan-limit 20
+```
 
 ## Commands
 

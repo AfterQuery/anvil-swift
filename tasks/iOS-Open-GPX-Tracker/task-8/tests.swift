@@ -6,24 +6,26 @@ final class AnvilTask8F2PTests: XCTestCase {
 
     // MARK: - Toast class
 
-    func testToastClassExists() {
-        Toast.regular("Test message")
-    }
-
-    func testToastInfoExists() {
-        Toast.info("Info message")
-    }
-
-    func testToastWarningExists() {
-        Toast.warning("Warning message")
-    }
-
-    func testToastSuccessExists() {
-        Toast.success("Success message")
-    }
-
-    func testToastErrorExists() {
-        Toast.error("Error message")
+    func testAllToastSeveritiesAddViewToWindow() {
+        let windows = UIApplication.shared.windows
+        guard !windows.isEmpty else {
+            XCTFail("No window available in test environment")
+            return
+        }
+        let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first!
+        let callers: [(String, () -> Void)] = [
+            ("regular", { Toast.regular("Severity test") }),
+            ("info",    { Toast.info("Severity test") }),
+            ("warning", { Toast.warning("Severity test") }),
+            ("success", { Toast.success("Severity test") }),
+            ("error",   { Toast.error("Severity test") }),
+        ]
+        for (name, call) in callers {
+            let before = window.subviews.count
+            call()
+            XCTAssertGreaterThan(window.subviews.count, before,
+                                 "Toast.\(name) must add a visible subview to the window")
+        }
     }
 
     func testToastPositionEnum() {
@@ -36,20 +38,6 @@ final class AnvilTask8F2PTests: XCTestCase {
         XCTAssertGreaterThan(Toast.kDelayShort, 0)
         XCTAssertGreaterThan(Toast.kDelayLong, Toast.kDelayShort,
                              "Long delay should be greater than short delay")
-    }
-
-    // MARK: - Toast actually displays
-
-    func testToastRegularAddsViewToWindow() {
-        guard let window = UIApplication.shared.windows.first else {
-            XCTFail("No window available in test environment")
-            return
-        }
-        let before = window.subviews.count
-        Toast.regular("Visibility test")
-        let after = window.subviews.count
-        XCTAssertGreaterThan(after, before,
-                             "Toast.regular should add a subview to the window")
     }
 
     // MARK: - ToastLabel

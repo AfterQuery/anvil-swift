@@ -70,8 +70,17 @@ Mobile GPS Logger: https://github.com/merlos/iOS-Open-GPX-Tracker
 > Note: The repo's own tests are placeholders. Evaluation uses per-task `tests.swift` files (see below).
 
 **Test class convention** — `validate-tests` categorizes by class name:
+
 - Classes containing `F2P` (e.g. `AnvilTask1F2PTests`) — **fail-to-pass** (must fail on base)
 - All other classes (repo tests, P2P classes, etc.) — **pass-to-pass** (must pass on base)
+
+## Scraping PRs
+
+```bash
+python3 scripts/fetch_merged_prs.py merlos/iOS-Open-GPX-Tracker --scan-limit 20
+
+python3 scripts/fetch_merged_prs.py merlos/iOS-Open-GPX-Tracker --min-changes 200 --max-changes 700 --scan-limit 20
+```
 
 ## Commands
 

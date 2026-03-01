@@ -14,12 +14,30 @@ final class AnvilTask5F2PTests: XCTestCase {
         try await super.tearDown()
     }
 
-    func testDispatchAvailableContentHeightChangedActionIsAccessible() {
-        let bvc = BrowserViewController(
-            profile: MockProfile(),
-            tabManager: MockTabManager(),
+    func testCertificateHelperExists() {
+        // CertificateHelper is a new type added by the patch.
+        // This will fail to compile on the base commit.
+        let url = URL(string: "internal://local/errorpage?cert=test")!
+        _ = CertificateHelper.certificate(from: url)
+    }
+
+    func testNativeErrorPageViewControllerHasViewCertificateHandler() {
+        // didTapViewCertificate() is added by the patch.
+        // This will fail to compile on the base commit.
+        let vc = NativeErrorPageViewController(
+            url: URL(string: "internal://local/errorpage")!,
             windowUUID: .XCTestDefaultUUID
         )
-        bvc.dispatchAvailableContentHeightChangedAction()
+        vc.didTapViewCertificate()
+    }
+
+    func testNativeErrorPageViewControllerHasLearnMoreHandler() {
+        // didTapLearnMore() is added by the patch.
+        // This will fail to compile on the base commit.
+        let vc = NativeErrorPageViewController(
+            url: URL(string: "internal://local/errorpage")!,
+            windowUUID: .XCTestDefaultUUID
+        )
+        vc.didTapLearnMore()
     }
 }

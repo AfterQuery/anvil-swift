@@ -20,5 +20,13 @@ The **iOS-Open-GPX-Tracker** app contains hard-coded user-facing strings through
 
 The implementation must expose these names (tests depend on them to compile):
 
-- `kNoFiles`
-- `kNotGettingLocationText`
+- `kNoFiles` — localized using the key `"NO_FILES"`
+- `kNotGettingLocationText` — localized using the key `"NO_LOCATION"`
+
+### Localization Keys
+
+Use these exact keys in `Localizable.strings` (in both `en.lproj` and at least one additional `.lproj`):
+
+- `NO_FILES` = "No gpx files"
+- `NO_LOCATION` = "Not getting location"
+- `START_TRACKING` = "Start Tracking"

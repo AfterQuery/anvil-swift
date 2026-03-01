@@ -3,146 +3,84 @@ import XCTest
 
 final class AnvilTask9F2PTests: XCTestCase {
 
-    // MARK: - Traditional Chinese locale identifier
+    var collection: UserCollection!
 
-    func testTraditionalChineseLocaleExists() {
-        let path = Bundle.main.path(forResource: "zh-Hant-TW", ofType: "lproj")
-        XCTAssertNotNil(path, "zh-Hant-TW.lproj should exist as a valid locale")
+    override func setUp() {
+        super.setUp()
+        collection = UserCollection()
     }
 
-    func testDeprecatedZHTWLocaleRemoved() {
-        let path = Bundle.main.path(forResource: "ZH_TW", ofType: "lproj")
-        XCTAssertNil(path, "Deprecated ZH_TW.lproj should be removed")
+    // MARK: - TodaySection.SectionName
+
+    func testVillagerVisitsSectionNameExists() {
+        // .villagerVisits is a new case added by the patch.
+        // This will fail to compile on the base commit.
+        let section = TodaySection.SectionName.villagerVisits
+        XCTAssertNotNil(section)
     }
 
-    func testDeprecatedLowercaseZhTwLocaleRemoved() {
-        let path = Bundle.main.path(forResource: "zh_tw", ofType: "lproj")
-        XCTAssertNil(path, "Deprecated zh_tw.lproj should be removed")
-    }
-
-    // MARK: - Key casing fix
-
-    func testGermanWeddingSeasonKeyMatchesAppCode() {
-        guard let dePath = Bundle.main.path(forResource: "de", ofType: "lproj"),
-              let deBundle = Bundle(path: dePath) else {
-            XCTFail("de.lproj should exist")
-            return
-        }
-        let translation = deBundle.localizedString(
-            forKey: "Wedding season",
-            value: "MISSING",
-            table: nil
+    func testVillagerVisitsSectionInDefaults() {
+        let defaults = TodaySection.SectionName.allCases
+        XCTAssertTrue(
+            defaults.contains(.villagerVisits),
+            "villagerVisits must be in the default section list"
         )
-        XCTAssertNotEqual(translation, "MISSING",
-                          "German should have a translation for 'Wedding season' (lowercase s)")
     }
 
-    // MARK: - Japanese InfoPlist.strings removed
+    // MARK: - UserCollection villager visits
 
-    func testJapaneseInfoPlistStringsRemoved() {
-        guard let jaPath = Bundle.main.path(forResource: "ja", ofType: "lproj"),
-              let jaBundle = Bundle(path: jaPath) else {
-            XCTFail("ja.lproj should exist for Localizable.strings")
-            return
-        }
-        let infoPlistPath = jaBundle.path(forResource: "InfoPlist", ofType: "strings")
-        XCTAssertNil(infoPlistPath,
-                     "Japanese InfoPlist.strings should be removed (it contained incorrect German text)")
+    func testUserCollectionHasVillagerVisitsProperty() {
+        // UserCollection.villagerVisits is added by the patch.
+        let visits = collection.villagerVisits
+        XCTAssertTrue(visits.isEmpty, "villagerVisits should start empty")
     }
 
-    func testJapaneseLocalizableStringsStillExists() {
-        guard let jaPath = Bundle.main.path(forResource: "ja", ofType: "lproj"),
-              let jaBundle = Bundle(path: jaPath) else {
-            XCTFail("ja.lproj should exist")
-            return
-        }
-        let localizablePath = jaBundle.path(forResource: "Localizable", ofType: "strings")
-        XCTAssertNotNil(localizablePath,
-                        "Japanese Localizable.strings should still exist")
-    }
-
-    // MARK: - Italian InfoPlist.strings exists in variant group
-
-    func testItalianInfoPlistStringsExists() {
-        guard let itPath = Bundle.main.path(forResource: "it", ofType: "lproj"),
-              let itBundle = Bundle(path: itPath) else {
-            XCTFail("it.lproj should exist")
-            return
-        }
-        let infoPlistPath = itBundle.path(forResource: "InfoPlist", ofType: "strings")
-        XCTAssertNotNil(infoPlistPath,
-                        "Italian InfoPlist.strings should exist")
-    }
-
-    // MARK: - German locale loads correctly after deduplication
-
-    func testGermanLocalizableStringsLoads() {
-        guard let dePath = Bundle.main.path(forResource: "de", ofType: "lproj"),
-              let deBundle = Bundle(path: dePath) else {
-            XCTFail("de.lproj should exist")
-            return
-        }
-        let translation = deBundle.localizedString(forKey: "Settings", value: "MISSING", table: nil)
-        XCTAssertNotEqual(translation, "MISSING",
-                          "German Localizable.strings should parse and load translations after deduplication")
-    }
-
-    func testGermanLabelleSurvivesDuplicateCleanup() {
-        guard let dePath = Bundle.main.path(forResource: "de", ofType: "lproj"),
-              let deBundle = Bundle(path: dePath) else {
-            XCTFail("de.lproj should exist")
-            return
-        }
-        let translation = deBundle.localizedString(forKey: "Labelle", value: "MISSING", table: nil)
-        XCTAssertNotEqual(translation, "MISSING",
-                          "Labelle should still have a German translation after duplicate cleanup")
-    }
-
-    // MARK: - French duplicate keys removed
-
-    func testFrenchNoResultsTranslation() {
-        guard let frPath = Bundle.main.path(forResource: "fr", ofType: "lproj"),
-              let frBundle = Bundle(path: frPath) else {
-            XCTFail("fr.lproj should exist")
-            return
-        }
-        let translation = frBundle.localizedString(
-            forKey: "No results for %@",
-            value: "MISSING",
-            table: nil
+    func testToggleVillagerVisitAddsVillager() {
+        let villager = Villager.example()
+        collection.toggleVillagerVisit(villager: villager)
+        XCTAssertTrue(
+            collection.villagerVisits.contains(where: { $0.id == villager.id }),
+            "Toggling a villager visit should add it to villagerVisits"
         )
-        XCTAssertNotEqual(translation, "MISSING")
-        XCTAssertEqual(translation, "Pas de résultats pour %@",
-                       "French should have exactly one consistent translation for 'No results for %@'")
     }
 
-    func testFrenchSpaceSurvivesDuplicateCleanup() {
-        guard let frPath = Bundle.main.path(forResource: "fr", ofType: "lproj"),
-              let frBundle = Bundle(path: frPath) else {
-            XCTFail("fr.lproj should exist")
-            return
-        }
-        let translation = frBundle.localizedString(forKey: "Space", value: "MISSING", table: nil)
-        XCTAssertNotEqual(translation, "MISSING",
-                          "Space should still have a French translation after duplicate removal")
-        XCTAssertEqual(translation, "Éspace",
-                       "The correct French translation for Space should survive deduplication")
-    }
-
-    // MARK: - Italian locale loads properly
-
-    func testItalianLocalizableStringsLoads() {
-        guard let itPath = Bundle.main.path(forResource: "it", ofType: "lproj"),
-              let itBundle = Bundle(path: itPath) else {
-            XCTFail("it.lproj should exist")
-            return
-        }
-        let translation = itBundle.localizedString(
-            forKey: "Settings",
-            value: "MISSING",
-            table: nil
+    func testToggleVillagerVisitRemovesVillager() {
+        let villager = Villager.example()
+        collection.toggleVillagerVisit(villager: villager)
+        collection.toggleVillagerVisit(villager: villager)
+        XCTAssertFalse(
+            collection.villagerVisits.contains(where: { $0.id == villager.id }),
+            "Toggling a second time should remove the villager"
         )
-        XCTAssertNotEqual(translation, "MISSING",
-                          "Italian Localizable.strings should parse correctly and load translations")
+    }
+
+    func testResetVillagerVisitsClearsAll() {
+        let villager = Villager.example()
+        collection.toggleVillagerVisit(villager: villager)
+        collection.resetVillagerVisits()
+        XCTAssertTrue(
+            collection.villagerVisits.isEmpty,
+            "resetVillagerVisits should clear all visited villagers"
+        )
+    }
+
+    // MARK: - TodayVillagerVisitsSectionViewModel
+
+    func testShouldShowResetButtonFalseWhenNoneVisited() {
+        let vm = TodayVillagerVisitsSectionViewModel()
+        XCTAssertFalse(
+            vm.shouldShowResetButton,
+            "Reset button should be hidden when no villagers have been visited"
+        )
+    }
+
+    func testShouldShowResetButtonTrueWhenSomeVisited() {
+        let villager = Villager.example()
+        collection.toggleVillagerVisit(villager: villager)
+        let vm = TodayVillagerVisitsSectionViewModel()
+        XCTAssertTrue(
+            vm.shouldShowResetButton,
+            "Reset button should appear when at least one villager has been visited"
+        )
     }
 }

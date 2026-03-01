@@ -12,8 +12,7 @@ The dashboard currently tracks only predefined Daily Tasks. Users cannot add the
 4. A chore list view shows current chores, hides the reset button when no chores are finished, and shows an empty-state view when there are no chores.
 5. The dashboard shows a chores section with total and completed chore counts as a progress ratio.
 6. Chores appear in the default dashboard section list.
-7. View models handle all display logic and derived state; views do not directly access user data.
-8. The implementation integrates with existing dashboard/task functionality without altering Daily Tasks or other sections.
+7. The implementation integrates with existing dashboard/task functionality without altering Daily Tasks or other sections.
 
 ### Required API Surface
 

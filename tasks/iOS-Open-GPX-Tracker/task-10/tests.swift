@@ -71,6 +71,23 @@ final class AnvilTask10F2PTests: XCTestCase {
                        "GPXFileManager must use custom folder for saves when gpxFilesFolderURL is set")
     }
 
+    func testGPXFileListAggregatesFromDefaultAndCustomFolders() {
+        let prefs = Preferences.shared
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        defer { prefs.gpxFilesFolderURL = nil }
+
+        let testFile = tempDir.appendingPathComponent("aggregation-test.gpx")
+        try? "<?xml version=\"1.0\"?><gpx></gpx>".write(to: testFile, atomically: true, encoding: .utf8)
+
+        prefs.gpxFilesFolderURL = tempDir
+        let files = GPXFileManager.fileList
+        let hasCustomFile = files.contains { $0.fileURL.path.contains("aggregation-test") }
+        XCTAssertTrue(hasCustomFile,
+                      "File list must include GPX files from custom folder when gpxFilesFolderURL is set")
+    }
+
     func testDocumentPickerDelegateMethodExistsForFolderSelection() {
         let sel = NSSelectorFromString("documentPicker:didPickDocumentsAtURLs:")
         XCTAssertTrue(PreferencesTableViewController.instancesRespond(to: sel),

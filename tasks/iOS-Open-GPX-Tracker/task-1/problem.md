@@ -23,3 +23,4 @@ The implementation must expose these names (tests depend on them to compile):
 - `GPXTileServer.GPXTileServerColorMode` — `.lightMode`, `.system`, `.darkMode`
 - `GPXTileServer.colorMode`
 - `GPXScaleBar.forcedColor`
+- `ViewController.textColorAdaptations()` — applies tile-server-driven colors to labels and scale bar

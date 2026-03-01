@@ -4,13 +4,6 @@
 
 The **ACHNBrowserUI** app has no centralized overview of the player's progress. Users must navigate between multiple tabs to check critter collection status, turnip prices, or marketplace listings. There is no single screen that aggregates this information, and the app opens to the Catalog tab by default.
 
-### Expected Behavior
-
-- A Dashboard screen is accessible from the app's main tab navigation and serves as the default landing view.
-- The dashboard displays active critter counts, collection progress for fish/bugs/fossils, the top Turnip Exchange island listing, and recent Nookazon marketplace listings.
-- All data loads asynchronously with appropriate loading states.
-- Existing features (catalog, turnips, villagers, collection) remain fully functional.
-
 ### Acceptance Criteria
 
 1. A Dashboard view is visible in the main tab navigation as the first and default tab.

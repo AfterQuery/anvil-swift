@@ -84,4 +84,33 @@ final class AnvilTask4F2PTests: XCTestCase {
         XCTAssertEqual(vm.sortedVillagers.first?.localizedName, "Zucker",
                        "Repeating the same sort should reverse to descending")
     }
+
+    // MARK: - AC 7: Search results take priority over sorting
+
+    func testSearchResultsTakePriorityOverSorting() {
+        let vm = VillagersViewModel()
+        vm.villagers = [
+            makeVillager(id: 1, name: "Zucker", species: "Octopus"),
+            makeVillager(id: 2, name: "Apollo", species: "Eagle"),
+            makeVillager(id: 3, name: "Marina", species: "Octopus"),
+        ]
+        vm.sort = .name
+        vm.searchText = "Apollo"
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertTrue(vm.searchResults.contains { $0.localizedName == "Apollo" },
+                      "AC 7: When searching, searchResults must contain matches; search takes priority over sorting")
+    }
+
+    // MARK: - AC 8: French localization for sort strings
+
+    func testFrenchLocalizationForSortStrings() {
+        guard let frPath = Bundle.main.path(forResource: "fr", ofType: "lproj"),
+              let frBundle = Bundle(path: frPath) else {
+            XCTFail("AC 8: French localization bundle (fr.lproj) not found")
+            return
+        }
+        let translation = frBundle.localizedString(forKey: "Sort villagers", value: "MISSING", table: nil)
+        XCTAssertEqual(translation, "Trier les villageois",
+                       "AC 8: French localization for sort strings must exist")
+    }
 }

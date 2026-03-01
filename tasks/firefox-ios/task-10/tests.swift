@@ -1,48 +1,36 @@
 import XCTest
-import UIKit
-@testable import OpenGpxTracker
+@testable import Client
 
+@MainActor
 final class AnvilTask10F2PTests: XCTestCase {
 
-    // MARK: - Preferences: gpxFilesFolderURL
-
-    func testGPXFilesFolderDefaultsKeyExists() {
-        XCTAssertEqual(kDefaultsKeyGPXFilesFolder, "GPXFilesFolder",
-                       "UserDefaults key for GPX files folder should be 'GPXFilesFolder'")
+    override func setUp() async throws {
+        try await super.setUp()
+        DependencyHelperMock().bootstrapDependencies()
     }
 
-    func testGPXFilesFolderURLDefaultsToNil() {
-        let prefs = Preferences.shared
-        UserDefaults.standard.removeObject(forKey: kDefaultsKeyGPXFilesFolder)
-        XCTAssertNil(prefs.gpxFilesFolderURL,
-                     "gpxFilesFolderURL should be nil when no custom folder is set")
+    override func tearDown() async throws {
+        DependencyHelperMock().reset()
+        try await super.tearDown()
     }
 
-    func testGPXFilesFolderURLCanBeSetToNil() {
-        let prefs = Preferences.shared
-        prefs.gpxFilesFolderURL = nil
-        XCTAssertNil(prefs.gpxFilesFolderURL)
+    func testCertificateHelperExists() {
+        let url = URL(string: "internal://local/errorpage?badcert=test")!
+        _ = CertificateHelper.certificateDataFromErrorURL(url)
     }
 
-    // MARK: - Preferences table section constants
-
-    func testGPXFilesLocationSectionExists() {
-        XCTAssertEqual(kGPXFilesLocationSection, 5,
-                       "GPX files location section should be at index 5")
+    func testCertificateHelperCertificatesFromErrorURL() {
+        let url = URL(string: "internal://local/errorpage?badcert=test")!
+        _ = CertificateHelper.certificatesFromErrorURL(url, logger: DefaultLogger.shared)
     }
 
-    func testSectionCountIncreasedTo6() {
-        let vc = PreferencesTableViewController(style: .grouped)
-        let sections = vc.numberOfSections(in: vc.tableView)
-        XCTAssertEqual(sections, 6,
-                       "Preferences should have 6 sections after adding GPX files location")
-    }
-
-    // MARK: - UIDocumentPickerDelegate conformance
-
-    func testPreferencesConformsToDocumentPickerDelegate() {
-        let vc = PreferencesTableViewController(style: .grouped)
-        XCTAssertTrue(vc is UIDocumentPickerDelegate,
-                      "PreferencesTableViewController should conform to UIDocumentPickerDelegate")
+    func testNativeErrorPageViewControllerAcceptsTabManager() {
+        let overlayManager = MockOverlayModeManager()
+        let tabManager = MockTabManager()
+        let _ = NativeErrorPageViewController(
+            windowUUID: .XCTestDefaultUUID,
+            overlayManager: overlayManager,
+            tabManager: tabManager
+        )
     }
 }

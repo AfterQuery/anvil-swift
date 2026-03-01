@@ -45,6 +45,15 @@ final class AnvilTask5F2PTests: XCTestCase {
         XCTAssertTrue(components[2].allSatisfy(\.isNumber), "Year component should be numeric")
     }
 
+    func testDefaultDateFormatProducesValidFilenameComponent() {
+        let formatter = DefaultDateFormat()
+        let processed = formatter.getDateFormat(unprocessed: "{dd}-{MMM}-{yyyy}")
+        let date = formatter.getDate(processedFormat: processed)
+        let invalidChars = CharacterSet(charactersIn: "/:\\")
+        XCTAssertNil(date.rangeOfCharacter(from: invalidChars),
+                     "Formatted date must be suitable for use in file names (no / : \\)")
+    }
+
     // MARK: - DateField struct
 
     func testDateFieldStructExists() {

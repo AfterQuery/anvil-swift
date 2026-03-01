@@ -36,22 +36,31 @@ final class AnvilTask2F2PTests: XCTestCase {
                        "kNotGettingLocationText must use NSLocalizedString for translation support")
     }
 
-    // MARK: - Additional language support
+    // MARK: - Additional language support (problem: "at least one additional language")
 
-    func testGermanLocalizationExists() {
-        let path = Bundle.main.path(forResource: "Localizable", ofType: "strings", inDirectory: "de.lproj")
-        XCTAssertNotNil(path,
-                        "de.lproj/Localizable.strings must exist for German localization")
+    func testAdditionalLanguageLocalizationExists() {
+        let localizations = Bundle.main.localizations.filter { $0 != "Base" && $0 != "en" }
+        var found = false
+        for loc in localizations {
+            if Bundle.main.path(forResource: "Localizable", ofType: "strings", inDirectory: "\(loc).lproj") != nil {
+                found = true
+                break
+            }
+        }
+        XCTAssertTrue(found,
+                      "At least one additional language (besides English) must have Localizable.strings")
     }
 
-    func testGermanLocalizationContainsTranslations() {
-        guard let dePath = Bundle.main.path(forResource: "Localizable", ofType: "strings", inDirectory: "de.lproj"),
-              let deStrings = NSDictionary(contentsOfFile: dePath) as? [String: String],
-              let deStartTracking = deStrings["START_TRACKING"] else {
-            XCTFail("German Localizable.strings must exist and contain START_TRACKING")
+    func testAdditionalLanguageContainsTranslations() {
+        let localizations = Bundle.main.localizations.filter { $0 != "Base" && $0 != "en" }
+        for loc in localizations {
+            guard let path = Bundle.main.path(forResource: "Localizable", ofType: "strings", inDirectory: "\(loc).lproj"),
+                  let strings = NSDictionary(contentsOfFile: path) as? [String: String],
+                  let startTracking = strings["START_TRACKING"] else { continue }
+            XCTAssertNotEqual(startTracking, "START_TRACKING",
+                              "\(loc).lproj must contain translated value for START_TRACKING, not raw key")
             return
         }
-        XCTAssertNotEqual(deStartTracking, "START_TRACKING",
-                          "German file must contain translated value, not raw key")
+        XCTFail("No additional language Localizable.strings found with START_TRACKING key")
     }
 }

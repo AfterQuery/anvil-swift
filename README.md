@@ -18,7 +18,9 @@ uv sync
 ```bash
 xcode-select --install
 xcodebuild -downloadPlatform iOS
-xcodebuild -downloadPlatform watchOS   # Required for repos with embedded Watch apps (e.g. iOS-Open-GPX-Tracker)
+
+# Only required for repos with embedded Watch apps (e.g. iOS-Open-GPX-Tracker)
+xcodebuild -downloadPlatform watchOS
 ```
 
 **3. Configure environment**
@@ -129,7 +131,7 @@ Each dataset needs a `xcode_config.yaml` in its source tasks directory (e.g. `ta
 | `--no-continue`        | false                   | Start fresh, ignore previous results                |
 | `--max-parallel`       | 30                      | Concurrent agent runs                               |
 | `--max-wait`           | auto                    | Minutes to wait for Modal rate limits               |
-| `--eval-backend`       | `xcode`                 | `xcode` (local macOS) or `modal` (Docker/Modal)    |
+| `--eval-backend`       | `xcode`                 | `xcode` (local macOS) or `modal` (Docker/Modal)     |
 | `--dockerhub-username` | `REGISTRY_USERNAME` env | Docker Hub username (modal backend)                 |
 | `--dockerhub-repo`     | `anvil-images`          | Docker Hub repo name (modal backend)                |
 
@@ -139,7 +141,7 @@ Anvil includes a task creation wizard to help you build your own evaluation data
 
 ### Quick Start
 
-```bash
+````bash
 # Clone Repo and setup tasks
 git clone https://github.com/sgr-ksmt/PullToDismiss.git
 
@@ -277,6 +279,6 @@ final class AnvilTask1F2PTests: XCTestCase {
 final class AnvilTask1P2PTests: XCTestCase {
     func testExistingBehavior() { ... }
 }
-```
+````
 
 The repo's own pre-existing tests are automatically treated as pass-to-pass. Run `anvil validate-tests` to verify consistency before running model evaluations.

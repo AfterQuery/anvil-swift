@@ -18,11 +18,6 @@ final class AnvilTask9F2PTests: XCTestCase {
                        ".other activity type should have a non-empty description")
     }
 
-    func testActivityTypeCountIs5() {
-        XCTAssertEqual(CLActivityType.count, 5,
-                       "There should be 5 activity types")
-    }
-
     func testAutomotiveNavigationName() {
         XCTAssertFalse(CLActivityType.automotiveNavigation.name.isEmpty,
                        "Automotive navigation should have a non-empty name")

@@ -12,7 +12,7 @@ In the **iOS-Open-GPX-Tracker** app, there is a bug regarding how the UI handles
 
 ### Acceptance Criteria
 
-1. UI elements must adapt dynamically to size and orientation changes.
+1. UI elements must adapt dynamically to size and orientation changes using Auto Layout.
 2. Buttons, labels, and the compass must maintain correct positions and spacing across orientation transitions.
 3. The layout must work correctly across different screen sizes (iPad Pro, iPhone X+, etc.).
 4. The view controller must update layout when orientation changes.

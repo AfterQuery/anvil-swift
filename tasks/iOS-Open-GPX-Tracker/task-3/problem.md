@@ -9,7 +9,7 @@ Additionally, the codebase contains obsolete `#available(iOS 10, *)` version che
 ### Acceptance Criteria
 
 1. A scale indicator must be visible on the map and update automatically as the user zooms in and out.
-2. The indicator must be properly positioned and adapt to layout changes.
+2. The indicator must be properly positioned using Auto Layout and adapt to layout changes.
 3. Obsolete version checks no longer needed for the app's deployment target must be removed.
 4. The user-facing alert behavior must remain the same.
 

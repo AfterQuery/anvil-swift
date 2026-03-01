@@ -1,18 +1,19 @@
-## Bugfix: Unexpected homepage appearance lifecycle events during swipe-to-new-tab gesture
+## Feature: Certificate Modal Support for Native Error Pages
 
 ### Problem Description
 
-In **Firefox iOS**, the homepage is added to the view hierarchy on app launch so that a screenshot can be programmatically captured and used as a preview image when the user swipes to create a new tab. Because the homepage is in the view hierarchy (even when hidden), its lifecycle methods (`viewDidAppear`, etc.) fire unexpectedly, causing:
+In **Firefox iOS**, when a user encounters a TLS/certificate error (e.g., `NET::ERR_CERT_AUTHORITY_INVALID`), the native error page is shown via `NativeErrorPageViewController`. However, the error page currently lacks the ability to:
 
-- Duplicate homepage impression telemetry.
-- Unwanted side-effects from lifecycle callbacks that assume the homepage is actively visible to the user.
+1. Display certificate details to the user via a modal sheet.
+2. Parse certificate data embedded in the error URL so it can be presented.
+3. Handle the "Learn More" action that opens an informational resource about the certificate error.
 
-This was introduced in the "Swipe Tabs gesture — cache homepage" change (PR #27280).
+The certificate data is embedded in the error URL as query parameters and needs to be extracted and decoded before it can be shown to the user.
 
 ### Acceptance Criteria
 
-1. Launching the app with swiping tabs enabled must not trigger homepage lifecycle events.
-2. The swipe-to-new-tab preview shows a placeholder image (e.g., a Firefox favicon) rather than a live homepage screenshot.
-3. The content container must always clean up previous non-webview content when adding new content, regardless of device or swiping-tabs state.
-4. Any screenshot or homepage-visibility APIs that only existed to support the old caching approach are removed.
-5. Homepage impression telemetry must only fire when the homepage is genuinely presented to the user.
+1. A `CertificateHelper` type must exist that can parse certificate data from a native error page URL.
+2. `NativeErrorPageViewController` must implement a `didTapViewCertificate()` handler that presents the certificate detail modal using the parsed certificate data.
+3. `NativeErrorPageViewController` must implement a `didTapLearnMore()` handler that opens the appropriate support URL.
+4. `ErrorPageHelper` must expose a method/extension for extracting certificate data from an error URL.
+5. All new code paths must have corresponding unit tests.
