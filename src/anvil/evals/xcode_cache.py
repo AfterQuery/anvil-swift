@@ -121,8 +121,15 @@ class XcodeBuildCache:
     def _app_test_derived_data_dir(self, repo_name: str, base_commit: str) -> Path:
         return self.commit_cache_dir(repo_name, base_commit) / "DerivedData-app-tests"
 
+    def _main_build_failed_sentinel(self, repo_name: str, base_commit: str) -> Path:
+        return self.commit_cache_dir(repo_name, base_commit) / ".main_build_failed"
+
     def is_warm(self, repo_name: str, base_commit: str) -> bool:
-        return _dd_is_populated(self._derived_data_dir(repo_name, base_commit))
+        # DerivedData populated, or main build was permanently marked as failing
+        # (so test DDs can still be cached independently).
+        return _dd_is_populated(
+            self._derived_data_dir(repo_name, base_commit)
+        ) or self._main_build_failed_sentinel(repo_name, base_commit).exists()
 
     def ensure_cloned(self, repo_name: str, repo_path: Path) -> None:
         """Clone the repo into the cache and fetch all commits.
@@ -186,7 +193,8 @@ class XcodeBuildCache:
             ]
         )
 
-        if not build_cached:
+        sentinel = self._main_build_failed_sentinel(repo_name, base_commit)
+        if not build_cached and not sentinel.exists():
             typer.echo(f"  Building {repo_name} (full clean build)...")
             dd_dir.mkdir(parents=True, exist_ok=True)
 
@@ -202,14 +210,23 @@ class XcodeBuildCache:
 
             if result.returncode != 0:
                 summary = _format_build_errors(result.stderr)
-                typer.echo(
-                    f"  Build failed for {repo_name}@{base_commit[:8]}:\n{summary}",
-                    err=True,
-                )
                 shutil.rmtree(dd_dir, ignore_errors=True)
-                raise RuntimeError(
-                    f"xcodebuild failed for {repo_name}@{base_commit[:8]}"
+                has_test_schemes = xcode_config.get("test_scheme") or xcode_config.get(
+                    "app_test_scheme"
                 )
+                if has_test_schemes:
+                    # Main build failed but test DDs can still be warmed independently.
+                    # Write a sentinel so we don't retry this failing build next time.
+                    sentinel.touch()
+                    typer.echo(
+                        f"  Main build failed for {repo_name}@{base_commit[:8]}"
+                        f" (will still warm test DDs):\n{summary}",
+                        err=True,
+                    )
+                else:
+                    raise RuntimeError(
+                        f"xcodebuild failed for {repo_name}@{base_commit[:8]}"
+                    )
 
         self._warm_test_dd(xcode_config, work_dir, repo_name, base_commit)
         self._save_package_resolved(xcode_config, work_dir, repo_name, base_commit)
