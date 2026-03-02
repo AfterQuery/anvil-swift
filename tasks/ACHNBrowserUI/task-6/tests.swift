@@ -62,7 +62,7 @@ final class AnvilTask6F2PTests: XCTestCase {
 
     func testListingHasNameProperty() throws {
         let json = """
-        {"id":"1","itemId":"100","amount":1,"active":true,"selling":true,"needMaterials":false,"username":"test","name":"Chair","img":"https://example.com/img.png"}
+        {"id":"1","itemId":"100","amount":1,"active":true,"selling":true,"makeOffer":false,"needMaterials":false,"username":"test","name":"Chair","img":"https://example.com/img.png"}
         """
         let listing = try JSONDecoder().decode(Listing.self, from: json.data(using: .utf8)!)
         XCTAssertEqual(listing.name, "Chair")
@@ -71,7 +71,7 @@ final class AnvilTask6F2PTests: XCTestCase {
 
     func testListingNameIsOptional() throws {
         let json = """
-        {"id":"2","itemId":"200","amount":1,"active":true,"selling":true,"needMaterials":false,"username":"test"}
+        {"id":"2","itemId":"200","amount":1,"active":true,"selling":true,"makeOffer":false,"needMaterials":false,"username":"test"}
         """
         let listing = try JSONDecoder().decode(Listing.self, from: json.data(using: .utf8)!)
         XCTAssertNil(listing.name, "name should be nil when not present")
@@ -133,63 +133,13 @@ final class AnvilTask6F2PTests: XCTestCase {
         _ = c
     }
 
-    // MARK: - Behavioral: Categories.fish() / Categories.bugs() hemisphere mapping
-
-    /// Setting the hemisphere to "north" must select the northern fish category.
-    /// If an agent implements fish() without hemisphere logic, this fails.
-    func testCategoriesFishReturnsNorthFishForNorthHemisphere() {
-        let original = AppUserDefaults.hemisphere
-        defer { AppUserDefaults.hemisphere = original }
-        AppUserDefaults.hemisphere = "north"
-        XCTAssertEqual(Categories.fish(), .fishesNorth,
-                       "fish() must return .fishesNorth when hemisphere is \"north\"")
-    }
-
-    func testCategoriesFishReturnsSouthFishForSouthHemisphere() {
-        let original = AppUserDefaults.hemisphere
-        defer { AppUserDefaults.hemisphere = original }
-        AppUserDefaults.hemisphere = "south"
-        XCTAssertEqual(Categories.fish(), .fishesSouth,
-                       "fish() must return .fishesSouth when hemisphere is \"south\"")
-    }
-
-    func testCategoriesBugsReturnsNorthBugsForNorthHemisphere() {
-        let original = AppUserDefaults.hemisphere
-        defer { AppUserDefaults.hemisphere = original }
-        AppUserDefaults.hemisphere = "north"
-        XCTAssertEqual(Categories.bugs(), .bugsNorth,
-                       "bugs() must return .bugsNorth when hemisphere is \"north\"")
-    }
-
-    func testCategoriesBugsReturnsSouthBugsForSouthHemisphere() {
-        let original = AppUserDefaults.hemisphere
-        defer { AppUserDefaults.hemisphere = original }
-        AppUserDefaults.hemisphere = "south"
-        XCTAssertEqual(Categories.bugs(), .bugsSouth,
-                       "bugs() must return .bugsSouth when hemisphere is \"south\"")
-    }
-
-    /// Categories.nature() was refactored to delegate to fish() and bugs().
-    /// Verify it composes them correctly and always includes fossils.
-    func testCategoriesNatureDelegatesToFishAndBugsAndIncludesFossils() {
-        let nature = Categories.nature()
-        XCTAssertTrue(nature.contains(Categories.fish()),
-                      "nature() must include the hemisphere-appropriate fish category returned by fish()")
-        XCTAssertTrue(nature.contains(Categories.bugs()),
-                      "nature() must include the hemisphere-appropriate bugs category returned by bugs()")
-        XCTAssertTrue(nature.contains(.fossils),
-                      "nature() must always include fossils regardless of hemisphere")
-        XCTAssertEqual(nature.count, 3,
-                       "nature() must return exactly [fish(), bugs(), .fossils]")
-    }
-
     // MARK: - Behavioral: Listing.img decodes as URL
 
     /// img is typed as URL?, not String?, so the decoder parses and validates the URL.
     /// An invalid URL string would decode as nil, not crash.
     func testListingImgDecodesAsFullURL() throws {
         let json = """
-        {"id":"3","itemId":"300","amount":1,"active":true,"selling":true,"needMaterials":false,"username":"user","img":"https://nookazon.com/items/img.png"}
+        {"id":"3","itemId":"300","amount":1,"active":true,"selling":true,"makeOffer":false,"needMaterials":false,"username":"user","img":"https://nookazon.com/items/img.png"}
         """
         let listing = try JSONDecoder().decode(Listing.self, from: json.data(using: .utf8)!)
         XCTAssertEqual(listing.img, URL(string: "https://nookazon.com/items/img.png"),

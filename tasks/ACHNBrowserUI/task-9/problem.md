@@ -8,7 +8,7 @@ Villagers that the user has marked as residents (via the Home button on the vill
 
 ### Acceptance Criteria
 
-1. A new `TodaySection.SectionName.villagerVisits` section type must be added and included in the default section list.
+1. A new `TodaySection.Name.villagerVisits` section type must be added and included in the default section list.
 2. `UserCollection` must track which resident villagers have been visited today, support toggling a villager's visited state, and support resetting all visited states.
 3. A long-press on a villager in the visits section must open the villager detail view so the player can check gift preferences.
 4. The section must hide the reset button when no villagers have been visited yet.
@@ -17,8 +17,7 @@ Villagers that the user has marked as residents (via the Home button on the vill
 
 ### Required API Surface
 
-- `TodaySection.SectionName.villagerVisits`
-- `UserCollection.villagerVisits: [Villager]`
-- `UserCollection.toggleVillagerVisit(villager:)`
-- `UserCollection.resetVillagerVisits()`
-- `TodayVillagerVisitsSectionViewModel` — `villagers`, `shouldShowResetButton`
+- `TodaySection.Name.villagerVisits`
+- `UserCollection.visitedResidents: [Villager]`
+- `UserCollection.toggleVisitedResident(villager:)`
+- `UserCollection.resetVisitedResidents()`

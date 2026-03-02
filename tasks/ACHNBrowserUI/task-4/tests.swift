@@ -96,7 +96,10 @@ final class AnvilTask4F2PTests: XCTestCase {
         ]
         vm.sort = .name
         vm.searchText = "Apollo"
-        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        // Use XCTestExpectation to reliably drain the debounced DispatchQueue.main pipeline
+        let exp = expectation(description: "searchResults populated after debounce")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
+        waitForExpectations(timeout: 2.0)
         XCTAssertTrue(vm.searchResults.contains { $0.localizedName == "Apollo" },
                       "AC 7: When searching, searchResults must contain matches; search takes priority over sorting")
     }
