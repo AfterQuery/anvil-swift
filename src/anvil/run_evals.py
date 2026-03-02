@@ -75,6 +75,14 @@ def run_evals(
             help="Run agent rollouts only, skip evaluation phase",
         ),
     ] = False,
+    task: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--task",
+            "-t",
+            help="Run only this task (instance_id or short name like 'task-7'). Repeatable.",
+        ),
+    ] = None,
 ) -> None:
     """Run evaluation with an agent on a dataset."""
     dockerhub_username, dockerhub_repo = resolve_registry_env(dockerhub_username, dockerhub_repo)
@@ -98,5 +106,6 @@ def run_evals(
         eval_backend=eval_backend,
         compile_only=compile_only,
         rollout_only=rollout_only,
+        task_filter=task,
     )
     raise typer.Exit(rc)

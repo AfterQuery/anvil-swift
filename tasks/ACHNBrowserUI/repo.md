@@ -63,7 +63,7 @@ Animal Crossing Helper: https://github.com/Dimillian/ACHNBrowserUI
 - Type: Feature
 - Patch: curl -L https://github.com/Dimillian/ACHNBrowserUI/pull/240.diff -o solution.diff
 - Patch Commit: 63f81c5
-- Base Commit: 47fa650a090d2fe4e602069169f41057ad551302
+- Base Commit: d01e4353bd393e5fefcdac8910d9adc1d9ce7892
 
 10. Add Creator / Custom Design Items: https://github.com/Dimillian/ACHNBrowserUI/pull/189
 

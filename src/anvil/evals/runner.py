@@ -152,6 +152,7 @@ def run_evaluation(
     eval_backend: str = "xcode",
     compile_only: bool = False,
     rollout_only: bool = False,
+    task_filter: list[str] | None = None,
 ) -> int:
     """Run full evaluation with an agent on a dataset."""
     try:
@@ -205,12 +206,22 @@ def run_evaluation(
     
     base_out = ensure_dir(base_out_path)
     instances = load_instances(dataset_id)
+
+    if task_filter:
+        # Accept full instance IDs or short suffixes (e.g. "task-7" matches "ACHNBrowserUI.task-7")
+        def _matches(iid: str) -> bool:
+            return any(iid == f or iid.endswith(f".{f}") or iid.endswith(f) for f in task_filter)
+        instances = [i for i in instances if _matches(i["instance_id"])]
+        if not instances:
+            typer.echo(f"Error: no instances matched filter: {task_filter}", err=True)
+            return 1
+
     n_tasks = len(instances)
     dataset_tasks_dir = tasks_dir(dataset_id)
 
     typer.echo(f"Running {agent} evaluation on {dataset_id}")
     typer.echo(f"  Model: {model}")
-    typer.echo(f"  Tasks: {n_tasks}")
+    typer.echo(f"  Tasks: {n_tasks}" + (f" (filtered: {[i['instance_id'] for i in instances]})" if task_filter else ""))
     typer.echo(f"  Attempts: {k}")
     typer.echo(f"  Output: {base_out}")
 
