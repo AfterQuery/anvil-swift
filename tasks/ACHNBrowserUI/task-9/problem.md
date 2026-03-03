@@ -9,7 +9,7 @@ Villagers that the user has marked as residents (via the Home button on the vill
 ### Acceptance Criteria
 
 1. A new `TodaySection.Name.villagerVisits` section type must be added and included in the default section list.
-2. `UserCollection` must track which resident villagers have been visited today, support toggling a villager's visited state, and support resetting all visited states.
+2. `UserCollection` must track which resident villagers have been visited today via a `visitedResidents` property, support toggling a villager's visited state, and support resetting all visited states. Note: the section is named "Villager Visits" but the `UserCollection` API uses "resident" terminology — do not name the properties `villagerVisits`, `toggleVillagerVisit`, or `resetVillagerVisits`.
 3. A long-press on a villager in the visits section must open the villager detail view so the player can check gift preferences.
 4. The section must hide the reset button when no villagers have been visited yet.
 5. German localization strings must be provided for the new section title.

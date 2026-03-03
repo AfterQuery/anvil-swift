@@ -16,7 +16,7 @@ The misalignment affects all three display modes: average prices, min/max prices
 
 The implementation must expose these names (tests depend on them to compile):
 
-- `GridStack` — SwiftUI View; `init(rows:columns:spacing:content:)`; `rows`, `columns`, `spacing`, `content(row:col:)`
+- `GridStack` — SwiftUI View; `init(rows:columns:spacing:content:)` where `spacing: CGFloat? = nil` (default is `nil`, not `0`); stored properties `rows: Int`, `columns: Int`, `spacing: CGFloat?`; content closure callable as `content(row, col)`
 
 ### Xcode Project Note
 

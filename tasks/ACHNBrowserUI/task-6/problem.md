@@ -17,7 +17,7 @@ The implementation must expose these names (tests depend on them to compile):
 
 - `DashboardViewModel` — ObservableObject; `recentListings`, `island`, `fishes`, `bugs`, `fossils`, `fetchListings()`, `fetchIsland()`, `fetchCritters()`
 - `TabbarView.Tab.dashboard`
-- `Categories.fish()`, `Categories.bugs()`
+- `Categories.fish() -> Categories`, `Categories.bugs() -> Categories`
 - `Listing.name`, `Listing.img`
 - `NookazonService.recentListings()`
 

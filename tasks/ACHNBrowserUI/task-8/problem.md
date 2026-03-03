@@ -20,7 +20,7 @@ This is confusing because the whole point of entering prices is to refine the fo
 
 The implementation must expose these names (tests depend on them to compile):
 
-- `TurnipsPriceRow` — `isEntered(meridian:) -> Bool`
+- `TurnipsPriceRow` — `isEntered(meridian: TurnipsAveragePriceRow.Meridian) -> Bool`, where `Meridian` is a nested enum with cases `.am` and `.pm`
 - `TurnipsAveragePriceRow` — TurnipsPriceRow; `init(label:prices:minMaxPrices:)`; `label`, `prices`, `minMaxPrices`
 - `TurnipsMinMaxPriceRow` — TurnipsPriceRow; `init(label:prices:averagePrices:)`; `label`, `prices`, `averagePrices`
 - `View.eraseToAnyView()`

@@ -88,15 +88,23 @@ final class AnvilTask4F2PTests: XCTestCase {
     // MARK: - AC 7: Search results take priority over sorting
 
     func testSearchResultsTakePriorityOverSorting() {
-        let vm = VillagersViewModel()
-        vm.villagers = [
+        let testVillagers = [
             makeVillager(id: 1, name: "Zucker", species: "Octopus"),
             makeVillager(id: 2, name: "Apollo", species: "Eagle"),
             makeVillager(id: 3, name: "Marina", species: "Octopus"),
         ]
+        // Pre-populate the static villager cache so the test VM skips the API fetch.
+        // VillagersViewModel.init() calls fetch() only when cachedVillagers is empty;
+        // setting .villagers on a seed VM populates the cache via didSet.
+        let seed = VillagersViewModel()
+        seed.villagers = testVillagers
+
+        // This VM finds a non-empty cache and does NOT call fetch(), so no async
+        // API overwrite can race with our manually-set villagers.
+        let vm = VillagersViewModel()
         vm.sort = .name
         vm.searchText = "Apollo"
-        // Use XCTestExpectation to reliably drain the debounced DispatchQueue.main pipeline
+        // Drain the debounced DispatchQueue.main pipeline
         let exp = expectation(description: "searchResults populated after debounce")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
         waitForExpectations(timeout: 2.0)

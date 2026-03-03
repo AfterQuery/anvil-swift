@@ -25,7 +25,7 @@ The implementation must expose these names (tests depend on them to compile):
 - `Design` — Backend; `title`, `code`, `description`, `hasValidCode`; Identifiable, Equatable
 - `UserCollection.designs`
 - `DesignFormViewModel(design: Design?)`, `design`
-- `DesignRowViewModel(design: Design)`, `category`, `code`
+- `DesignRowViewModel(design: Design)`, `category: String` (returns `"Creator"` for codes with `MA` prefix, `"Item"` for `MO` prefix), `code: String` (formats the raw stored code as `"XX-XXXX-XXXX-XXXX"` by inserting dashes after the 2-char prefix then every 4 characters, e.g. `"MA667931515180"` → `"MA-6679-3151-5180"`)
 - `CollectionMoreDetailViewModel`, `rows`, `Row.critters`, `Row.designs`
 - `Tabs.more`
 - `MessageView(string:)`, `MessageView(collectionName:)`, `MessageView(noResultsFor:)`

@@ -23,7 +23,7 @@ The implementation must expose these names (tests depend on them to compile):
 - `ChoreFormViewModel(chore: Chore?)`, `chore`
 - `ChoreListViewModel` — `chores`, `shouldShowResetButton`, `shouldShowDescriptionView`
 - `TodayChoresSectionViewModel` — `chores`, `totalChoresCount`, `completeChoresCount`
-- `TodaySection.SectionName.chores`
+- `TodaySection.Name.chores`
 
 ### Xcode Project Note
 
