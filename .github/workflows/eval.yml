@@ -42,6 +42,10 @@ on:
 env:
   DATASET_PATH: "datasets/${{ inputs.dataset }}"
   TASKS_PATH: "tasks/${{ inputs.dataset }}"
+  RESULTS_PATH: "gha_runs/${{ inputs.dataset }}"
+
+permissions:
+  contents: write
 
 jobs:
   eval:
@@ -57,6 +61,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
       - name: Free disk space
         run: |
@@ -109,30 +116,14 @@ jobs:
         if: steps.xcode-cache.outputs.cache-hit != 'true'
         run: uv run anvil warm-xcode-cache --dataset "${{ env.DATASET_PATH }}"
 
-      - name: Compute artifact name
-        id: artifact-name
-        run: |
-          # Ensure non-empty artifact name (upload-artifact rejects empty names)
-          MODEL="${{ inputs.model }}"
-          SAFE_MODEL=$(echo "${MODEL:-unknown}" | tr '/' '-')
-          if [ -n "$SAFE_MODEL" ] && [ "$SAFE_MODEL" != "unknown" ]; then
-            NAME="eval-results-${{ inputs.dataset }}-${SAFE_MODEL}-${{ inputs.agent }}"
-          else
-            NAME="eval-results-${{ inputs.dataset }}-${{ inputs.agent }}"
-          fi
-          echo "value=${NAME}" >> $GITHUB_OUTPUT
-
       - name: Restore previous results
-        id: prev-results
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ steps.artifact-name.outputs.value }}
-          path: /tmp/prev-results
-        continue-on-error: true
-
-      - name: Decompress previous results
-        if: steps.prev-results.outcome == 'success'
-        run: tar -xzf /tmp/prev-results/eval-results.tar.gz -C "${{ env.DATASET_PATH }}"
+        run: |
+          if [ -d "${{ env.RESULTS_PATH }}/runs" ]; then
+            echo "Restoring previous results from gha_runs/"
+            cp -r "${{ env.RESULTS_PATH }}/runs" "${{ env.DATASET_PATH }}/"
+          else
+            echo "No previous results found in gha_runs/"
+          fi
 
       - name: Run evaluation
         run: |
@@ -149,15 +140,26 @@ jobs:
             $AGENT_ARGS \
             --n-attempts "${{ inputs.n_attempts }}"
 
-      - name: Compress results
+      - name: Commit results
         if: always()
-        run: tar -czf eval-results.tar.gz -C "${{ env.DATASET_PATH }}" runs/
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Upload results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.artifact-name.outputs.value }}
-          path: eval-results.tar.gz
-          overwrite: true
-          retention-days: 7
+          mkdir -p "${{ env.RESULTS_PATH }}"
+          cp -r "${{ env.DATASET_PATH }}/runs" "${{ env.RESULTS_PATH }}/"
+
+          git add "${{ env.RESULTS_PATH }}"
+          if git diff --cached --quiet; then
+            echo "No new results to commit"
+            exit 0
+          fi
+
+          git commit -m "eval: ${{ inputs.dataset }} / ${{ inputs.model || inputs.agent }} (run #${{ github.run_number }})"
+
+          # Retry push with rebase to handle concurrent runs
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push origin main && break
+            echo "Push attempt $i failed, retrying..."
+            sleep $((i * 5))
+          done
