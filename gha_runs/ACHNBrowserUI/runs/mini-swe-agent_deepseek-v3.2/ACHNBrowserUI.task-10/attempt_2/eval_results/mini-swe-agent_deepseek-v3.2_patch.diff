@@ -1,0 +1,862 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/SceneDelegate.swift b/ACHNBrowserUI/ACHNBrowserUI/SceneDelegate.swift
+index e1d52ff..4f18ceb 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/SceneDelegate.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/SceneDelegate.swift
+@@ -66,8 +66,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+         }
+         
+         if let activity = connectionOptions.userActivities.first {
+-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+-                self.routeUserActivity(userActivity: activity)
+             }
+         }
+         
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
+index 3ecc96d..47e3573 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
+@@ -19,6 +19,7 @@ public class UserCollection: ObservableObject {
+     @Published public var villagers: [Villager] = []
+     @Published public var critters: [Item] = []
+     @Published public var lists: [UserList] = []
++    @Published public var designs: [Design] = []
+     @Published public var dailyTasks = DailyTasks()
+     
+     @Published public var isCloudEnabled = true
+@@ -26,6 +27,7 @@ public class UserCollection: ObservableObject {
+     
+     // MARK: - Private properties
+     private struct SavedData: Codable {
++        let designs: [Design]?
+         let items: [Item]
+         let variants: [String: [Variant]]?
+         let villagers: [Villager]
+@@ -263,6 +265,7 @@ public class UserCollection: ObservableObject {
+             guard let weakself = self else { return }
+             do {
+                 let savedData = SavedData(items: weakself.items,
++                                          designs: weakself.designs,
+                                           variants: weakself.variants,
+                                           villagers: weakself.villagers,
+                                           critters: weakself.critters,
+@@ -294,6 +297,7 @@ public class UserCollection: ObservableObject {
+                 self.villagers = savedData.villagers
+                 self.critters = savedData.critters
+                 self.lists = savedData.lists ?? []
++                self.designs = savedData.designs ?? []/
+                 self.dailyTasks = savedData.dailyTasks ?? DailyTasks()
+                 return true
+             } catch {
+@@ -355,3 +359,25 @@ public class UserCollection: ObservableObject {
+         return success
+     }
+ }
++
++    // MARK: - Designs management
++    public func addDesign(design: Design) {
++        designs.append(design)
++        save()
++    }
++    
++    public func editDesign(design: Design) {
++        let index = designs.firstIndex(where: { $0.id == design.id} )!
++        designs[index] = design
++        save()
++    }
++    
++    public func deleteDesign(at index: Int) {
++        designs.remove(at: index)
++        save()
++    }
++    
++    public func deleteDesign(design: Design) {
++        designs.removeAll(where: { $0.id == design.id })
++        save()
++    }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Design.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Design.swift
+new file mode 100644
+index 0000000..8b7f455
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Design.swift
+@@ -0,0 +1,31 @@
++//
++//  Design.swift
++//  ACHNBrowserUI
++//
++//  Created by System on 2024-03-03.
++//
++
++import Foundation
++
++public struct Design: Codable, Identifiable, Equatable {
++    public let id = UUID()
++    public var title: String = ""
++    public var code: String = ""
++    public var description: String = ""
++    
++    public var hasValidCode: Bool {
++        guard code.count == 12 else { return false }
++        let prefix = String(code.prefix(2)).uppercased()
++        return prefix == "MA" || prefix == "MO"
++    }
++    
++    public init(title: String = "", code: String = "", description: String = "") {
++        self.title = title
++        self.code = code
++        self.description = description
++    }
++    
++    public static func == (lhs: Design, rhs: Design) -> Bool {
++        lhs.id == rhs.id
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/CollectionMoreDetailViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/CollectionMoreDetailViewModel.swift
+new file mode 100644
+index 0000000..dccd647
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/CollectionMoreDetailViewModel.swift
+@@ -0,0 +1,20 @@
++//
++//  CollectionMoreDetailViewModel.swift
++//  ACHNBrowserUI
++//
++//  Created by System on 2024-03-03.
++//
++
++import Foundation
++import Backend
++
++public class CollectionMoreDetailViewModel: ObservableObject {
++    public enum Row: CaseIterable {
++        case critters
++        case designs
++    }
++    
++    @Published public var rows: [Row] = Row.allCases
++    
++    public init() {}
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/DesignFormViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/DesignFormViewModel.swift
+new file mode 100644
+index 0000000..3bce3cc
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/DesignFormViewModel.swift
+@@ -0,0 +1,34 @@
++//
++//  DesignFormViewModel.swift
++//  ACHNBrowserUI
++//
++//  Created by System on 2024-03-03.
++//
++
++import Foundation
++import Combine
++import Backend
++
++public class DesignFormViewModel: ObservableObject {
++    @Published public var design: Design
++    
++    public init(design: Design? = nil) {
++        if let design = design {
++            self.design = design
++        } else {
++            self.design = Design()
++        }
++    }
++    
++    public func save() {
++        if let index = UserCollection.shared.designs.firstIndex(where: { $0.id == design.id }) {
++            UserCollection.shared.editDesign(design: design)
++        } else {
++            UserCollection.shared.addDesign(design: design)
++        }
++    }
++    
++    public func delete() {
++        UserCollection.shared.deleteDesign(design: design)
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/DesignRowViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/DesignRowViewModel.swift
+new file mode 100644
+index 0000000..9578477
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/DesignRowViewModel.swift
+@@ -0,0 +1,44 @@
++//
++//  DesignRowViewModel.swift
++//  ACHNBrowserUI
++//
++//  Created by System on 2024-03-03.
++//
++
++import Foundation
++import Backend
++
++public class DesignRowViewModel {
++    public let design: Design
++    
++    public init(design: Design) {
++        self.design = design
++    }
++    
++    public var category: String {
++        let prefix = String(design.code.prefix(2)).uppercased()
++        if prefix == "MA" {
++            return "Creator"
++        } else if prefix == "MO" {
++            return "Item"
++        }
++        return "Unknown"
++    }
++    
++    public var code: String {
++        guard design.code.count == 12 else { return design.code }
++        let prefix = String(design.code.prefix(2))
++        let rest = String(design.code.suffix(10))
++        
++        var result = "\(prefix)-"
++        for i in stride(from: 0, to: 10, by: 4) {
++            let startIndex = rest.index(rest.startIndex, offsetBy: i)
++            let endIndex = rest.index(startIndex, offsetBy: min(4, 10 - i))
++            result += "\(rest[startIndex..<endIndex])"
++            if i + 4 < 10 {
++                result += "-"
++            }
++        }
++        return result
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift
+index 8c7665b..e129fa6 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift
+@@ -11,7 +11,7 @@ import SwiftUIKit
+ import Backend
+ 
+ enum Tabs: String, CaseIterable {
+-    case items, villagers, critters, lists
++    case items, villagers, lists, more
+ }
+ 
+ struct CollectionListView: View {
+@@ -38,11 +38,9 @@ struct CollectionListView: View {
+                                 VillagerRowView(villager: villager)
+                             }
+                         }
+-                    } else if selectedTab == .critters && !collection.critters.isEmpty {
+-                        ForEach(collection.critters) { critter in
+-                            NavigationLink(destination: ItemDetailView(item: critter)) {
+-                                ItemRowView(displayMode: .large, item: critter)
+-                            }
++                    } else if selectedTab == .more {
++                        NavigationLink(destination: CollectionMoreDetailView()) {
++                            Text("Critters & Designs")
+                         }
+                     } else if selectedTab == .lists {
+                         userListsSections
+@@ -117,5 +115,3 @@ struct CollectionListView_Previews: PreviewProvider {
+         .environmentObject(SubscriptionManager.shared)
+     }
+ }
+-
+-
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift.bak b/ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift.bak
+new file mode 100644
+index 0000000..5054abf
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift.bak
+@@ -0,0 +1,129 @@
++//
++//  CollectionListView.swift
++//  ACHNBrowserUI
++//
++//  Created by Thomas Ricouard on 08/04/2020.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import SwiftUI
++import SwiftUIKit
++import Backend
++
++enum Tabs: String, CaseIterable {
++    case items, villagers, lists, more
++}
++
++struct CollectionListView: View {
++    @EnvironmentObject private var collection: UserCollection
++    @EnvironmentObject private var subscriptionManager: SubscriptionManager
++    @State private var selectedTab: Tabs = .items
++    @State private var sheet: Sheet.SheetType?
++        
++    private var categories: [String] {
++        Array(Set(collection.items.map(\.category))).sorted()
++    }
++    
++    var body: some View {
++        NavigationView {
++            List {
++                Section(header: picker) {
++                    if selectedTab == .items && !collection.items.isEmpty {
++                        ForEach(categories, id: \.self) { category in
++                            CollectionRowView(category: Category(itemCategory: category))
++                        }
++                    } else if selectedTab == .villagers && !collection.villagers.isEmpty {
++                        ForEach(collection.villagers) { villager in
++                            NavigationLink(destination: VillagerDetailView(villager: villager)) {
++                                VillagerRowView(villager: villager)
++                            }
++                        }
++                    } else if selectedTab == .more {
++                        NavigationLink(destination: CollectionMoreDetailView()) {
++                            Text("Critters 0026 Designs")
++                        }
++                    } else if selectedTab == .lists
++                        ForEach(collection.critters) { critter in
++                            NavigationLink(destination: ItemDetailView(item: critter)) {
++                                ItemRowView(displayMode: .large, item: critter)
++                            }
++                        }
++                    } else if selectedTab == .more {
++                        NavigationLink(destination: CollectionMoreDetailView()) {
++                            Text("Critters 0026 Designs")
++                        }
++                    } else if selectedTab == .lists
++                        userListsSections
++                    }  else {
++                        emptyView
++                    }
++                }
++            }
++            .listStyle(GroupedListStyle())
++            .navigationBarTitle(Text("Collection"),
++                                displayMode: .automatic)
++            .sheet(item: $sheet, content: { Sheet(sheetType: $0) })
++            
++            if collection.items.isEmpty {
++                placeholderView
++            } else {
++                ItemDetailView(item: collection.items.first!)
++            }
++        }
++    }
++    
++    private var userListsSections: some View {
++        Group {
++            if subscriptionManager.subscriptionStatus == .subscribed || collection.lists.isEmpty {
++                Button(action: {
++                    self.sheet = .userListForm(editingList: nil)
++                }) {
++                    Text("Create a new list").foregroundColor(.acHeaderBackground)
++                }
++            }
++            ForEach(collection.lists) { list in
++                NavigationLink(destination: UserListDetailView(list: list)) {
++                    UserListRow(list: list)
++                }
++            }.onDelete { indexes in
++                self.collection.deleteList(at: indexes.first!)
++            }
++            if subscriptionManager.subscriptionStatus != .subscribed && collection.lists.count >= 1 {
++                UserListSubscribeCallView(sheet: $sheet)
++            }
++        }
++    }
++    
++    private var placeholderView: some View {
++        Text("Please select or go stars some items!")
++            .foregroundColor(.acSecondaryText)
++    }
++    
++    private var emptyView: some View {
++        let selectedTabName = NSLocalizedString(selectedTab.rawValue, comment: "")
++        return Text("When you stars some \(selectedTabName), they'll be displayed here.")
++            .foregroundColor(.acSecondaryText)
++    }
++    
++    private var picker: some View {
++        Picker(selection: $selectedTab, label: Text("")) {
++            ForEach(Tabs.allCases, id: \.self) { tab in
++                Text(LocalizedStringKey(tab.rawValue.capitalized))
++            }
++        }
++        .pickerStyle(SegmentedPickerStyle())
++        .padding()
++    }
++}
++
++struct CollectionListView_Previews: PreviewProvider {
++    static var previews: some View {
++        NavigationView {
++            CollectionListView()
++        }
++        .environmentObject(UserCollection.shared)
++        .environmentObject(SubscriptionManager.shared)
++    }
++}
++
++
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionMoreDetailView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionMoreDetailView.swift
+new file mode 100644
+index 0000000..23efdb4
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionMoreDetailView.swift
+@@ -0,0 +1,58 @@
++//
++//  CollectionMoreDetailView.swift
++//  ACHNBrowserUI
++//
++//  Created by System on 2024-03-03.
++//
++
++import SwiftUI
++import Backend
++
++struct CollectionMoreDetailView: View {
++    @EnvironmentObject private var collection: UserCollection
++    @StateObject private var viewModel = CollectionMoreDetailViewModel()
++    
++    var body: some View {
++        List {
++            ForEach(viewModel.rows, id: \.self) { row in
++                Section {
++                    switch row {
++                    case .critters:
++                        if collection.critters.isEmpty {
++                            Text("When you catch some critters, they'll appear here.")
++                                .foregroundColor(.acSecondaryText)
++                        } else {
++                            ForEach(collection.critters) { critter in
++                                NavigationLink(destination: ItemDetailView(item: critter)) {
++                                    ItemRowView(displayMode: .large, item: critter)
++                                }
++                            }
++                        }
++                    case .designs:
++                        if collection.designs.isEmpty {
++                            Text("When you save some designs, they'll appear here.")
++                                .foregroundColor(.acSecondaryText)
++                        } else {
++                            ForEach(collection.designs) { design in
++                                NavigationLink(destination: DesignDetailView(design: design)) {
++                                    DesignRowView(design: design)
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++        .listStyle(GroupedListStyle())
++        .navigationBarTitle("More", displayMode: .automatic)
++    }
++}
++
++struct CollectionMoreDetailView_Previews: PreviewProvider {
++    static var previews: some View {
++        NavigationView {
++            CollectionMoreDetailView()
++        }
++        .environmentObject(UserCollection.shared)
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/collection/DesignDetailView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/collection/DesignDetailView.swift
+new file mode 100644
+index 0000000..794a1d0
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/collection/DesignDetailView.swift
+@@ -0,0 +1,105 @@
++//
++//  DesignDetailView.swift
++//  ACHNBrowserUI
++//
++//  Created by System on 2024-03-03.
++//
++
++import SwiftUI
++import Backend
++
++struct DesignDetailView: View {
++    let design: Design
++    @StateObject private var viewModel: DesignRowViewModel
++    @State private var isEditing = false
++    @Environment(\.presentationMode) private var presentationMode
++    
++    init(design: Design) {
++        self.design = design
++        _viewModel = StateObject(wrappedValue: DesignRowViewModel(design: design))
++    }
++    
++    var body: some View {
++        List {
++            Section {
++                VStack(alignment: .leading, spacing: 12) {
++                    Text(design.title)
++                        .font(.title)
++                        .fontWeight(.bold)
++                        .foregroundColor(.acText)
++                    
++                    if !design.description.isEmpty {
++                        Text(design.description)
++                            .font(.body)
++                            .foregroundColor(.acText)
++                    }
++                }
++                .padding(.vertical, 8)
++            }
++            
++            Section(header: Text("Design Code")) {
++                VStack(alignment: .leading, spacing: 8) {
++                    HStack {
++                        Text(viewModel.category)
++                            .font(.caption)
++                            .foregroundColor(.white)
++                            .padding(.horizontal, 8)
++                            .padding(.vertical, 2)
++                            .background(viewModel.category == "Creator" ? Color.blue : Color.green)
++                            .cornerRadius(4)
++                        
++                        Spacer()
++                    }
++                    
++                    Text(viewModel.code)
++                        .font(.title2)
++                        .fontWeight(.bold)
++                        .foregroundColor(.acText)
++                        .monospacedDigit()
++                        .frame(maxWidth: .infinity, alignment: .center)
++                        .padding(.vertical, 8)
++                    
++                    if !design.hasValidCode {
++                        HStack {
++                            Image(systemName: "exclamationmark.triangle")
++                            Text("Invalid design code format")
++                        }
++                        .font(.caption)
++                        .foregroundColor(.red)
++                    }
++                }
++                .padding(.vertical, 8)
++            }
++        }
++        .listStyle(GroupedListStyle())
++        .navigationBarTitle("Design", displayMode: .inline)
++        .navigationBarItems(
++            trailing: HStack {
++                Button(action: { isEditing = true }) {
++                    Text("Edit")
++                }
++                
++                Button(action: deleteDesign) {
++                    Image(systemName: "trash")
++                }
++            }
++        )
++        .sheet(isPresented: $isEditing) {
++            DesignFormView(design: design)
++        }
++    }
++    
++    private func deleteDesign() {
++        UserCollection.shared.deleteDesign(design: design)
++        presentationMode.wrappedValue.dismiss()
++    }
++}
++
++struct DesignDetailView_Previews: PreviewProvider {
++    static var previews: some View {
++        NavigationView {
++            DesignDetailView(design: Design(title: "Flower Path", code: "MA667931515180", description: "A beautiful flower path design"))
++        }
++        .environmentObject(UserCollection.shared)
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/collection/DesignFormView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/collection/DesignFormView.swift
+new file mode 100644
+index 0000000..a2c64b8
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/collection/DesignFormView.swift
+@@ -0,0 +1,137 @@
++//
++//  DesignFormView.swift
++//  ACHNBrowserUI
++//
++//  Created by System on 2024-03-03.
++//
++
++import SwiftUI
++import SwiftUIKit
++import Backend
++
++struct DesignFormView: View {
++    @Environment(\.presentationMode) private var presentationMode
++    @ObservedObject private var viewModel: DesignFormViewModel
++    @State private var errorBorder: Color = .clear
++    @State private var showCodeError = false
++    
++    init(design: Design? = nil) {
++        self.viewModel = DesignFormViewModel(design: design)
++    }
++    
++    private var dismissButton: some View {
++        Button(action: {
++            self.presentationMode.wrappedValue.dismiss()
++        }) {
++            Image(systemName: "xmark.circle.fill")
++                .style(appStyle: .barButton)
++                .foregroundColor(.red)
++        }
++        .buttonStyle(BorderedBarButtonStyle())
++        .accentColor(Color.red.opacity(0.2))
++    }
++    
++    private var saveButton: some View {
++        Button(action: {
++            guard !self.viewModel.design.title.isEmpty else {
++                self.errorBorder = .red
++                return
++            }
++            
++            if !self.viewModel.design.hasValidCode {
++                self.showCodeError = true
++                return
++            }
++            
++            self.viewModel.save()
++            self.presentationMode.wrappedValue.dismiss()
++        }) {
++            Image(systemName: "checkmark.seal.fill")
++                .style(appStyle: .barButton)
++                .foregroundColor(.acTabBarBackground)
++        }
++        .buttonStyle(BorderedBarButtonStyle())
++        .accentColor(Color.acTabBarBackground.opacity(0.2))
++    }
++    
++    var body: some View {
++        NavigationView {
++            Form {
++                Section(header: Text("Design Information")) {
++                    TextField("Title", text: $viewModel.design.title)
++                        .textFieldStyle(RoundedBorderTextFieldStyle())
++                        .overlay(
++                            RoundedRectangle(cornerRadius: 8)
++                                .stroke(errorBorder, lineWidth: errorBorder == .clear ? 0 : 1)
++                        )
++                    
++                    TextField("Design Code (e.g., MA667931515180)", text: $viewModel.design.code)
++                        .textFieldStyle(RoundedBorderTextFieldStyle())
++                        .autocapitalization(.allCharacters)
++                        .disableAutocorrection(true)
++                    
++                    if showCodeError {
++                        HStack {
++                            Image(systemName: "exclamationmark.triangle")
++                            Text("Code must be 12 characters starting with MA or MO")
++                        }
++                        .font(.caption)
++                        .foregroundColor(.red)
++                    }
++                    
++                    TextField("Description (optional)", text: $viewModel.design.description)
++                        .textFieldStyle(RoundedBorderTextFieldStyle())
++                }
++                
++                if viewModel.design.hasValidCode {
++                    Section(header: Text("Preview")) {
++                        VStack(alignment: .leading, spacing: 8) {
++                            Text("Category:")
++                                .font(.caption)
++                                .foregroundColor(.acSecondaryText)
++                            
++                            HStack {
++                                Text(DesignRowViewModel(design: viewModel.design).category)
++                                    .font(.caption)
++                                    .foregroundColor(.white)
++                                    .padding(.horizontal, 8)
++                                    .padding(.vertical, 2)
++                                    .background(DesignRowViewModel(design: viewModel.design).category == "Creator" ? Color.blue : Color.green)
++                                    .cornerRadius(4)
++                                
++                                Spacer()
++                            }
++                            
++                            Text("Formatted Code:")
++                                .font(.caption)
++                                .foregroundColor(.acSecondaryText)
++                            
++                            Text(DesignRowViewModel(design: viewModel.design).code)
++                                .font(.title2)
++                                .fontWeight(.bold)
++                                .foregroundColor(.acText)
++                                .monospacedDigit()
++                                .frame(maxWidth: .infinity, alignment: .center)
++                        }
++                        .padding(.vertical, 8)
++                    }
++                }
++            }
++            .listStyle(GroupedListStyle())
++            .navigationBarTitle(
++                viewModel.design.title.isEmpty ? "New Design" : viewModel.design.title,
++                displayMode: .inline
++            )
++            .navigationBarItems(
++                leading: dismissButton,
++                trailing: saveButton
++            )
++        }
++    }
++}
++
++struct DesignFormView_Previews: PreviewProvider {
++    static var previews: some View {
++        DesignFormView(design: Design(title: "Flower Path", code: "MA667931515180", description: "A beautiful flower path design"))
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/collection/DesignRowView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/collection/DesignRowView.swift
+new file mode 100644
+index 0000000..063c9c5
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/collection/DesignRowView.swift
+@@ -0,0 +1,63 @@
++//
++//  DesignRowView.swift
++//  ACHNBrowserUI
++//
++//  Created by System on 2024-03-03.
++//
++
++import SwiftUI
++import Backend
++
++struct DesignRowView: View {
++    let design: Design
++    @StateObject private var viewModel: DesignRowViewModel
++    
++    init(design: Design) {
++        self.design = design
++        _viewModel = StateObject(wrappedValue: DesignRowViewModel(design: design))
++    }
++    
++    var body: some View {
++        HStack {
++            VStack(alignment: .leading, spacing: 4) {
++                Text(design.title)
++                    .font(.headline)
++                    .foregroundColor(.acText)
++                
++                if !design.description.isEmpty {
++                    Text(design.description)
++                        .font(.caption)
++                        .foregroundColor(.acSecondaryText)
++                        .lineLimit(2)
++                }
++                
++                HStack(spacing: 8) {
++                    Text(viewModel.category)
++                        .font(.caption)
++                        .foregroundColor(.white)
++                        .padding(.horizontal, 8)
++                        .padding(.vertical, 2)
++                        .background(viewModel.category == "Creator" ? Color.blue : Color.green)
++                        .cornerRadius(4)
++                    
++                    Text(viewModel.code)
++                        .font(.caption)
++                        .foregroundColor(.acSecondaryText)
++                        .monospacedDigit()
++                }
++            }
++            .padding(.vertical, 4)
++            
++            Spacer()
++        }
++    }
++}
++
++struct DesignRowView_Previews: PreviewProvider {
++    static var previews: some View {
++        List {
++            DesignRowView(design: Design(title: "Flower Path", code: "MA667931515180", description: "A beautiful flower path design"))
++            DesignRowView(design: Design(title: "Star Rug", code: "MO123456789012", description: ""))
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/shared/MessageView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/shared/MessageView.swift
+new file mode 100644
+index 0000000..55ee398
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/shared/MessageView.swift
+@@ -0,0 +1,42 @@
++//
++//  MessageView.swift
++//  ACHNBrowserUI
++//
++//  Created by System on 2024-03-03.
++//
++
++import SwiftUI
++
++struct MessageView: View {
++    let message: String
++    
++    init(string: String) {
++        self.message = string
++    }
++    
++    init(collectionName: String) {
++        self.message = "When you add some \(collectionName), they'll appear here."
++    }
++    
++    init(noResultsFor: String) {
++        self.message = "No results found for \"\(noResultsFor)\""
++    }
++    
++    var body: some View {
++        Text(message)
++            .foregroundColor(.acSecondaryText)
++            .multilineTextAlignment(.center)
++            .padding()
++            .frame(maxWidth: .infinity)
++    }
++}
++
++struct MessageView_Previews: PreviewProvider {
++    static var previews: some View {
++        VStack(spacing: 20) {
++            MessageView(string: "No items found")
++            MessageView(collectionName: "designs")
++            MessageView(noResultsFor: "flower")
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/shared/Sheet.swift b/ACHNBrowserUI/ACHNBrowserUI/views/shared/Sheet.swift
+index 9d36533..22f6f00 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/shared/Sheet.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/shared/Sheet.swift
+@@ -15,6 +15,7 @@ struct Sheet: View {
+         case about
+         case rearrange(viewModel: DashboardViewModel)
+         case userListForm(editingList: UserList?)
++        case designForm(editingDesign: Design?)
+         case turnipsForm(subManager: SubscriptionManager)
+         case subscription(source: SubscribeView.Source, subManager: SubscriptionManager)
+         case settings(subManager: SubscriptionManager, collection: UserCollection)
+@@ -36,6 +37,8 @@ struct Sheet: View {
+             case .subscription:
+                 return "sub"
+             case .userListForm:
++            case .designForm:
++                return "designForm"
+                 return "userListForm"
+             }
+         }
+@@ -63,6 +66,8 @@ struct Sheet: View {
+         case .subscription(let source, let subManager):
+             return AnyView(SubscribeView(source: source).environmentObject(subManager))
+         case .userListForm(let list):
++        case .designForm(let design):
++            return AnyView(DesignFormView(design: design))
+             return AnyView(UserListFormView(editingList: list))
+         case .rearrange(let viewModel):
+             return AnyView(NavigationView {
