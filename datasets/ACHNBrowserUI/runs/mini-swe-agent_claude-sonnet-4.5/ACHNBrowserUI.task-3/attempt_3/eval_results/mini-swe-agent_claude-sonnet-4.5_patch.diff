@@ -1,0 +1,102 @@
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+index f5642f1..a183ea2 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+@@ -136,18 +136,36 @@ public class UserCollection: ObservableObject {
+         guard let filename = item.filename else {
+             return false
+         }
++        
++        let wasAdding: Bool
++        
+         if variants[filename]?.contains(variant) == true {
++            // Removing variant
+             variants[filename]?.removeAll(where: { $0 == variant })
+-            save()
+-            return false
++            wasAdding = false
++            
++            // If this was the last variant, automatically remove the parent item
++            if variants[filename]?.isEmpty == true {
++                _ = items.toggle(item: item) // Remove from items if it's there
++            }
+         } else {
++            // Adding variant
+             if variants[filename] == nil {
+                 variants[filename] = []
+             }
+             variants[filename]?.append(variant)
+-            save()
+-            return true
++            wasAdding = true
++            
++            // If this is the first variant, automatically add the parent item
++            if variants[filename]?.count == 1 {
++                if !items.contains(item) {
++                    _ = items.toggle(item: item) // Add to items if not already there
++                }
++            }
+         }
++        
++        save()
++        return wasAdding
+     }
+     
+     public func toggleCritters(critter: Item) -> Bool {
+@@ -506,3 +524,26 @@ public extension Dictionary where Key == String, Value == [Variant] {
+         return self[filename]?.contains(variant) == true
+     }
+ }
++
++public extension Dictionary where Key == String, Value == [Variant] {
++    func completionStatus(for item: Item) -> VariantsCompletionStatus {
++        guard let variations = item.variations, item.hasSomeVariations else {
++            // Items with 0 or 1 variant should not show partial states
++            return .unstarted
++        }
++        
++        guard let filename = item.filename else {
++            return .unstarted
++        }
++        
++        let collectedCount = self[filename]?.count ?? 0
++        
++        if collectedCount == 0 {
++            return .unstarted
++        } else if collectedCount >= variations.count {
++            return .complete
++        } else {
++            return .partial
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+index 46b91a9..f27c7b6 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+@@ -82,6 +82,11 @@ public struct Item: Codable, Equatable, Identifiable, Hashable {
+     
+     public var variations: [Variant]?
+     
++    public var hasSomeVariations: Bool {
++        guard let variations = variations else { return false }
++        return variations.count > 1
++    }
++    
+     public let category: String
+     
+     public var appCategory: Category {
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Variant.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Variant.swift
+index 64f65d2..0bec5e4 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Variant.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Variant.swift
+@@ -18,3 +18,9 @@ public struct Variant: Codable, Equatable, Identifiable {
+         public let colors: [String]?
+     }
+ }
++
++public enum VariantsCompletionStatus {
++    case unstarted
++    case partial
++    case complete
++}

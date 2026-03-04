@@ -1,0 +1,110 @@
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+index f5642f1..7732e5a 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+@@ -136,18 +136,39 @@ public class UserCollection: ObservableObject {
+         guard let filename = item.filename else {
+             return false
+         }
++        
++        let wasAdded: Bool
++        
+         if variants[filename]?.contains(variant) == true {
++            // Removing variant
+             variants[filename]?.removeAll(where: { $0 == variant })
+-            save()
+-            return false
++            
++            // If this was the last variant, remove the parent item
++            if variants[filename]?.isEmpty == true {
++                variants[filename] = nil
++                _ = items.toggle(item: item) // Remove parent item if it exists
++            }
++            
++            wasAdded = false
+         } else {
++            // Adding variant
+             if variants[filename] == nil {
+                 variants[filename] = []
+             }
+             variants[filename]?.append(variant)
+-            save()
+-            return true
++            
++            // If this is the first variant, add the parent item
++            if variants[filename]?.count == 1 {
++                if !items.contains(item) {
++                    _ = items.toggle(item: item) // Add parent item
++                }
++            }
++            
++            wasAdded = true
+         }
++        
++        save()
++        return wasAdded
+     }
+     
+     public func toggleCritters(critter: Item) -> Bool {
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Collection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Collection.swift
+index 12474f4..0da1c19 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Collection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Collection.swift
+@@ -28,3 +28,26 @@ extension Collection {
+         return try self.filter(test).count
+     }
+ }
++
++// MARK: - Variants completion status
++public extension Dictionary where Key == String, Value == [Variant] {
++    func completionStatus(for item: Item) -> VariantsCompletionStatus {
++        guard let variations = item.variations, variations.count > 1 else {
++            return .unstarted
++        }
++        
++        guard let filename = item.filename else {
++            return .unstarted
++        }
++        
++        let collectedVariants = self[filename] ?? []
++        
++        if collectedVariants.isEmpty {
++            return .unstarted
++        } else if collectedVariants.count == variations.count {
++            return .complete
++        } else {
++            return .partial
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+index 46b91a9..9c6958f 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+@@ -284,3 +284,11 @@ public let static_item = Item(name: "Acoustic guitar",
+                        styles: nil,
+                        themes: nil,
+                        colors: nil)
++
++// MARK: - Variants tracking
++public extension Item {
++    var hasSomeVariations: Bool {
++        guard let variations = variations else { return false }
++        return variations.count > 1
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Variant.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Variant.swift
+index 64f65d2..fb3c70c 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Variant.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Variant.swift
+@@ -18,3 +18,10 @@ public struct Variant: Codable, Equatable, Identifiable {
+         public let colors: [String]?
+     }
+ }
++
++// MARK: - Completion Status
++public enum VariantsCompletionStatus {
++    case unstarted
++    case partial
++    case complete
++}

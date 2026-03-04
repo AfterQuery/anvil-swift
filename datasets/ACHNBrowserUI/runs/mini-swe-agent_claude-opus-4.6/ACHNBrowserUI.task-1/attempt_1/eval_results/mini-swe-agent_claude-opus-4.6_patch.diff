@@ -1,0 +1,186 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+index 03834a4..9a621f2 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+@@ -129,6 +129,8 @@ You can cancel anytime with your iTunes account settings. Any unused portion of
+ "You caught them all!" = "Vous les avez tous attrapés!";
+ "New this month" = "Nouveau ce mois-ci";
+ "To catch" = "À attraper";
++"To catch now" = "À attraper maintenant";
++"To catch later" = "À attraper plus tard";
+ "Leaving this month" = "Dernière chance";
+ "Caught" = "Attrapés";
+ 
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
+index 451a265..7495e65 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
+@@ -13,6 +13,10 @@ public extension BidirectionalCollection where Element == Item {
+     func filterActive() -> [Item] {
+         self.filter({ $0.isActive() })
+     }
++    
++    func filterActiveThisMonth() -> [Item] {
++        self.filter({ $0.isActiveThisMonth() })
++    }
+ }
+ 
+ public extension Collection where Element: Numeric {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
+index 69bc1e8..7162b0a 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
+@@ -141,6 +141,26 @@ fileprivate func is24Hour() -> Bool {
+     return dateFormat.firstIndex(of: "a") == nil
+ }
+ 
++
++/// Parse an hour integer (0-23) from a time string like "4am", "9pm", or "0"
++fileprivate func parseHour(from timeString: String) -> Int? {
++    // "0" means midnight
++    if let val = Int(timeString) {
++        return val
++    }
++    let lowered = timeString.lowercased()
++    let isPM = lowered.hasSuffix("pm")
++    let isAM = lowered.hasSuffix("am")
++    guard isPM || isAM else { return nil }
++    let numPart = lowered.replacingOccurrences(of: "am", with: "").replacingOccurrences(of: "pm", with: "")
++    guard let hour = Int(numPart) else { return nil }
++    if isPM {
++        return hour == 12 ? 12 : hour + 12
++    } else {
++        return hour == 12 ? 0 : hour
++    }
++}
++
+ // MARK: - Calendar
+ public extension Item {
+     static let monthFormatter: DateFormatter = {
+@@ -175,6 +195,64 @@ public extension Item {
+         let currentMonth = Int(Item.monthFormatter.string(from: Date()))!
+         return activeMonthsCalendar?.contains(currentMonth) == false
+     }
++
++    func isActiveThisMonth() -> Bool {
++        return isActive()
++    }
++    
++    func isActiveAtThisHour() -> Bool {
++        guard isActiveThisMonth() else { return false }
++        
++        // Get the current month key, accounting for hemisphere
++        let currentMonth = Int(Item.monthFormatter.string(from: Date()))!
++        let isSouth = AppUserDefaults.shared.hemisphere == .south
++        
++        // Find the active month entry for the current month
++        // activeMonths keys are 0-indexed, currentMonth is 1-indexed
++        // For south hemisphere, we need to reverse the +6 offset to find the original key
++        let monthIndex = currentMonth - 1
++        var matchingKey: String?
++        if let keys = activeMonths?.keys.compactMap({ Int($0) }) {
++            for key in keys {
++                var adjustedKey = key
++                if isSouth {
++                    adjustedKey = (key + 6) % 12
++                }
++                if adjustedKey == monthIndex {
++                    matchingKey = String(key)
++                    break
++                }
++            }
++        }
++        
++        guard let key = matchingKey,
++              let activeMonth = activeMonths?[key],
++              let startTimeStr = activeMonth.activeTimes.first,
++              let endTimeStr = activeMonth.activeTimes.last else {
++            return false
++        }
++        
++        // All day case
++        if Int(startTimeStr) == 0 && Int(endTimeStr) == 0 {
++            return true
++        }
++        
++        guard let startHour = parseHour(from: startTimeStr),
++              let endHour = parseHour(from: endTimeStr) else {
++            return false
++        }
++        
++        let currentHour = Calendar.current.component(.hour, from: Date())
++        
++        if startHour <= endHour {
++            // Normal range (e.g., 4am to 9pm)
++            return currentHour >= startHour && currentHour < endHour
++        } else {
++            // Wraps around midnight (e.g., 9pm to 4am)
++            return currentHour >= startHour || currentHour < endHour
++        }
++    }
++
+     
+     func formattedTimes() -> String? {
+         guard let activeTimes = activeMonths?.first?.value.activeTimes,
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
+index 08c305e..13d6d8c 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
+@@ -37,7 +37,8 @@ class ActiveCrittersViewModel: ObservableObject {
+         let new: [Item]
+         let leaving: [Item]
+         let caught: [Item]
+-        let toCatch: [Item]
++        let toCatchNow: [Item]
++        let toCatchLater: [Item]
+     }
+     
+     @Published var crittersInfo: [CritterType: CritterInfo] = [:]
+@@ -59,7 +60,8 @@ class ActiveCrittersViewModel: ObservableObject {
+                     var new = active.filter{ $0.isNewThisMonth() }
+                     var leaving = active.filter{ $0.leavingThisMonth() }
+                     let caught = active.filter{ critters.contains($0) }
+-                    let toCatch = active.filter{ !critters.contains($0) }
++                    let toCatchNow = active.filter{ !critters.contains($0) && $0.isActiveAtThisHour() }
++                    let toCatchLater = active.filter{ !critters.contains($0) && !$0.isActiveAtThisHour() }
+                     
+                     if filterOutInCollection {
+                         new = new.filter{ !critters.contains($0) }
+@@ -71,7 +73,8 @@ class ActiveCrittersViewModel: ObservableObject {
+                                                            new: new,
+                                                            leaving: leaving,
+                                                            caught: caught,
+-                                                           toCatch: toCatch)
++                                                           toCatchNow: toCatchNow,
++                                                           toCatchLater: toCatchLater)
+                 }
+         }
+     }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
+index 75df943..5ad5030 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
+@@ -34,9 +34,12 @@ struct ActiveCritterSections: View {
+             makeSectionOrPlaceholder(title: "New this month",
+                                      icon: "calendar.badge.plus",
+                                      critters: viewModel.crittersInfo[selectedTab]?.new ?? [])
+-            makeSectionOrPlaceholder(title: "To catch",
++            makeSectionOrPlaceholder(title: "To catch now",
+                                      icon: "calendar",
+-                                     critters: viewModel.crittersInfo[selectedTab]?.toCatch ?? [])
++                                     critters: viewModel.crittersInfo[selectedTab]?.toCatchNow ?? [])
++            makeSectionOrPlaceholder(title: "To catch later",
++                                     icon: "calendar",
++                                     critters: viewModel.crittersInfo[selectedTab]?.toCatchLater ?? [])
+             makeSectionOrPlaceholder(title: "Leaving this month",
+                                      icon: "calendar.badge.minus",
+                                      critters: viewModel.crittersInfo[selectedTab]?.leaving ?? [])
+@@ -56,7 +59,7 @@ struct ActiveCrittersView: View {
+     
+     var body: some View {
+         List {
+-            if (viewModel.crittersInfo[.fish]?.toCatch.isEmpty == true || viewModel.crittersInfo[.bugs]?.toCatch.isEmpty == true) &&
++            if (viewModel.crittersInfo[.fish]?.toCatchNow.isEmpty == true || viewModel.crittersInfo[.bugs]?.toCatchNow.isEmpty == true) &&
+                 (viewModel.crittersInfo[.fish]?.caught.isEmpty == true || viewModel.crittersInfo[.bugs]?.caught.isEmpty == true) {
+                 RowLoadingView(isLoading: .constant(true))
+             } else {

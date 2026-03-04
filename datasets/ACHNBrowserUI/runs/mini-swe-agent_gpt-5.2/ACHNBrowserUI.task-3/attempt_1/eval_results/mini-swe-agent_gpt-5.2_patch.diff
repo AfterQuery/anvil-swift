@@ -1,0 +1,278 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
+index 80d9cd2..642397b 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
+@@ -18,6 +18,7 @@ class LikeButtonViewModel: ObservableObject {
+     let villager: Villager?
+     
+     @Published var isInCollection = false
++    @Published var completionStatus: VariantsCompletionStatus = .unstarted
+     
+     private let collection: UserCollection
+     private var cancellable: AnyCancellable?
+@@ -40,9 +41,24 @@ class LikeButtonViewModel: ObservableObject {
+                 if let item = self.item {
+                     if let variant = variant {
+                         self.isInCollection = variants.contains(for: item, variant: variant)
++                        self.completionStatus = self.isInCollection ? .complete : .unstarted
+                         return
+                     }
++                    // Multi-variant items: expose progress + keep `isInCollection` true if at least one variant is collected.
++                    if item.hasSomeVariations {
++                        var status = variants.completionStatus(for: item)
++                        // Backward compatibility: if the parent item was liked with the legacy
++                        // binary system (without tracking variants), keep it visually collected.
++                        if status == .unstarted && items.contains(item) {
++                            status = .complete
++                        }
++                        self.completionStatus = status
++                        self.isInCollection = status != .unstarted
++                        return
++                    }
++                    // Legacy behaviour
+                     self.isInCollection = items.contains(item) || critters.contains(item)
++                    self.completionStatus = self.isInCollection ? .complete : .unstarted
+                     return
+                 } else if let villager = villager {
+                     self.isInCollection = villagers.contains(villager)
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/items/detail/ItemDetailView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/items/detail/ItemDetailView.swift
+index 1c3ad72..6cc6111 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/items/detail/ItemDetailView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/items/detail/ItemDetailView.swift
+@@ -124,7 +124,7 @@ extension ItemDetailView {
+     private var navButtons: some View {
+         HStack {
+             LikeButtonView(item: itemViewModel.item,
+-                           variant: displayedVariant).imageScale(.large)
++                           variant: nil).imageScale(.large)
+                 .safeHoverEffectBarItem(position: .trailing)
+             shareButton
+         }
+@@ -171,7 +171,9 @@ extension ItemDetailView {
+                         FeedbackGenerator.shared.triggerSelection()
+                     }
+             }
+-            LikeButtonView(item: itemViewModel.item, variant: variant)
++            if itemViewModel.item.hasSomeVariations {
++                LikeButtonView(item: itemViewModel.item, variant: variant)
++            }
+         }
+     }
+     
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemRowView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemRowView.swift
+index bfc8032..9abd3c6 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemRowView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemRowView.swift
+@@ -87,7 +87,7 @@ struct ItemRowView: View {
+     var body: some View {
+         HStack(spacing: 8) {
+             if displayMode != .largeNoButton {
+-                LikeButtonView(item: item, variant: displayedVariant)
++                LikeButtonView(item: item, variant: nil)
+             }
+             if item.finalImage == nil && displayedVariant == nil {
+                 Image(item.appCategory.iconName())
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/items/variants/VariantSelectionView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/items/variants/VariantSelectionView.swift
+new file mode 100644
+index 0000000..16894e2
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/items/variants/VariantSelectionView.swift
+@@ -0,0 +1,43 @@
++//
++//  VariantSelectionView.swift
++//  ACHNBrowserUI
++//
++//  Created to support per-variant collection progress.
++//
++
++import SwiftUI
++import Backend
++import UI
++
++struct VariantSelectionView: View {
++    let item: Item
++
++    @Environment(\.dismiss) private var dismiss
++    
++    var body: some View {
++        NavigationView {
++            List {
++                if let variants = item.variations {
++                    ForEach(variants) { variant in
++                        HStack(spacing: 12) {
++                            ItemImage(path: variant.content.image, size: 44)
++                                .cornerRadius(6)
++                            Text(variant.content.colors?.joined(separator: ", ") ?? "")
++                                .foregroundColor(.acText)
++                                .lineLimit(2)
++                            Spacer(minLength: 8)
++                            LikeButtonView(item: item, variant: variant)
++                        }
++                    }
++                }
++            }
++            .navigationTitle(Text(item.localizedName.capitalized))
++            .navigationBarTitleDisplayMode(.inline)
++            .toolbar {
++                ToolbarItem(placement: .cancellationAction) {
++                    Button("Close") { dismiss() }
++                }
++            }
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
+index c0bc1d7..4e87154 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
+@@ -11,6 +11,7 @@ import Backend
+ 
+ struct LikeButtonView: View {
+     @StateObject private var viewModel: LikeButtonViewModel
++    @State private var showVariantSelector = false
+     
+     init(item: Item, variant: Variant?) {
+         _viewModel = StateObject(wrappedValue: LikeButtonViewModel(item: item, variant: variant))
+@@ -24,6 +25,15 @@ struct LikeButtonView: View {
+         if viewModel.item != nil {
+             if viewModel.item?.isCritter == true {
+                 return viewModel.isInCollection ? "checkmark.seal.fill" : "checkmark.seal"
++            } else if viewModel.item?.hasSomeVariations == true && viewModel.variant == nil {
++                switch viewModel.completionStatus {
++                case .unstarted:
++                    return "star"
++                case .partial:
++                    return "star.leadinghalf.filled"
++                case .complete:
++                    return "star.fill"
++                }
+             } else {
+                 return viewModel.isInCollection ? "star.fill" : "star"
+             }
+@@ -44,13 +54,24 @@ struct LikeButtonView: View {
+     
+     var body: some View {
+         Button(action: {
+-            let added = self.viewModel.toggleCollection()
+-            FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++            if let item = self.viewModel.item, item.hasSomeVariations && self.viewModel.variant == nil {
++                self.showVariantSelector = true
++                FeedbackGenerator.shared.triggerSelection()
++            } else {
++                let added = self.viewModel.toggleCollection()
++                FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++            }
+         }) {
+             Image(systemName: imageName).foregroundColor(color)
+         }
+         .scaleEffect(viewModel.isInCollection ? 1.3 : 1.0)
+         .buttonStyle(BorderlessButtonStyle())
++        .sheet(isPresented: $showVariantSelector) {
++            if let item = viewModel.item {
++                VariantSelectionView(item: item)
++                    .environmentObject(UserCollection.shared)
++            }
++        }
+         .animation(.spring(response: 0.5, dampingFraction: 0.3, blendDuration: 0.5))
+     }
+ }
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+index f5642f1..df5b9f1 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+@@ -136,8 +136,20 @@ public class UserCollection: ObservableObject {
+         guard let filename = item.filename else {
+             return false
+         }
+-        if variants[filename]?.contains(variant) == true {
++
++        let alreadyCollected = variants[filename]?.contains(variant) == true
++        if alreadyCollected {
+             variants[filename]?.removeAll(where: { $0 == variant })
++            // Clean up empty arrays to keep persistence smaller and simplify checks.
++            if variants[filename]?.isEmpty == true {
++                variants[filename] = nil
++            }
++
++            // If it was the last collected variant, remove the parent item automatically.
++            let remaining = variants[filename]?.count ?? 0
++            if remaining == 0 {
++                items.removeAll(where: { $0 == item })
++            }
+             save()
+             return false
+         } else {
+@@ -145,6 +157,11 @@ public class UserCollection: ObservableObject {
+                 variants[filename] = []
+             }
+             variants[filename]?.append(variant)
++
++            // Liking the first variant adds the parent item automatically.
++            if items.contains(item) == false {
++                items.append(item)
++            }
+             save()
+             return true
+         }
+@@ -498,6 +515,14 @@ public class UserCollection: ObservableObject {
+     }
+ }
+ 
++
++/// Completion status for an item that has multiple variants.
++public enum VariantsCompletionStatus: Equatable {
++    case unstarted
++    case partial
++    case complete
++}
++
+ public extension Dictionary where Key == String, Value == [Variant] {
+     public func contains(for item: Item, variant: Variant) -> Bool {
+         guard let filename = item.filename else {
+@@ -505,4 +530,23 @@ public extension Dictionary where Key == String, Value == [Variant] {
+         }
+         return self[filename]?.contains(variant) == true
+     }
++
++    /// Returns the completion status for the given item based on how many of its
++    /// variants are currently in the collection.
++    ///
++    /// - Important: Items with zero or one variant are treated as binary and will
++    ///   only return `.unstarted` or `.complete`.
++    public func completionStatus(for item: Item) -> VariantsCompletionStatus {
++        // Legacy behaviour for items without multiple variants.
++        guard item.hasSomeVariations else {
++            guard let filename = item.filename else { return .unstarted }
++            return (self[filename]?.isEmpty == false) ? .complete : .unstarted
++        }
++        guard let filename = item.filename else { return .unstarted }
++        let total = item.variations?.count ?? 0
++        let collected = self[filename]?.count ?? 0
++        if collected == 0 { return .unstarted }
++        if total > 0 && collected >= total { return .complete }
++        return .partial
++    }
+ }
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+index 46b91a9..d561923 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+@@ -131,6 +131,18 @@ public struct Item: Codable, Equatable, Identifiable, Hashable {
+     }
+ }
+ 
++// MARK: - Variants helpers
++public extension Item {
++    /// Returns `true` when the item has more than one variation.
++    ///
++    /// Some endpoints include the base variant as the first entry; using `> 1`
++    /// preserves the legacy binary-like behaviour for items with zero or one
++    /// variant.
++    public var hasSomeVariations: Bool {
++        (variations?.count ?? 0) > 1
++    }
++}
++
+ // Formatter used for the start / end times of critters
+ fileprivate let formatter: DateFormatter = {
+     let formatter = DateFormatter()

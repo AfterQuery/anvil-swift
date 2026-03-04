@@ -1,0 +1,165 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
+index ce13975..2e5c559 100644
+Binary files a/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings and b/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings differ
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings
+index 02fae42..3a28dd9 100644
+Binary files a/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings and b/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings differ
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+index 5869b7a..5cd1197 100644
+Binary files a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings and b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings differ
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/it.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/it.lproj/Localizable.strings
+index 02dd99b..073cfd3 100644
+Binary files a/ACHNBrowserUI/ACHNBrowserUI/it.lproj/Localizable.strings and b/ACHNBrowserUI/ACHNBrowserUI/it.lproj/Localizable.strings differ
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/ru.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/ru.lproj/Localizable.strings
+index e7ba326..ebb3eb1 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/ru.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/ru.lproj/Localizable.strings
+@@ -398,3 +398,5 @@
+ "See less" = "Увидеть меньше";
+ 
+ // to be continued
++"Sort villagers" = "Сортировать жителей";
++"species" = "вид";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+index 70909fb..dc10f80 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+@@ -27,6 +27,25 @@ class VillagersViewModel: ObservableObject {
+     @Published var searchText = ""
+     @Published var todayBirthdays: [Villager] = []
+     
++    public enum Sort: String, CaseIterable {
++        case name
++        case species
++    }
++    
++    @Published public var sort: Sort? {
++        didSet {
++            // If the sort is the same as before, reverse the order
++            if sort == oldValue {
++                sortedVillagers = sortedVillagers.reversed()
++            } else {
++                // First time setting sort or changing to a different sort
++                applySort()
++            }
++        }
++    }
++    
++    @Published public var sortedVillagers: [Villager] = []
++    
+     private var apiPublisher: AnyPublisher<[String: Villager], Never>?
+     private var searchCancellable: AnyCancellable?
+     private var apiCancellable: AnyCancellable? {
+@@ -46,6 +65,8 @@ class VillagersViewModel: ObservableObject {
+         villagers = Self.cachedVillagers
+         if villagers.isEmpty {
+             fetch()
++        } else {
++            sortedVillagers = villagers
+         }
+     }
+     
+@@ -64,5 +85,22 @@ class VillagersViewModel: ObservableObject {
+             $0.localizedName.lowercased().contains(string.lowercased()) == true
+         }
+     }
++    
++    private func applySort() {
++        guard let sort = sort else {
++            sortedVillagers = villagers
++            return
++        }
++        
++        switch sort {
++        case .name:
++            sortedVillagers = villagers.sorted { 
++                $0.localizedName.localizedCompare($1.localizedName) == .orderedAscending
++            }
++        case .species:
++            sortedVillagers = villagers.sorted { 
++                $0.species.localizedCompare($1.species) == .orderedAscending
++            }
++        }
++    }
+ }
+-
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+index 1980295..7bff826 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+@@ -12,17 +12,60 @@ import UI
+ 
+ struct VillagersListView: View {
+     @ObservedObject var viewModel = VillagersViewModel()
++    @State private var showSortSheet = false
+     
+     var currentVillagers: [Villager] {
+         get {
+             if !viewModel.searchText.isEmpty {
+                 return viewModel.searchResults
++            } else if viewModel.sort != nil {
++                return viewModel.sortedVillagers
+             } else {
+                 return viewModel.villagers
+             }
+         }
+     }
++    
++    private var sortButton: some View {
++        Button(action: {
++            self.showSortSheet.toggle()
++        }) {
++            Image(systemName: viewModel.sort == nil ? "arrow.up.arrow.down.circle" : "arrow.up.arrow.down.circle.fill")
++                .imageScale(.large)
++        }
++        .safeHoverEffectBarItem(position: .trailing)
++    }
++    
++    private var sortSheet: ActionSheet {
++        var buttons: [ActionSheet.Button] = []
++        
++        for sort in VillagersViewModel.Sort.allCases {
++            buttons.append(.default(Text(LocalizedStringKey(sort.rawValue.localizedCapitalized)),
++                                    action: {
++                                        self.viewModel.sort = sort
++            }))
++        }
++        
++        if viewModel.sort != nil {
++            buttons.append(.default(Text("Clear Selection"), action: {
++                self.viewModel.sort = nil
++            }))
++        }
++        
++        buttons.append(.cancel())
+         
++        let title = Text("Sort villagers")
++        
++        if let currentSort = viewModel.sort {
++            let currentSortName = NSLocalizedString(currentSort.rawValue.localizedCapitalized, comment: "")
++            return ActionSheet(title: title,
++                               message: Text("Current Sort: \(currentSortName)"),
++                               buttons: buttons)
++        }
++        
++        return ActionSheet(title: title, buttons: buttons)
++    }
++    
+     var body: some View {
+         NavigationView {
+             List {
+@@ -40,6 +83,8 @@ struct VillagersListView: View {
+             .navigationBarTitle(Text("Villagers"),
+                                 displayMode: .automatic)
+             .modifier(DismissingKeyboardOnSwipe())
++            .navigationBarItems(trailing: sortButton)
++            .actionSheet(isPresented: $showSortSheet, content: { self.sortSheet })
+             if !viewModel.villagers.isEmpty {
+                 VillagerDetailView(villager: viewModel.villagers.first!)
+             } else {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/zh-Hans.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/zh-Hans.lproj/Localizable.strings
+index 1ed0a0a..34ba377 100644
+Binary files a/ACHNBrowserUI/ACHNBrowserUI/zh-Hans.lproj/Localizable.strings and b/ACHNBrowserUI/ACHNBrowserUI/zh-Hans.lproj/Localizable.strings differ
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/zh_tw.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/zh_tw.lproj/Localizable.strings
+index ba1e08f..dbc47c0 100644
+Binary files a/ACHNBrowserUI/ACHNBrowserUI/zh_tw.lproj/Localizable.strings and b/ACHNBrowserUI/ACHNBrowserUI/zh_tw.lproj/Localizable.strings differ

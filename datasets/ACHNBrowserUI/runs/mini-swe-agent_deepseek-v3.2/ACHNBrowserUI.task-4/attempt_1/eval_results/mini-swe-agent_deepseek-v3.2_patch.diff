@@ -1,0 +1,219 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
+index ce13975..2000963 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
+@@ -818,3 +818,8 @@ Du kannst das Abonnement jederzeit in deinen iTunes Kontoeinstellungen beenden.
+ // Added 2020-05-24
+ "Music player" = "Musikplayer";
+ "Tracks" = "Lieder";
++
++// Villagers sorting
++"Name" = "Name";
++"Species" = "Species";
++"Clear sort" = "Clear sort";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings
+index 02fae42..f4fca4d 100644
+Binary files a/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings and b/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings differ
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+index 5869b7a..e02b724 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+@@ -550,3 +550,8 @@ You can cancel anytime with your iTunes account settings. Any unused portion of
+ "Music player" = "Lecteur de musique";
+ "Tracks" = "Musiques";
+ 
++
++// Villagers sorting
++"Name" = "Nom";
++"Species" = "Espèce";
++"Clear sort" = "Effacer le tri";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/it.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/it.lproj/Localizable.strings
+index 02dd99b..260a912 100644
+Binary files a/ACHNBrowserUI/ACHNBrowserUI/it.lproj/Localizable.strings and b/ACHNBrowserUI/ACHNBrowserUI/it.lproj/Localizable.strings differ
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/ru.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/ru.lproj/Localizable.strings
+index e7ba326..1617377 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/ru.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/ru.lproj/Localizable.strings
+@@ -398,3 +398,8 @@
+ "See less" = "Увидеть меньше";
+ 
+ // to be continued
++
++// Villagers sorting
++"Name" = "Name";
++"Species" = "Species";
++"Clear sort" = "Clear sort";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+index 70909fb..813f458 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+@@ -1,16 +1,21 @@
+-//
+-//  VillagersViewModel.swift
+-//  ACHNBrowserUI
+-//
+-//  Created by Thomas Ricouard on 17/04/2020.
+-//  Copyright © 2020 Thomas Ricouard. All rights reserved.
+-//
+-
+ import Foundation
+ import Combine
++import SwiftUI
+ import Backend
+ 
+ class VillagersViewModel: ObservableObject {
++    enum Sort: String, CaseIterable {
++        case name
++        case species
++        
++        var displayName: LocalizedStringKey {
++            switch self {
++            case .name: return "Name"
++            case .species: return "Species"
++            }
++        }
++    }
++    
+     private static var cachedVillagers: [Villager] = []
+     
+     @Published var villagers: [Villager] = [] {
+@@ -27,6 +32,26 @@ class VillagersViewModel: ObservableObject {
+     @Published var searchText = ""
+     @Published var todayBirthdays: [Villager] = []
+     
++    // Sorting properties
++    @Published var sort: Sort?
++    @Published var sortAscending = true
++    
++    var sortedVillagers: [Villager] {
++        var villagersToSort = villagers
++        if let sort = sort {
++            villagersToSort.sort { a, b in
++                let result: ComparisonResult = sortAscending ? .orderedAscending : .orderedDescending
++                switch sort {
++                case .name:
++                    return a.localizedName.localizedCompare(b.localizedName) == result
++                case .species:
++                    return a.species.localizedCompare(b.species) == result
++                }
++            }
++        }
++        return villagersToSort
++    }
++    
+     private var apiPublisher: AnyPublisher<[String: Villager], Never>?
+     private var searchCancellable: AnyCancellable?
+     private var apiCancellable: AnyCancellable? {
+@@ -64,5 +89,20 @@ class VillagersViewModel: ObservableObject {
+             $0.localizedName.lowercased().contains(string.lowercased()) == true
+         }
+     }
++    
++    func toggleSort(_ newSort: Sort) {
++        if sort == newSort {
++            // Toggle direction
++            sortAscending.toggle()
++        } else {
++            // Set new sort with ascending direction
++            sort = newSort
++            sortAscending = true
++        }
++    }
++    
++    func clearSort() {
++        sort = nil
++        sortAscending = true
++    }
+ }
+-
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+index 1980295..ee097e0 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+@@ -1,11 +1,3 @@
+-//
+-//  VillagersListView.swift
+-//  ACHNBrowserUI
+-//
+-//  Created by Thomas Ricouard on 17/04/2020.
+-//  Copyright © 2020 Thomas Ricouard. All rights reserved.
+-//
+-
+ import SwiftUI
+ import Backend
+ import UI
+@@ -18,7 +10,7 @@ struct VillagersListView: View {
+             if !viewModel.searchText.isEmpty {
+                 return viewModel.searchResults
+             } else {
+-                return viewModel.villagers
++                return viewModel.sortedVillagers
+             }
+         }
+     }
+@@ -39,6 +31,7 @@ struct VillagersListView: View {
+             .listStyle(GroupedListStyle())
+             .navigationBarTitle(Text("Villagers"),
+                                 displayMode: .automatic)
++            .navigationBarItems(trailing: sortButton)
+             .modifier(DismissingKeyboardOnSwipe())
+             if !viewModel.villagers.isEmpty {
+                 VillagerDetailView(villager: viewModel.villagers.first!)
+@@ -47,6 +40,41 @@ struct VillagersListView: View {
+             }
+         }
+     }
++    
++    private var sortButton: some View {
++        Menu {
++            ForEach(VillagersViewModel.Sort.allCases, id: \.self) { sortOption in
++                Button(action: {
++                    viewModel.toggleSort(sortOption)
++                }) {
++                    HStack {
++                        Text(sortOption.displayName)
++                        if viewModel.sort == sortOption {
++                            Image(systemName: viewModel.sortAscending ? "arrow.up" : "arrow.down")
++                        }
++                    }
++                }
++            }
++            
++            Divider()
++            
++            Button(action: {
++                viewModel.clearSort()
++            }) {
++                Text("Clear sort")
++            }
++        } label: {
++            Image(systemName: sortButtonIcon)
++        }
++    }
++    
++    private var sortButtonIcon: String {
++        if viewModel.sort != nil {
++            return viewModel.sortAscending ? "arrow.up.circle.fill" : "arrow.down.circle.fill"
++        } else {
++            return "arrow.up.arrow.down.circle"
++        }
++    }
+ }
+ 
+ struct VillagersListView_Previews: PreviewProvider {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/zh-Hans.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/zh-Hans.lproj/Localizable.strings
+index 1ed0a0a..7e8effe 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/zh-Hans.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/zh-Hans.lproj/Localizable.strings
+@@ -375,3 +375,8 @@
+ "This will delete all your collected critters, items, villagers and items lists" = "这将会删除你所有收集的生物，村民和物品列表";
+ 
+ 
++
++// Villagers sorting
++"Name" = "Name";
++"Species" = "Species";
++"Clear sort" = "Clear sort";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/zh_tw.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/zh_tw.lproj/Localizable.strings
+index ba1e08f..800dee0 100644
+Binary files a/ACHNBrowserUI/ACHNBrowserUI/zh_tw.lproj/Localizable.strings and b/ACHNBrowserUI/ACHNBrowserUI/zh_tw.lproj/Localizable.strings differ

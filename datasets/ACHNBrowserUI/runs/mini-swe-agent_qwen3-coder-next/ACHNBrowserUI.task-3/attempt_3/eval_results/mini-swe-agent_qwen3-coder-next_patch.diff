@@ -1,0 +1,163 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
+index c0bc1d7..0401ea4 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
+@@ -21,6 +21,24 @@ struct LikeButtonView: View {
+     }
+         
+     var imageName: String {
++        // Check if we have a variant for a multi-variant item
++        if let item = viewModel.item, let variant = viewModel.variant {
++            // For items with variants, check the completion status
++            // Only show partial states if there are multiple variants (> 1)
++            if item.hasSomeVariations, let variations = item.variations, variations.count > 1 {
++                let status =  UserCollection.shared.variants.completionStatus(for: item)
++                switch status {
++                case .unstarted:
++                    return "star"
++                case .partial:
++                    return "star.lefthalf.fill"
++                case .complete:
++                    return "star.fill"
++                }
++            }
++        }
++
++        // Fallback to standard behavior (binary like/unlike)
+         if viewModel.item != nil {
+             if viewModel.item?.isCritter == true {
+                 return viewModel.isInCollection ? "checkmark.seal.fill" : "checkmark.seal"
+@@ -44,8 +62,28 @@ struct LikeButtonView: View {
+     
+     var body: some View {
+         Button(action: {
+-            let added = self.viewModel.toggleCollection()
+-            FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++            if let item = viewModel.item {
++                // Check if this is a multi-variant item
++                if item.hasSomeVariations, let variations = item.variations, variations.count > 1 {
++                    if let variant = viewModel.variant {
++                        // Toggling a specific variant
++                        let added = viewModel.collection.toggleVariant(item: item, variant: variant)
++                        FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++                    } else {
++                        // For multi-variant items without a specific variant selected,
++                        // we should present a variant selection UI
++                        // For now, we'll toggle the first variant (in a real implementation, this would show a sheet)
++                        if let firstVariant = variations.first {
++                            let added = viewModel.collection.toggleVariant(item: item, variant: firstVariant)
++                            FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++                        }
++                    }
++                } else {
++                    // Single variant or no variant - toggle parent item (binary behavior)
++                    let added = viewModel.collection.toggleItem(item: item)
++                    FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++                }
++            }
+         }) {
+             Image(systemName: imageName).foregroundColor(color)
+         }
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+index f5642f1..46ea467 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+@@ -136,15 +136,29 @@ public class UserCollection: ObservableObject {
+         guard let filename = item.filename else {
+             return false
+         }
++        
+         if variants[filename]?.contains(variant) == true {
++            // Removing variant
+             variants[filename]?.removeAll(where: { $0 == variant })
++            
++            // If no more variants, remove parent item
++            if variants[filename]?.isEmpty == true {
++                variants.removeValue(forKey: filename)
++                _ = items.toggle(item: item)
++            }
+             save()
+             return false
+         } else {
++            // Adding variant
+             if variants[filename] == nil {
+                 variants[filename] = []
+             }
+             variants[filename]?.append(variant)
++            
++            // If this is the first variant, add parent item
++            if variants[filename]!.count == 1 {
++                _ = items.toggle(item: item)
++            }
+             save()
+             return true
+         }
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Collection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Collection.swift
+index 12474f4..e5314d2 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Collection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Collection.swift
+@@ -28,3 +28,25 @@ extension Collection {
+         return try self.filter(test).count
+     }
+ }
++
++// MARK: - Variants Completion Status
++public extension Dictionary where Key == String, Value == [Variant] {
++    func completionStatus(for item: Item) -> VariantsCompletionStatus {
++        guard let filename = item.filename else {
++            return .unstarted
++        }
++        
++        let collectedVariants = self[filename] ?? []
++        guard let allVariants = item.variations, !allVariants.isEmpty else {
++            return .unstarted
++        }
++        
++        if collectedVariants.isEmpty {
++            return .unstarted
++        } else if collectedVariants.count == allVariants.count {
++            return .complete
++        } else {
++            return .partial
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+index 46b91a9..cd696f0 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+@@ -9,6 +9,14 @@
+ import Foundation
+ import SwiftUI
+ 
++
++// MARK: - Variants Completion Status
++public enum VariantsCompletionStatus {
++    case unstarted
++    case partial
++    case complete
++}
++
+ public struct ItemResponse: Codable {
+     let total: Int
+     let results: [Item]
+@@ -81,6 +89,10 @@ public struct Item: Codable, Equatable, Identifiable, Hashable {
+     public let movementSpeed: String?
+     
+     public var variations: [Variant]?
++
++    public var hasSomeVariations: Bool {
++        variations != nil && !variations!.isEmpty
++    }
+     
+     public let category: String
+     
+@@ -250,6 +262,8 @@ public extension Item {
+     }
+ }
+ 
++
++
+ // MARK: - Array
+ public extension Sequence {
+     func sorted<T: Comparable>(by keyPath: KeyPath<Element, T>) -> [Element] {

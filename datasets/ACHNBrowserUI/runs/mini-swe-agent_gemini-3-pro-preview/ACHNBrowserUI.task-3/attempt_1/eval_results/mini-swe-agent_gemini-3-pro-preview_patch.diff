@@ -1,0 +1,96 @@
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+index f5642f1..7fc6195 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+@@ -12,6 +12,10 @@ import CloudKit
+ import os.log
+ import WidgetKit
+ 
++public enum VariantsCompletionStatus {
++    case unstarted, partial, complete
++}
++
+ public class UserCollection: ObservableObject {
+     public static let shared = UserCollection(iCloudDisabled: false)
+     
+@@ -131,25 +135,33 @@ public class UserCollection: ObservableObject {
+         save()
+         return added
+     }
+-    
++
+     public func toggleVariant(item: Item, variant: Variant) -> Bool {
+         guard let filename = item.filename else {
+             return false
+         }
++        var added = false
+         if variants[filename]?.contains(variant) == true {
+-            variants[filename]?.removeAll(where: { $0 == variant })
+-            save()
+-            return false
++             variants[filename]?.removeAll(where: { $0 == variant })
++             if variants[filename]?.isEmpty == true, items.contains(item) {
++                 _ = items.toggle(item: item)
++             }
++             added = false
+         } else {
+-            if variants[filename] == nil {
+-                variants[filename] = []
+-            }
+-            variants[filename]?.append(variant)
+-            save()
+-            return true
++             if variants[filename] == nil {
++                 variants[filename] = []
++             }
++             variants[filename]?.append(variant)
++             if !items.contains(item) {
++                 _ = items.toggle(item: item)
++             }
++             added = true
+         }
++        save()
++        return added
+     }
+     
++    
+     public func toggleCritters(critter: Item) -> Bool {
+         let added = critters.toggle(item: critter)
+         save()
+@@ -506,3 +518,22 @@ public extension Dictionary where Key == String, Value == [Variant] {
+         return self[filename]?.contains(variant) == true
+     }
+ }
++
++public extension Dictionary where Key == String, Value == [Variant] {
++    func completionStatus(for item: Item) -> VariantsCompletionStatus {
++        guard let filename = item.filename,
++              let variants = item.variations,
++              !variants.isEmpty else {
++            return .unstarted
++        }
++        let collectedVariants = self[filename] ?? []
++        
++        if collectedVariants.isEmpty {
++            return .unstarted
++        } else if collectedVariants.count >= variants.count {
++            return .complete
++        } else {
++            return .partial
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+index 46b91a9..509b40f 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+@@ -103,6 +103,9 @@ public struct Item: Codable, Equatable, Identifiable, Hashable {
+     public let themes: [String]?
+     public let colors: [String]?
+     
++    public var hasSomeVariations: Bool {
++        (variations?.count ?? 0) > 1
++    }
+     private static var METAS_CACHE: [String: [String]] = [:]
+     
+     public var metas: [String] {

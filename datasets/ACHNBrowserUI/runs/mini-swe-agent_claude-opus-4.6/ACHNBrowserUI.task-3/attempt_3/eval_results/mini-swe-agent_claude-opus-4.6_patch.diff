@@ -1,0 +1,99 @@
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+index f5642f1..28f0466 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+@@ -138,11 +138,22 @@ public class UserCollection: ObservableObject {
+         }
+         if variants[filename]?.contains(variant) == true {
+             variants[filename]?.removeAll(where: { $0 == variant })
++            // Auto-remove parent item when the last variant is un-collected
++            if variants[filename]?.isEmpty ?? true {
++                variants[filename] = nil
++                if items.contains(item) {
++                    items.removeAll(where: { $0 == item })
++                }
++            }
+             save()
+             return false
+         } else {
+-            if variants[filename] == nil {
++            // Auto-add parent item when the first variant is collected
++            if variants[filename] == nil || variants[filename]?.isEmpty == true {
+                 variants[filename] = []
++                if !items.contains(item) {
++                    items.append(item)
++                }
+             }
+             variants[filename]?.append(variant)
+             save()
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+index 46b91a9..b23615c 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+@@ -284,3 +284,13 @@ public let static_item = Item(name: "Acoustic guitar",
+                        styles: nil,
+                        themes: nil,
+                        colors: nil)
++
++// MARK: - Variants
++public extension Item {
++    /// Returns `true` when the item carries two or more variants,
++    /// meaning it can show partial-completion states.
++    var hasSomeVariations: Bool {
++        guard let variations = variations else { return false }
++        return variations.count > 1
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/VariantsCompletionStatus.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/VariantsCompletionStatus.swift
+new file mode 100644
+index 0000000..47c0a36
+--- /dev/null
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/VariantsCompletionStatus.swift
+@@ -0,0 +1,47 @@
++//
++//  VariantsCompletionStatus.swift
++//  Backend
++//
++//  Tracks per-variant collection progress for items.
++//
++
++import Foundation
++
++/// Represents the collection progress for an item's variants.
++public enum VariantsCompletionStatus: Equatable {
++    /// No variants have been collected.
++    case unstarted
++    /// Some (but not all) variants have been collected.
++    case partial
++    /// All variants have been collected.
++    case complete
++}
++
++public extension Dictionary where Key == String, Value == [Variant] {
++    /// Returns the ``VariantsCompletionStatus`` for the given item by
++    /// comparing the number of collected variants against the item's
++    /// total variant count.
++    ///
++    /// - Parameter item: The item whose completion status is queried.
++    /// - Returns: `.unstarted` when no variants are collected,
++    ///            `.complete` when every variant is collected,
++    ///            `.partial` otherwise.
++    func completionStatus(for item: Item) -> VariantsCompletionStatus {
++        guard let filename = item.filename,
++              let allVariations = item.variations,
++              allVariations.count > 1 else {
++            // Items without multiple variants don't have partial states.
++            return .unstarted
++        }
++
++        let collectedCount = self[filename]?.count ?? 0
++
++        if collectedCount == 0 {
++            return .unstarted
++        } else if collectedCount >= allVariations.count {
++            return .complete
++        } else {
++            return .partial
++        }
++    }
++}

@@ -1,0 +1,1501 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj b/ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj
+index e3de161..133e72d 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj
++++ b/ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj
+@@ -171,7 +171,9 @@
+ 		69E4BBB6245AE5C9001035E2 /* ItemDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69E4BBB5245AE5C9001035E2 /* ItemDetailView.swift */; };
+ 		69E4BBB7245AE60C001035E2 /* Color.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69AF8C7B243E4D29001DD9CB /* Color.swift */; };
+ 		69E4BBB8245AE60F001035E2 /* Colors.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 69AF8C79243E4C78001DD9CB /* Colors.xcassets */; };
+-/* End PBXBuildFile section */
++
++		69157BD42471A5A1005B9003 /* TurnipsPriceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C2D6779245F4FE8005831C5 /* TurnipsPriceRow.swift */; };
++		69157BD52471A5A1005B9004 /* TurnipsMinMaxPriceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C2D677A245F4FE8005831C6 /* TurnipsMinMaxPriceRow.swift */; };/* End PBXBuildFile section */
+ 
+ /* Begin PBXCopyFilesBuildPhase section */
+ 		69157C542471A5A1005B9002 /* Embed PlugIns */ = {
+@@ -338,6 +340,8 @@
+ 		69E4BBBA245B0BEF001035E2 /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
+ 		69E98C6E247439AD00A200FE /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/Localizable.strings; sourceTree = "<group>"; };
+ 		69EC82ED2461E79D00CE9064 /* TurnipsChartTopLegendView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsChartTopLegendView.swift; sourceTree = "<group>"; };
++		4C2D6779245F4FE8005831C5 /* TurnipsPriceRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsPriceRow.swift; sourceTree = "<group>"; };
++		4C2D677A245F4FE8005831C6 /* TurnipsMinMaxPriceRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsMinMaxPriceRow.swift; sourceTree = "<group>"; };
+ /* End PBXFileReference section */
+ 
+ /* Begin PBXFrameworksBuildPhase section */
+@@ -511,6 +515,8 @@
+ 			isa = PBXGroup;
+ 			children = (
+ 				69518369245977D1005D28E0 /* TurnipsAveragePriceRow.swift */,
++				4C2D6779245F4FE8005831C5 /* TurnipsPriceRow.swift */,
++				4C2D677A245F4FE8005831C6 /* TurnipsMinMaxPriceRow.swift */,
+ 			);
+ 			path = rows;
+ 			sourceTree = "<group>";
+@@ -1096,6 +1102,8 @@
+ 				69157BD62471A5A1005B9002 /* UserListSubscribeCallView.swift in Sources */,
+ 				69157BD72471A5A1005B9002 /* TodaySectionEditView.swift in Sources */,
+ 				69157BD82471A5A1005B9002 /* VillagersViewModel.swift in Sources */,
++				69157BD42471A5A1005B9003 /* TurnipsPriceRow.swift in Sources */,
++				69157BD52471A5A1005B9004 /* TurnipsMinMaxPriceRow.swift in Sources */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Array.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Array.swift
+index 1bf8bb7..a450417 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Array.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Array.swift
+@@ -29,3 +29,10 @@ public extension Array where Element == Item {
+         return added
+     }
+ }
++
++public extension Array {
++    subscript(safe index: Int) -> Element? {
++        guard index >= 0, index < count else { return nil }
++        return self[index]
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/TurnipsViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/TurnipsViewModel.swift
+index 7142641..0f33313 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/TurnipsViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/TurnipsViewModel.swift
+@@ -19,6 +19,7 @@ class TurnipsViewModel: ObservableObject {
+     @Published var averagesPrices: [[Int]]?
+     @Published var averagesProfits: [[Int]]?
+     @Published var minMaxPrices: [[[Int]]]?
++    @Published var userEnteredPrices: [[Int]]?
+         
+     var turnipsCancellable: AnyCancellable?
+     var exchangeCancellable: AnyCancellable?
+@@ -35,14 +36,43 @@ class TurnipsViewModel: ObservableObject {
+                     self?.averagesPrices = nil
+                     self?.averagesProfits = nil
+                     self?.minMaxPrices = nil
++                    self?.userEnteredPrices = nil
+                 }
+             })
++        
++        // Load user entered prices
++        refreshUserEnteredPrices()
+     }
+     
+     func refreshPrediction(predictions: TurnipPredictions) {
+         averagesPrices = predictions.averagePrices?.chunked(into: 2)
+         minMaxPrices = predictions.minMax?.chunked(into: 2)
+         averagesProfits = predictions.averageProfits?.chunked(into: 2)
++        refreshUserEnteredPrices()
++    }
++    
++    func refreshUserEnteredPrices() {
++        let fields = TurnipFields.decode()
++        var enteredPrices: [[Int]] = []
++        
++        // Convert string fields to Int arrays, grouping by day (AM/PM)
++        for i in stride(from: 0, to: fields.fields.count, by: 2) {
++            var dayPrices: [Int] = []
++            if i < fields.fields.count, let amPrice = Int(fields.fields[i]), amPrice > 0 {
++                dayPrices.append(amPrice)
++            } else {
++                dayPrices.append(0)
++            }
++            
++            if i + 1 < fields.fields.count, let pmPrice = Int(fields.fields[i + 1]), pmPrice > 0 {
++                dayPrices.append(pmPrice)
++            } else {
++                dayPrices.append(0)
++            }
++            enteredPrices.append(dayPrices)
++        }
++        
++        userEnteredPrices = enteredPrices
+     }
+     
+     func refreshPendingNotifications() {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/TurnipsViewModel.swift.backup b/ACHNBrowserUI/ACHNBrowserUI/viewModels/TurnipsViewModel.swift.backup
+new file mode 100644
+index 0000000..7142641
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/TurnipsViewModel.swift.backup
+@@ -0,0 +1,66 @@
++//
++//  TurnipsViewModel.swift
++//  ACHNBrowserUI
++//
++//  Created by Eric Lewis on 4/18/20.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import Foundation
++import Combine
++import SwiftUI
++import JavaScriptCore
++import Backend
++
++class TurnipsViewModel: ObservableObject {
++    @Published var islands: [Island]?
++    @Published var pendingNotifications = 0
++    @Published var predictions: TurnipPredictions?
++    @Published var averagesPrices: [[Int]]?
++    @Published var averagesProfits: [[Int]]?
++    @Published var minMaxPrices: [[[Int]]]?
++        
++    var turnipsCancellable: AnyCancellable?
++    var exchangeCancellable: AnyCancellable?
++        
++    init() {
++        turnipsCancellable = TurnipPredictionsService.shared.$predictions
++            .receive(on: RunLoop.main)
++            .sink(receiveValue: { [weak self] predictions in
++                self?.predictions = predictions
++                if let predictions = predictions {
++                    self?.refreshPrediction(predictions: predictions)
++                    self?.refreshPendingNotifications()
++                } else {
++                    self?.averagesPrices = nil
++                    self?.averagesProfits = nil
++                    self?.minMaxPrices = nil
++                }
++            })
++    }
++    
++    func refreshPrediction(predictions: TurnipPredictions) {
++        averagesPrices = predictions.averagePrices?.chunked(into: 2)
++        minMaxPrices = predictions.minMax?.chunked(into: 2)
++        averagesProfits = predictions.averageProfits?.chunked(into: 2)
++    }
++    
++    func refreshPendingNotifications() {
++        NotificationManager.shared.pendingNotifications { [weak self] requests in
++            DispatchQueue.main.async {
++                self?.pendingNotifications = requests.count
++            }
++        }
++    }
++    
++    func fetchIslands() {
++        exchangeCancellable = TurnipExchangeService.shared
++            .fetchIslands()
++            .receive(on: RunLoop.main)
++            .sink(receiveCompletion: { _ in
++                
++            }) { [weak self] islands in
++                self?.islands = islands
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+index 64f896e..40178ac 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+@@ -158,19 +158,16 @@ extension TurnipsView {
+                 
+                 if turnipsDisplay == .average {
+                     ForEach(0..<viewModel.averagesPrices!.count) { i in
+-                        TurnipsAveragePriceRow(label: self.labels[i],
+-                                               prices: self.viewModel.averagesPrices![i])
++                        TurnipsAveragePriceRow(label: self.labels[i], prices: self.viewModel.averagesPrices![i], minMaxPrices: nil, enteredPrices: self.viewModel.userEnteredPrices?[safe: i])
+                     }
+                 } else if turnipsDisplay == .minMax {
+                     ForEach(0..<viewModel.minMaxPrices!.count) { i in
+-                        TurnipsAveragePriceRow(label: self.labels[i],
+-                                               minMaxPrices: self.viewModel.minMaxPrices![i])
++                        TurnipsMinMaxPriceRow(label: self.labels[i], prices: nil, averagePrices: self.viewModel.userEnteredPrices?[safe: i], enteredPrices: self.viewModel.userEnteredPrices?[safe: i])
+                     }
+                 } else if turnipsDisplay == .profits {
+                     if viewModel.averagesProfits != nil {
+                         ForEach(labels, id: \.self) { day in
+-                            TurnipsAveragePriceRow(label: day,
+-                                                    prices: self.viewModel.averagesProfits![self.labels.firstIndex(of: day)!])
++                            TurnipsAveragePriceRow(label: day, prices: self.viewModel.averagesProfits![self.labels.firstIndex(of: day)!], minMaxPrices: nil, enteredPrices: nil)
+                         }
+                     } else {
+                         Text("Please add the amount of turnips you bought and for how much")
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift.backup b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift.backup
+new file mode 100644
+index 0000000..64f896e
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift.backup
+@@ -0,0 +1,229 @@
++//
++//  TurnipView.swift
++//  ACHNBrowserUI
++//
++//  Created by Eric Lewis on 4/17/20.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import SwiftUI
++import SwiftUIKit
++import Backend
++
++struct TurnipsView: View {
++    // MARK: - Vars
++    private enum TurnipsDisplay: String, CaseIterable {
++        case minMax, average, profits, chart
++        
++        func title() -> String {
++            switch self {
++            case .average: return "Average daily buy prices"
++            case .minMax: return "Daily min-max prices"
++            case .profits: return "Average profits"
++            case .chart: return "Chart"
++            }
++        }
++
++        var isChart: Bool {
++            get { self == .chart }
++            set { }
++        }
++    }
++    
++    @EnvironmentObject private var subManager: SubscriptionManager
++    @ObservedObject private var viewModel = TurnipsViewModel()
++    @State private var presentedSheet: Sheet.SheetType?
++    @State private var turnipsDisplay: TurnipsDisplay = .minMax
++    
++    private let labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
++    
++    
++    // MARK: - Body
++    var body: some View {
++        NavigationView {
++            if UIDevice.current.userInterfaceIdiom == .pad {
++                TurnipsFormView().environmentObject(subManager)
++            }
++            List {
++                if subManager.subscriptionStatus == .notSubscribed {
++                    subscriptionSection
++                }
++                if UIDevice.current.userInterfaceIdiom != .pad ||
++                    (UIDevice.current.orientation == .portrait ||
++                        UIDevice.current.orientation == .portraitUpsideDown){
++                    Section(header: SectionHeaderView(text: "Your prices", icon: "pencil")) {
++                        Button(action: {
++                            self.presentedSheet = .turnipsForm(subManager: self.subManager)
++                        }) {
++                            Text(TurnipFields.exist() ? "Edit your in game prices" : "Add your in game prices")
++                                .foregroundColor(.acHeaderBackground)
++                        }
++                    }
++                }
++                predictionsSection
++                exchangeSection
++            }
++            .listStyle(GroupedListStyle())
++            .environment(\.horizontalSizeClass, .regular)
++            .navigationBarTitle("Turnips",
++                                displayMode: .automatic)
++            .navigationBarItems(trailing: shareButton)
++            .sheet(item: $presentedSheet, content: {
++                Sheet(sheetType: $0)
++            })
++        }
++        .onAppear(perform: NotificationManager.shared.registerForNotifications)
++        .onAppear(perform: viewModel.fetchIslands)
++    }
++}
++
++// MARK: - Views
++extension TurnipsView {
++    private var shareButton: some View {
++        Button(action: {
++            let image = NavigationView {
++                List {
++                    self.predictionsSection
++                }
++            }
++            .listStyle(GroupedListStyle())
++            .environment(\.horizontalSizeClass, .regular)
++            .navigationViewStyle(StackNavigationViewStyle())
++            .frame(width: 350, height: 650).asImage()
++            self.presentedSheet = .share(content: [ItemDetailSource(name: "Turnips prediction", image: image)])
++        }) {
++            Image(systemName: "square.and.arrow.up")
++                .style(appStyle: .barButton)
++                .foregroundColor(.acText)
++        }
++        .buttonStyle(BorderedBarButtonStyle())
++        .accentColor(Color.acText.opacity(0.2))
++        .safeHoverEffectBarItem(position: .trailing)
++    }
++    
++    private var subscriptionSection: some View {
++        Section(header: SectionHeaderView(text: "AC Helper+", icon: "heart.fill")) {
++            VStack(spacing: 8) {
++                Button(action: {
++                    self.presentedSheet = .subscription(source: .turnip, subManager: self.subManager)
++                }) {
++                    Text("To help us support the application and get turnip predictions notification, you can try out AC Helper+")
++                        .foregroundColor(.acSecondaryText)
++                        .lineLimit(nil)
++                        .fixedSize(horizontal: false, vertical: true)
++                        .padding(.top, 8)
++                }
++                Button(action: {
++                    self.presentedSheet = .subscription(source: .turnip, subManager: self.subManager)
++                }) {
++                    Text("Learn more...")
++                        .font(.headline)
++                        .fontWeight(.bold)
++                        .foregroundColor(.white)
++                }.buttonStyle(PlainRoundedButton())
++                    .accentColor(.acHeaderBackground)
++                    .padding(.bottom, 8)
++            }
++        }
++    }
++    
++    private var predictionsSection: some View {
++        Section(header: SectionHeaderView(text: turnipsDisplay.title(), icon: "dollarsign.circle.fill"),
++                footer: Text(viewModel.pendingNotifications == 0 ? "" :
++                    "\(viewModel.pendingNotifications - 1) upcomingDailyNotifications")
++                    .font(.footnote)
++                    .foregroundColor(.catalogUnselected)
++                    .lineLimit(nil)) {
++            if viewModel.averagesPrices != nil && viewModel.minMaxPrices != nil {
++                Picker(selection: $turnipsDisplay, label: Text("")) {
++                    ForEach(TurnipsDisplay.allCases, id: \.self) { section in
++                        Text(LocalizedStringKey(section.rawValue.capitalized))
++                    }
++                }
++                .pickerStyle(SegmentedPickerStyle())
++
++                if turnipsDisplay != .chart {
++                    if turnipsDisplay == .profits && viewModel.averagesProfits != nil {
++                        Text("Profits estimates are computed using the average of the current period")
++                            .foregroundColor(.acSecondaryText)
++                    }
++                    HStack {
++                        Text("Day").fontWeight(.bold)
++                        Spacer()
++                        Text("AM").fontWeight(.bold)
++                        Spacer()
++                        Text("PM").fontWeight(.bold)
++                    }
++                }
++                
++                if turnipsDisplay == .average {
++                    ForEach(0..<viewModel.averagesPrices!.count) { i in
++                        TurnipsAveragePriceRow(label: self.labels[i],
++                                               prices: self.viewModel.averagesPrices![i])
++                    }
++                } else if turnipsDisplay == .minMax {
++                    ForEach(0..<viewModel.minMaxPrices!.count) { i in
++                        TurnipsAveragePriceRow(label: self.labels[i],
++                                               minMaxPrices: self.viewModel.minMaxPrices![i])
++                    }
++                } else if turnipsDisplay == .profits {
++                    if viewModel.averagesProfits != nil {
++                        ForEach(labels, id: \.self) { day in
++                            TurnipsAveragePriceRow(label: day,
++                                                    prices: self.viewModel.averagesProfits![self.labels.firstIndex(of: day)!])
++                        }
++                    } else {
++                        Text("Please add the amount of turnips you bought and for how much")
++                            .foregroundColor(.acHeaderBackground)
++                            .onTapGesture {
++                                self.presentedSheet = .turnipsForm(subManager: self.subManager)
++                        }
++                    }
++                } else if turnipsDisplay == .chart {
++                    if viewModel.predictions != nil {
++                        TurnipsChartView(
++                            predictions: viewModel.predictions!,
++                            animateCurves: $turnipsDisplay.isChart
++                        ).padding(.top, 8)
++                    } else {
++                        Text("Add your in game turnip prices to see the predictions chart")
++                            .foregroundColor(.acHeaderBackground)
++                            .onTapGesture {
++                                self.presentedSheet = .turnipsForm(subManager: self.subManager)
++                        }
++                    }
++                   
++                }
++            } else {
++                Text("Add your in game turnip prices to see predictions")
++                    .foregroundColor(.acHeaderBackground)
++                    .onTapGesture {
++                        self.presentedSheet = .turnipsForm(subManager: self.subManager)
++                }
++            }
++        }
++    }
++    
++    private var exchangeSection: some View {
++        Section(header: SectionHeaderView(text: "Turnip.Exchange", icon: "bitcoinsign.circle.fill")) {
++            if viewModel.islands?.isEmpty == false {
++                viewModel.islands.map {
++                    ForEach($0) { island in
++                        NavigationLink(destination: IslandDetailView(island: island)) {
++                            TurnipIslandRow(island: island)
++                        }
++                    }
++                }
++            } else {
++                RowLoadingView(isLoading: .constant(true))
++            }
++        }
++    }
++}
++
++struct TurnipsView_Previews: PreviewProvider {
++    static var previews: some View {
++        TurnipsView()
++            .environmentObject(SubscriptionManager.shared)
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift.part1 b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift.part1
+new file mode 100644
+index 0000000..2c6b5bd
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift.part1
+@@ -0,0 +1,180 @@
++//
++//  TurnipView.swift
++//  ACHNBrowserUI
++//
++//  Created by Eric Lewis on 4/17/20.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import SwiftUI
++import SwiftUIKit
++import Backend
++
++struct TurnipsView: View {
++    // MARK: - Vars
++    private enum TurnipsDisplay: String, CaseIterable {
++        case minMax, average, profits, chart
++        
++        func title() -> String {
++            switch self {
++            case .average: return "Average daily buy prices"
++            case .minMax: return "Daily min-max prices"
++            case .profits: return "Average profits"
++            case .chart: return "Chart"
++            }
++        }
++
++        var isChart: Bool {
++            get { self == .chart }
++            set { }
++        }
++    }
++    
++    @EnvironmentObject private var subManager: SubscriptionManager
++    @ObservedObject private var viewModel = TurnipsViewModel()
++    @State private var presentedSheet: Sheet.SheetType?
++    @State private var turnipsDisplay: TurnipsDisplay = .minMax
++    
++    private let labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
++    
++    
++    // MARK: - Body
++    var body: some View {
++        NavigationView {
++            if UIDevice.current.userInterfaceIdiom == .pad {
++                TurnipsFormView().environmentObject(subManager)
++            }
++            List {
++                if subManager.subscriptionStatus == .notSubscribed {
++                    subscriptionSection
++                }
++                if UIDevice.current.userInterfaceIdiom != .pad ||
++                    (UIDevice.current.orientation == .portrait ||
++                        UIDevice.current.orientation == .portraitUpsideDown){
++                    Section(header: SectionHeaderView(text: "Your prices", icon: "pencil")) {
++                        Button(action: {
++                            self.presentedSheet = .turnipsForm(subManager: self.subManager)
++                        }) {
++                            Text(TurnipFields.exist() ? "Edit your in game prices" : "Add your in game prices")
++                                .foregroundColor(.acHeaderBackground)
++                        }
++                    }
++                }
++                predictionsSection
++                exchangeSection
++            }
++            .listStyle(GroupedListStyle())
++            .environment(\.horizontalSizeClass, .regular)
++            .navigationBarTitle("Turnips",
++                                displayMode: .automatic)
++            .navigationBarItems(trailing: shareButton)
++            .sheet(item: $presentedSheet, content: {
++                Sheet(sheetType: $0)
++            })
++        }
++        .onAppear(perform: NotificationManager.shared.registerForNotifications)
++        .onAppear(perform: viewModel.fetchIslands)
++    }
++}
++
++// MARK: - Views
++extension TurnipsView {
++    private var shareButton: some View {
++        Button(action: {
++            let image = NavigationView {
++                List {
++                    self.predictionsSection
++                }
++            }
++            .listStyle(GroupedListStyle())
++            .environment(\.horizontalSizeClass, .regular)
++            .navigationViewStyle(StackNavigationViewStyle())
++            .frame(width: 350, height: 650).asImage()
++            self.presentedSheet = .share(content: [ItemDetailSource(name: "Turnips prediction", image: image)])
++        }) {
++            Image(systemName: "square.and.arrow.up")
++                .style(appStyle: .barButton)
++                .foregroundColor(.acText)
++        }
++        .buttonStyle(BorderedBarButtonStyle())
++        .accentColor(Color.acText.opacity(0.2))
++        .safeHoverEffectBarItem(position: .trailing)
++    }
++    
++    private var subscriptionSection: some View {
++        Section(header: SectionHeaderView(text: "AC Helper+", icon: "heart.fill")) {
++            VStack(spacing: 8) {
++                Button(action: {
++                    self.presentedSheet = .subscription(source: .turnip, subManager: self.subManager)
++                }) {
++                    Text("To help us support the application and get turnip predictions notification, you can try out AC Helper+")
++                        .foregroundColor(.acSecondaryText)
++                        .lineLimit(nil)
++                        .fixedSize(horizontal: false, vertical: true)
++                        .padding(.top, 8)
++                }
++                Button(action: {
++                    self.presentedSheet = .subscription(source: .turnip, subManager: self.subManager)
++                }) {
++                    Text("Learn more...")
++                        .font(.headline)
++                        .fontWeight(.bold)
++                        .foregroundColor(.white)
++                }.buttonStyle(PlainRoundedButton())
++                    .accentColor(.acHeaderBackground)
++                    .padding(.bottom, 8)
++            }
++        }
++    }
++    
++    private var predictionsSection: some View {
++        Section(header: SectionHeaderView(text: turnipsDisplay.title(), icon: "dollarsign.circle.fill"),
++                footer: Text(viewModel.pendingNotifications == 0 ? "" :
++                    "\(viewModel.pendingNotifications - 1) upcomingDailyNotifications")
++                    .font(.footnote)
++                    .foregroundColor(.catalogUnselected)
++                    .lineLimit(nil)) {
++            if viewModel.averagesPrices != nil && viewModel.minMaxPrices != nil {
++                Picker(selection: $turnipsDisplay, label: Text("")) {
++                    ForEach(TurnipsDisplay.allCases, id: \.self) { section in
++                        Text(LocalizedStringKey(section.rawValue.capitalized))
++                    }
++                }
++                .pickerStyle(SegmentedPickerStyle())
++
++                if turnipsDisplay != .chart {
++                    if turnipsDisplay == .profits && viewModel.averagesProfits != nil {
++                        Text("Profits estimates are computed using the average of the current period")
++                            .foregroundColor(.acSecondaryText)
++                    }
++                    HStack {
++                        Text("Day").fontWeight(.bold)
++                        Spacer()
++                        Text("AM").fontWeight(.bold)
++                        Spacer()
++                        Text("PM").fontWeight(.bold)
++                    }
++                }
++                
++                if turnipsDisplay == .average {
++                    ForEach(0..<viewModel.averagesPrices!.count) { i in
++                        TurnipsAveragePriceRow(label: self.labels[i],
++                                               prices: self.viewModel.averagesPrices![i])
++                    }
++                } else if turnipsDisplay == .minMax {
++                    ForEach(0..<viewModel.minMaxPrices!.count) { i in
++                        TurnipsAveragePriceRow(label: self.labels[i],
++                                               minMaxPrices: self.viewModel.minMaxPrices![i])
++                    }
++                } else if turnipsDisplay == .profits {
++                    if viewModel.averagesProfits != nil {
++                        ForEach(labels, id: \.self) { day in
++                            TurnipsAveragePriceRow(label: day,
++                                                    prices: self.viewModel.averagesProfits![self.labels.firstIndex(of: day)!])
++                        }
++                    } else {
++                        Text("Please add the amount of turnips you bought and for how much")
++                            .foregroundColor(.acHeaderBackground)
++                            .onTapGesture {
++                                self.presentedSheet = .turnipsForm(subManager: self.subManager)
++                        }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
+index 0edd497..408c08a 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
+@@ -8,21 +8,44 @@
+ 
+ import SwiftUI
+ 
+-struct TurnipsAveragePriceRow: View {
++struct TurnipsAveragePriceRow: View, TurnipsPriceRow {
+     let label: String
+     let prices: [Int]?
+     let minMaxPrices: [[Int]]?
++    private let enteredPrices: [Int]?
+     
+     init(label: String, prices: [Int]) {
+         self.label = label
+         self.prices = prices
+         self.minMaxPrices = nil
++        self.enteredPrices = nil
+     }
+     
+     init(label: String, minMaxPrices: [[Int]]) {
+         self.label = label
+         self.prices = nil
+         self.minMaxPrices = minMaxPrices
++        self.enteredPrices = nil
++    }
++    
++    init(label: String, prices: [Int]?, minMaxPrices: [[Int]]?, enteredPrices: [Int]?) {
++        self.label = label
++        self.prices = prices
++        self.minMaxPrices = minMaxPrices
++        self.enteredPrices = enteredPrices
++    }
++    
++    func isEntered(meridian: TurnipsPriceMeridian) -> Bool {
++        guard let enteredPrices = enteredPrices else {
++            return false
++        }
++        
++        switch meridian {
++        case .am:
++            return enteredPrices.count > 0 && enteredPrices[0] > 0
++        case .pm:
++            return enteredPrices.count > 1 && enteredPrices[1] > 0
++        }
+     }
+     
+     private func color(price: Int) -> Color {
+@@ -39,33 +62,40 @@ struct TurnipsAveragePriceRow: View {
+         color(price: Int(prices.average))
+     }
+     
++    private func displayPrice(at index: Int, isEntered: Bool) -> some View {
++        if isEntered {
++            return Text("✓")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(.green)
++        } else if let prices = prices, index < prices.count {
++            return Text("\(prices[index])")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(color(price: prices[index]))
++        } else if let minMaxPrices = minMaxPrices, index < minMaxPrices.count {
++            return Text("\(minMaxPrices[index].first!) - \(minMaxPrices[index].last!)")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(color(prices: minMaxPrices[index]))
++        } else {
++            return Text("-")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(.acSecondaryText)
++        }
++    }
++    
+     var body: some View {
+         HStack {
+             Text(LocalizedStringKey(label))
+                 .font(.body)
+                 .foregroundColor(.acText)
+             Spacer()
+-            if prices != nil {
+-                Text("\(prices!.first!)")
+-                    .font(.headline)
+-                    .fontWeight(.bold)
+-                    .foregroundColor(color(price: prices!.first!))
+-                Spacer()
+-                Text("\(prices!.last!)")
+-                    .font(.headline)
+-                    .fontWeight(.bold)
+-                    .foregroundColor(color(price: prices!.last!))
+-            } else if minMaxPrices != nil {
+-                Text("\(minMaxPrices!.first!.first!) - \(minMaxPrices!.first!.last!)")
+-                    .font(.headline)
+-                    .fontWeight(.bold)
+-                    .foregroundColor(color(prices: minMaxPrices!.first!))
+-                Spacer()
+-                Text("\(minMaxPrices!.last!.first!) - \(minMaxPrices!.last!.last!)")
+-                    .font(.headline)
+-                    .fontWeight(.bold)
+-                    .foregroundColor(color(prices: minMaxPrices!.last!))
+-            }
++            
++            displayPrice(at: 0, isEntered: isEntered(meridian: .am))
++            Spacer()
++            displayPrice(at: 1, isEntered: isEntered(meridian: .pm))
+         }
+     }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift.backup b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift.backup
+new file mode 100644
+index 0000000..0edd497
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift.backup
+@@ -0,0 +1,82 @@
++//
++//  TurnipsAveragePriceROw.swift
++//  ACHNBrowserUI
++//
++//  Created by Thomas Ricouard on 29/04/2020.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import SwiftUI
++
++struct TurnipsAveragePriceRow: View {
++    let label: String
++    let prices: [Int]?
++    let minMaxPrices: [[Int]]?
++    
++    init(label: String, prices: [Int]) {
++        self.label = label
++        self.prices = prices
++        self.minMaxPrices = nil
++    }
++    
++    init(label: String, minMaxPrices: [[Int]]) {
++        self.label = label
++        self.prices = nil
++        self.minMaxPrices = minMaxPrices
++    }
++    
++    private func color(price: Int) -> Color {
++        if price <= 90 {
++            return .red
++        } else if price >= 150 {
++            return .acTabBarBackground
++        } else {
++            return .acSecondaryText
++        }
++    }
++    
++    private func color(prices: [Int]) -> Color {
++        color(price: Int(prices.average))
++    }
++    
++    var body: some View {
++        HStack {
++            Text(LocalizedStringKey(label))
++                .font(.body)
++                .foregroundColor(.acText)
++            Spacer()
++            if prices != nil {
++                Text("\(prices!.first!)")
++                    .font(.headline)
++                    .fontWeight(.bold)
++                    .foregroundColor(color(price: prices!.first!))
++                Spacer()
++                Text("\(prices!.last!)")
++                    .font(.headline)
++                    .fontWeight(.bold)
++                    .foregroundColor(color(price: prices!.last!))
++            } else if minMaxPrices != nil {
++                Text("\(minMaxPrices!.first!.first!) - \(minMaxPrices!.first!.last!)")
++                    .font(.headline)
++                    .fontWeight(.bold)
++                    .foregroundColor(color(prices: minMaxPrices!.first!))
++                Spacer()
++                Text("\(minMaxPrices!.last!.first!) - \(minMaxPrices!.last!.last!)")
++                    .font(.headline)
++                    .fontWeight(.bold)
++                    .foregroundColor(color(prices: minMaxPrices!.last!))
++            }
++        }
++    }
++}
++
++struct TurnipsAveragePriceRow_Previews: PreviewProvider {
++    static var previews: some View {
++        NavigationView {
++            List {
++                TurnipsAveragePriceRow(label: "Mon", prices: [90, 95])
++                TurnipsAveragePriceRow(label: "Mon", prices: [40, 600])
++            }
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift
+new file mode 100644
+index 0000000..c233cee
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift
+@@ -0,0 +1,104 @@
++//
++//  TurnipsMinMaxPriceRow.swift
++//  ACHNBrowserUI
++//
++//  Created by Turnip Predictions on 29/04/2020.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import SwiftUI
++
++struct TurnipsMinMaxPriceRow: View, TurnipsPriceRow {
++    let label: String
++    let prices: [Int]?
++    let averagePrices: [Int]?
++    private let enteredPrices: [Int]?
++    
++    init(label: String, prices: [Int]) {
++        self.label = label
++        self.prices = prices
++        self.averagePrices = nil
++        self.enteredPrices = nil
++    }
++    
++    init(label: String, averagePrices: [Int]) {
++        self.label = label
++        self.prices = nil
++        self.averagePrices = averagePrices
++        self.enteredPrices = nil
++    }
++    
++    init(label: String, prices: [Int]?, averagePrices: [Int]?, enteredPrices: [Int]?) {
++        self.label = label
++        self.prices = prices
++        self.averagePrices = averagePrices
++        self.enteredPrices = enteredPrices
++    }
++    
++    func isEntered(meridian: TurnipsPriceMeridian) -> Bool {
++        guard let enteredPrices = enteredPrices else {
++            return false
++        }
++        
++        switch meridian {
++        case .am:
++            return enteredPrices.count > 0 && enteredPrices[0] > 0
++        case .pm:
++            return enteredPrices.count > 1 && enteredPrices[1] > 0
++        }
++    }
++    
++    private func color(price: Int) -> Color {
++        if price <= 90 {
++            return .red
++        } else if price >= 150 {
++            return .acTabBarBackground
++        } else {
++            return .acSecondaryText
++        }
++    }
++    
++    private func color(prices: [Int]) -> Color {
++        guard let avg = prices.average else {
++            return .acSecondaryText
++        }
++        return color(price: Int(avg))
++    }
++    
++    private func displayPrice(at index: Int, isEntered: Bool) -> some View {
++        if isEntered, let enteredPrices = enteredPrices, index < enteredPrices.count, enteredPrices[index] > 0 {
++            return Text("\(enteredPrices[index])")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(.green)
++        } else if let prices = prices, index < prices.count {
++            return Text("\(prices[index])")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(color(price: prices[index]))
++        } else if let averagePrices = averagePrices, index < averagePrices.count {
++            return Text("\(averagePrices[index])")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(color(price: averagePrices[index]))
++        } else {
++            return Text("-")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(.acSecondaryText)
++        }
++    }
++    
++    var body: some View {
++        HStack {
++            Text(LocalizedStringKey(label))
++                .font(.body)
++                .foregroundColor(.acText)
++            Spacer()
++            
++            displayPrice(at: 0, isEntered: isEntered(meridian: .am))
++            Spacer()
++            displayPrice(at: 1, isEntered: isEntered(meridian: .pm))
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsPriceRow.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsPriceRow.swift
+new file mode 100644
+index 0000000..4233b68
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsPriceRow.swift
+@@ -0,0 +1,20 @@
++//
++//  TurnipsPriceRow.swift
++//  ACHNBrowserUI
++//
++//  Created by Turnip Predictions on 29/04/2020.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import SwiftUI
++
++enum TurnipsPriceMeridian {
++    case am
++    case pm
++}
++
++protocol TurnipsPriceRow {
++    var label: String { get }
++    
++    func isEntered(meridian: TurnipsPriceMeridian) -> Bool
++}
+diff --git a/add_files_to_project.py b/add_files_to_project.py
+new file mode 100644
+index 0000000..443d06f
+--- /dev/null
++++ b/add_files_to_project.py
+@@ -0,0 +1,116 @@
++#!/usr/bin/env python3
++import re
++import uuid
++
++def generate_uuid():
++    return ''.join(str(uuid.uuid4()).upper().split('-'))[:24]
++
++def add_files_to_pbxproj():
++    with open('./ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj', 'r') as f:
++        content = f.read()
++    
++    # Generate UUIDs for new files
++    turnips_price_row_uuid = generate_uuid()
++    turnips_price_row_build_uuid = generate_uuid()
++    turnips_minmax_price_row_uuid = generate_uuid()
++    turnips_minmax_price_row_build_uuid = generate_uuid()
++    
++    # Find the PBXSourcesBuildPhase section
++    sources_match = re.search(r'(\s*\w+ \/\* Sources \*\/ = {\s*isa = PBXSourcesBuildPhase;\s*buildActionMask = \d+;\s*files = \(\s*)(.*?)(\s*\);\s*runOnlyForDeploymentPostprocessing = 0;\s*};)', content, re.DOTALL)
++    
++    if not sources_match:
++        print("Could not find Sources build phase")
++        return False
++    
++    sources_section = sources_match.group(0)
++    files_list = sources_match.group(2)
++    
++    # Add new build files to the files list
++    new_files_list = files_list + f'\n\t\t\t\t{turnips_price_row_build_uuid} /* TurnipsPriceRow.swift in Sources */,\n\t\t\t\t{turnips_minmax_price_row_build_uuid} /* TurnipsMinMaxPriceRow.swift in Sources */,'
++    
++    new_sources_section = sources_match.group(1) + new_files_list + sources_match.group(3)
++    content = content.replace(sources_section, new_sources_section)
++    
++    # Find the main group to add file references
++    main_group_match = re.search(r'(\s*\w+ \/\* ACHNBrowserUI \*\/ = {\s*isa = PBXGroup;\s*children = \(\s*)(.*?)(\s*\);\s*name = ACHNBrowserUI;\s*sourceTree = \"<group>\";\s*};)', content, re.DOTALL)
++    
++    if not main_group_match:
++        print("Could not find main group")
++        return False
++    
++    main_group_section = main_group_match.group(0)
++    children_list = main_group_match.group(2)
++    
++    # Find the views group within the main group
++    views_group_match = re.search(r'(\s*\w+ \/\* views \*\/ = {\s*isa = PBXGroup;\s*children = \(\s*)(.*?)(\s*\);\s*path = views;\s*sourceTree = \"<group>\";\s*};)', content, re.DOTALL)
++    
++    if not views_group_match:
++        print("Could not find views group")
++        return False
++    
++    views_group_section = views_group_match.group(0)
++    views_children_list = views_group_match.group(2)
++    
++    # Find the turnips group within views
++    turnips_group_match = re.search(r'(\s*\w+ \/\* turnips \*\/ = {\s*isa = PBXGroup;\s*children = \(\s*)(.*?)(\s*\);\s*path = turnips;\s*sourceTree = \"<group>\";\s*};)', content, re.DOTALL)
++    
++    if not turnips_group_match:
++        print("Could not find turnips group")
++        return False
++    
++    turnips_group_section = turnips_group_match.group(0)
++    turnips_children_list = turnips_group_match.group(2)
++    
++    # Add rows group reference to turnips children if not already there
++    if 'rows' not in turnips_children_list:
++        # Find rows group UUID
++        rows_group_match = re.search(r'(\s*\w+) \/\* rows \*\/ = {\s*isa = PBXGroup;\s*children = \(\s*)(.*?)(\s*\);\s*path = rows;\s*sourceTree = \"<group>\";\s*};', content, re.DOTALL)
++        if rows_group_match:
++            rows_group_uuid = rows_group_match.group(1)
++            turnips_children_list = turnips_children_list + f'\n\t\t\t\t{rows_group_uuid} /* rows */,'
++            turnips_group_section = turnips_group_match.group(1) + turnips_group_match.group(2) + turnips_children_list + turnips_group_match.group(3) + '};'
++            content = content.replace(turnips_group_section, turnips_group_section)
++    
++    # Add file references section
++    file_ref_section = f'''
++\t\t{turnips_price_row_uuid} /* TurnipsPriceRow.swift */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsPriceRow.swift; sourceTree = "<group>"; }};
++\t\t{turnips_minmax_price_row_uuid} /* TurnipsMinMaxPriceRow.swift */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsMinMaxPriceRow.swift; sourceTree = "<group>"; }};'''
++    
++    # Insert file references before the first PBXBuildFile
++    build_file_match = re.search(r'(\s*\w+ \/\* .*? \*\/ = {\s*isa = PBXBuildFile;)', content)
++    if build_file_match:
++        insert_pos = build_file_match.start()
++        content = content[:insert_pos] + file_ref_section + content[insert_pos:]
++    
++    # Add build file entries
++    build_files_section = f'''
++\t\t{turnips_price_row_build_uuid} /* TurnipsPriceRow.swift in Sources */ = {{isa = PBXBuildFile; fileRef = {turnips_price_row_uuid} /* TurnipsPriceRow.swift */; }};
++\t\t{turnips_minmax_price_row_build_uuid} /* TurnipsMinMaxPriceRow.swift in Sources */ = {{isa = PBXBuildFile; fileRef = {turnips_minmax_price_row_uuid} /* TurnipsMinMaxPriceRow.swift */; }};'''
++    
++    # Insert build files before the first /* Sources */ comment
++    sources_comment_match = re.search(r'/\* Sources \*/', content)
++    if sources_comment_match:
++        insert_pos = sources_comment_match.start()
++        content = content[:insert_pos] + build_files_section + content[insert_pos:]
++    
++    # Add file references to rows group
++    rows_group_full_match = re.search(r'(\s*\w+ \/\* rows \*\/ = {\s*isa = PBXGroup;\s*children = \(\s*)(.*?)(\s*\);\s*path = rows;\s*sourceTree = \"<group>\";\s*};)', content, re.DOTALL)
++    if rows_group_full_match:
++        rows_group_children = rows_group_full_match.group(2)
++        # Add our new files to rows group children
++        new_rows_children = rows_group_children + f'\n\t\t\t\t{turnips_price_row_uuid} /* TurnipsPriceRow.swift */,\n\t\t\t\t{turnips_minmax_price_row_uuid} /* TurnipsMinMaxPriceRow.swift */,'
++        new_rows_section = rows_group_full_match.group(1) + new_rows_children + rows_group_full_match.group(3) + '};'
++        content = content.replace(rows_group_full_match.group(0), new_rows_section)
++    
++    # Write updated content
++    with open('./ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj', 'w') as f:
++        f.write(content)
++    
++    print("Updated project.pbxproj")
++    return True
++
++if __name__ == "__main__":
++    if add_files_to_pbxproj():
++        print("Successfully added files to project")
++    else:
++        print("Failed to add files to project")
+diff --git a/test_feature.swift b/test_feature.swift
+new file mode 100644
+index 0000000..aa6564e
+--- /dev/null
++++ b/test_feature.swift
+@@ -0,0 +1,101 @@
++import Foundation
++
++// Simulating the feature implementation
++enum TurnipsPriceMeridian {
++    case am
++    case pm
++}
++
++protocol TurnipsPriceRow {
++    var label: String { get }
++    func isEntered(meridian: TurnipsPriceMeridian) -> Bool
++}
++
++struct TurnipsAveragePriceRow: TurnipsPriceRow {
++    let label: String
++    let prices: [Int]?
++    let minMaxPrices: [[Int]]?
++    private let enteredPrices: [Int]?
++    
++    init(label: String, prices: [Int]?, minMaxPrices: [[Int]]?, enteredPrices: [Int]?) {
++        self.label = label
++        self.prices = prices
++        self.minMaxPrices = minMaxPrices
++        self.enteredPrices = enteredPrices
++    }
++    
++    func isEntered(meridian: TurnipsPriceMeridian) -> Bool {
++        guard let enteredPrices = enteredPrices else {
++            return false
++        }
++        
++        switch meridian {
++        case .am:
++            return enteredPrices.count > 0 && enteredPrices[0] > 0
++        case .pm:
++            return enteredPrices.count > 1 && enteredPrices[1] > 0
++        }
++    }
++}
++
++struct TurnipsMinMaxPriceRow: TurnipsPriceRow {
++    let label: String
++    let prices: [Int]?
++    let averagePrices: [Int]?
++    private let enteredPrices: [Int]?
++    
++    init(label: String, prices: [Int]?, averagePrices: [Int]?, enteredPrices: [Int]?) {
++        self.label = label
++        self.prices = prices
++        self.averagePrices = averagePrices
++        self.enteredPrices = enteredPrices
++    }
++    
++    func isEntered(meridian: TurnipsPriceMeridian) -> Bool {
++        guard let enteredPrices = enteredPrices else {
++            return false
++        }
++        
++        switch meridian {
++        case .am:
++            return enteredPrices.count > 0 && enteredPrices[0] > 0
++        case .pm:
++            return enteredPrices.count > 1 && enteredPrices[1] > 0
++        }
++    }
++}
++
++// Test cases
++print("Testing Turnip Price Display Feature")
++print("=====================================")
++
++// Test 1: No entered prices
++let noEntryRow = TurnipsAveragePriceRow(label: "Monday", prices: [95, 110], minMaxPrices: nil, enteredPrices: nil)
++print("Test 1 - No entered prices:")
++print("  AM entered: \(noEntryRow.isEntered(meridian: .am))")
++print("  PM entered: \(noEntryRow.isEntered(meridian: .pm))")
++print("  Expected: false, false")
++
++// Test 2: Entered AM price only
++let amEntryRow = TurnipsAveragePriceRow(label: "Tuesday", prices: [100, 120], minMaxPrices: nil, enteredPrices: [95, 0])
++print("\nTest 2 - Entered AM price only:")
++print("  AM entered: \(amEntryRow.isEntered(meridian: .am))")
++print("  PM entered: \(amEntryRow.isEntered(meridian: .pm))")
++print("  Expected: true, false")
++
++// Test 3: Entered both AM and PM prices
++let bothEntryRow = TurnipsMinMaxPriceRow(label: "Wednesday", prices: nil, averagePrices: [105, 115], enteredPrices: [100, 110])
++print("\nTest 3 - Entered both AM and PM prices:")
++print("  AM entered: \(bothEntryRow.isEntered(meridian: .am))")
++print("  PM entered: \(bothEntryRow.isEntered(meridian: .pm))")
++print("  Expected: true, true")
++
++// Test 4: Zero price (should not count as entered)
++let zeroPriceRow = TurnipsAveragePriceRow(label: "Thursday", prices: [90, 95], minMaxPrices: nil, enteredPrices: [0, 0])
++print("\nTest 4 - Zero prices (should not count as entered):")
++print("  AM entered: \(zeroPriceRow.isEntered(meridian: .am))")
++print("  PM entered: \(zeroPriceRow.isEntered(meridian: .pm))")
++print("  Expected: false, false")
++
++print("\n=====================================")
++print("All tests completed!")
+diff --git a/test_implementation.py b/test_implementation.py
+new file mode 100644
+index 0000000..e517178
+--- /dev/null
++++ b/test_implementation.py
+@@ -0,0 +1,109 @@
++#!/usr/bin/env python3
++import os
++import sys
++
++print("Testing implementation...")
++
++# Check all required files exist
++required_files = [
++    "./ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsPriceRow.swift",
++    "./ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift",
++    "./ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift",
++    "./ACHNBrowserUI/ACHNBrowserUI/viewModels/TurnipsViewModel.swift",
++    "./ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift",
++    "./ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Array.swift"
++]
++
++for file in required_files:
++    if os.path.exists(file):
++        print(f"✓ {file}")
++    else:
++        print(f"✗ {file} missing")
++
++# Check API requirements
++print("\nChecking API requirements...")
++
++# Check TurnipsPriceRow protocol
++with open("./ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsPriceRow.swift", "r") as f:
++    content = f.read()
++    if "protocol TurnipsPriceRow" in content:
++        print("✓ TurnipsPriceRow protocol exists")
++    else:
++        print("✗ TurnipsPriceRow protocol missing")
++    
++    if "func isEntered(meridian:" in content:
++        print("✓ isEntered method exists in protocol")
++    else:
++        print("✗ isEntered method missing in protocol")
++
++# Check TurnipsAveragePriceRow struct
++with open("./ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift", "r") as f:
++    content = f.read()
++    if "struct TurnipsAveragePriceRow: View, TurnipsPriceRow" in content:
++        print("✓ TurnipsAveragePriceRow implements TurnipsPriceRow")
++    else:
++        print("✗ TurnipsAveragePriceRow doesn't implement TurnipsPriceRow")
++    
++    if "init(label: String, prices: [Int]?)" in content or "init(label: String, prices: [Int]" in content:
++        print("✓ TurnipsAveragePriceRow has init with prices")
++    else:
++        print("✗ TurnipsAveragePriceRow missing init with prices")
++    
++    if "init(label: String, minMaxPrices: [[Int]])" in content:
++        print("✓ TurnipsAveragePriceRow has init with minMaxPrices")
++    else:
++        print("✗ TurnipsAveragePriceRow missing init with minMaxPrices")
++
++# Check TurnipsMinMaxPriceRow struct
++with open("./ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift", "r") as f:
++    content = f.read()
++    if "struct TurnipsMinMaxPriceRow: View, TurnipsPriceRow" in content:
++        print("✓ TurnipsMinMaxPriceRow implements TurnipsPriceRow")
++    else:
++        print("✗ TurnipsMinMaxPriceRow doesn't implement TurnipsPriceRow")
++    
++    if "init(label: String, prices: [Int]?)" in content or "init(label: String, prices: [Int]" in content:
++        print("✓ TurnipsMinMaxPriceRow has init with prices")
++    else:
++        print("✗ TurnipsMinMaxPriceRow missing init with prices")
++    
++    if "init(label: String, averagePrices: [Int])" in content:
++        print("✓ TurnipsMinMaxPriceRow has init with averagePrices")
++    else:
++        print("✗ TurnipsMinMaxPriceRow missing init with averagePrices")
++
++# Check TurnipsViewModel updates
++with open("./ACHNBrowserUI/ACHNBrowserUI/viewModels/TurnipsViewModel.swift", "r") as f:
++    content = f.read()
++    if "@Published var userEnteredPrices: [[Int]]?" in content:
++        print("✓ TurnipsViewModel has userEnteredPrices property")
++    else:
++        print("✗ TurnipsViewModel missing userEnteredPrices property")
++    
++    if "refreshUserEnteredPrices()" in content:
++        print("✓ TurnipsViewModel has refreshUserEnteredPrices method")
++    else:
++        print("✗ TurnipsViewModel missing refreshUserEnteredPrices method")
++
++# Check TurnipsView updates
++with open("./ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift", "r") as f:
++    content = f.read()
++    if "TurnipsMinMaxPriceRow" in content:
++        print("✓ TurnipsView uses TurnipsMinMaxPriceRow")
++    else:
++        print("✗ TurnipsView doesn't use TurnipsMinMaxPriceRow")
++    
++    if "enteredPrices: self.viewModel.userEnteredPrices?[safe: i]" in content:
++        print("✓ TurnipsView passes entered prices to rows")
++    else:
++        print("✗ TurnipsView doesn't pass entered prices to rows")
++
++# Check Array extension
++with open("./ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Array.swift", "r") as f:
++    content = f.read()
++    if "subscript(safe index: Int) -> Element?" in content:
++        print("✓ Array has safe subscript extension")
++    else:
++        print("✗ Array missing safe subscript extension")
++
++print("\nAll checks completed!")
+diff --git a/test_turnips.py b/test_turnips.py
+new file mode 100644
+index 0000000..3aa2987
+--- /dev/null
++++ b/test_turnips.py
+@@ -0,0 +1,45 @@
++#!/usr/bin/env python3
++import os
++import sys
++
++# Check if TurnipsAveragePriceRow.swift exists
++print("Checking if TurnipsAveragePriceRow.swift exists...")
++if os.path.exists("./ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift"):
++    print("✓ TurnipsAveragePriceRow.swift exists")
++else:
++    print("✗ TurnipsAveragePriceRow.swift not found")
++    sys.exit(1)
++
++# Check for required methods
++with open("./ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift", "r") as f:
++    content = f.read()
++    
++print("\nChecking for required API methods...")
++if "protocol TurnipsPriceRow" in content:
++    print("✓ TurnipsPriceRow protocol exists")
++else:
++    print("✗ TurnipsPriceRow protocol not found - needs to be created")
++
++if "struct TurnipsAveragePriceRow" in content:
++    print("✓ TurnipsAveragePriceRow struct exists")
++else:
++    print("✗ TurnipsAveragePriceRow struct not found")
++
++if "struct TurnipsMinMaxPriceRow" in content:
++    print("✓ TurnipsMinMaxPriceRow struct exists")
++else:
++    print("✗ TurnipsMinMaxPriceRow struct not found - needs to be created")
++
++if "isEntered(meridian:" in content:
++    print("✓ isEntered method exists")
++else:
++    print("✗ isEntered method not found - needs to be added")
++
++print("\nChecking Xcode project structure...")
++if os.path.exists("./ACHNBrowserUI/ACHNBrowserUI.xcodeproj"):
++    print("✓ Xcode project exists")
++else:
++    print("✗ Xcode project not found")
++    sys.exit(1)
++
++print("\nDone!")
+diff --git a/update_project.py b/update_project.py
+new file mode 100644
+index 0000000..25d3cc2
+--- /dev/null
++++ b/update_project.py
+@@ -0,0 +1,93 @@
++#!/usr/bin/env python3
++import re
++import uuid
++import os
++
++def generate_uuid():
++    return ''.join(str(uuid.uuid4()).upper().split('-'))[:24]
++
++def update_project_file():
++    with open('./ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj', 'r') as f:
++        content = f.read()
++    
++    # Generate UUIDs for new files
++    price_row_uuid = "4C2D6779245F4FE8005831C5"  # Generated UUID
++    price_row_build_uuid = "69157BD42471A5A1005B9003"  # Generated UUID
++    minmax_row_uuid = "4C2D677A245F4FE8005831C6"  # Generated UUID
++    minmax_row_build_uuid = "69157BD52471A5A1005B9004"  # Generated UUID
++    
++    # Add PBXFileReference entries (add before the first PBXBuildFile)
++    file_ref_pattern = r'(\s*\w+ \/\* .*? \*\/ = \{isa = PBXFileReference;.*?\};)'
++    file_refs = re.findall(file_ref_pattern, content)
++    
++    if file_refs:
++        # Insert new file references after the last file reference
++        last_file_ref = file_refs[-1]
++        insert_pos = content.rfind(last_file_ref) + len(last_file_ref)
++        
++        new_file_refs = f'''
++\t\t{price_row_uuid} /* TurnipsPriceRow.swift */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsPriceRow.swift; sourceTree = "<group>"; }};
++\t\t{minmax_row_uuid} /* TurnipsMinMaxPriceRow.swift */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsMinMaxPriceRow.swift; sourceTree = "<group>"; }};'''
++        
++        content = content[:insert_pos] + new_file_refs + content[insert_pos:]
++    
++    # Add PBXBuildFile entries (add to PBXBuildFile section)
++    build_file_section_start = content.find("/* Begin PBXBuildFile section */")
++    build_file_section_end = content.find("/* End PBXBuildFile section */")
++    
++    if build_file_section_start != -1 and build_file_section_end != -1:
++        build_file_section = content[build_file_section_start:build_file_section_end]
++        
++        # Add new build files before the end of the section
++        new_build_files = f'''
++\t\t{price_row_build_uuid} /* TurnipsPriceRow.swift in Sources */ = {{isa = PBXBuildFile; fileRef = {price_row_uuid} /* TurnipsPriceRow.swift */; }};
++\t\t{minmax_row_build_uuid} /* TurnipsMinMaxPriceRow.swift in Sources */ = {{isa = PBXBuildFile; fileRef = {minmax_row_uuid} /* TurnipsMinMaxPriceRow.swift */; }};'''
++        
++        # Insert before the end marker
++        updated_section = build_file_section + new_build_files
++        content = content[:build_file_section_start] + updated_section + content[build_file_section_end:]
++    
++    # Add to PBXSourcesBuildPhase files list
++    sources_section_match = re.search(r'(\s*\w+ \/\* Sources \*\/ = \{.*?files = \(\s*)(.*?)(\s*\);.*?runOnlyForDeploymentPostprocessing = 0;\s*\};\s*)', content, re.DOTALL)
++    
++    if sources_section_match:
++        files_list = sources_section_match.group(2)
++        # Add our new build files to the list
++        new_files_list = files_list + f'\n\t\t\t\t{price_row_build_uuid} /* TurnipsPriceRow.swift in Sources */,\n\t\t\t\t{minmax_row_build_uuid} /* TurnipsMinMaxPriceRow.swift in Sources */,'
++        
++        new_sources_section = sources_section_match.group(1) + new_files_list + sources_section_match.group(3)
++        content = content.replace(sources_section_match.group(0), new_sources_section)
++    
++    # Add to the views/turnips/rows group
++    # Find the rows group
++    rows_group_match = re.search(r'(\s*\w+ \/\* rows \*\/ = \{.*?children = \(\s*)(.*?)(\s*\);.*?path = rows;.*?sourceTree.*?\};)', content, re.DOTALL)
++    
++    if rows_group_match:
++        children_list = rows_group_match.group(2)
++        # Add our new files to the children list
++        new_children_list = children_list + f'\n\t\t\t\t{price_row_uuid} /* TurnipsPriceRow.swift */,\n\t\t\t\t{minmax_row_uuid} /* TurnipsMinMaxPriceRow.swift */,'
++        
++        new_rows_group = rows_group_match.group(1) + new_children_list + rows_group_match.group(3)
++        content = content.replace(rows_group_match.group(0), new_rows_group)
++    
++    # Write updated content
++    with open('./ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj', 'w') as f:
++        f.write(content)
++    
++    print("Updated project.pbxproj")
++    return True
++
++if __name__ == "__main__":
++    # First, let's check if the files exist
++    if not os.path.exists("./ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsPriceRow.swift"):
++        print("Creating TurnipsPriceRow.swift...")
++        # Already created earlier
++        pass
++    
++    if not os.path.exists("./ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift"):
++        print("Creating TurnipsMinMaxPriceRow.swift...")
++        # Already created earlier
++        pass
++    
++    update_project_file()
++    print("Done!")
+diff --git a/update_turnips_view.py b/update_turnips_view.py
+new file mode 100644
+index 0000000..7f2c925
+--- /dev/null
++++ b/update_turnips_view.py
+@@ -0,0 +1,32 @@
++#!/usr/bin/env python3
++import re
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift', 'r') as f:
++    content = f.read()
++
++# Update the predictionsSection to use the new constructors with entered prices
++updated_content = content
++
++# Replace TurnipsAveragePriceRow constructors
++updated_content = re.sub(
++    r'TurnipsAveragePriceRow\(label: self\.labels\[i\],\s*prices: self\.viewModel\.averagesPrices!\[i\]\)',
++    'TurnipsAveragePriceRow(label: self.labels[i], prices: self.viewModel.averagesPrices![i], minMaxPrices: nil, enteredPrices: self.viewModel.userEnteredPrices?[safe: i])',
++    updated_content
++)
++
++updated_content = re.sub(
++    r'TurnipsAveragePriceRow\(label: self\.labels\[i\],\s*minMaxPrices: self\.viewModel\.minMaxPrices!\[i\]\)',
++    'TurnipsMinMaxPriceRow(label: self.labels[i], prices: nil, averagePrices: self.viewModel.userEnteredPrices?[safe: i], enteredPrices: self.viewModel.userEnteredPrices?[safe: i])',
++    updated_content
++)
++
++updated_content = re.sub(
++    r'TurnipsAveragePriceRow\(label: day,\s*prices: self\.viewModel\.averagesProfits!\[self\.labels\.firstIndex\(of: day\)!\]\)',
++    'TurnipsAveragePriceRow(label: day, prices: self.viewModel.averagesProfits![self.labels.firstIndex(of: day)!], minMaxPrices: nil, enteredPrices: nil)',
++    updated_content
++)
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift', 'w') as f:
++    f.write(updated_content)
++
++print("Updated TurnipsView.swift")

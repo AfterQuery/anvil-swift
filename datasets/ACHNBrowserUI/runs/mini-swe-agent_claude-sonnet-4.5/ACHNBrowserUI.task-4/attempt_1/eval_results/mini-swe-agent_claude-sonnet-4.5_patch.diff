@@ -1,0 +1,158 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings
+index 02fae42..4856636 100644
+Binary files a/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings and b/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings differ
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+index 5869b7a..97dd70c 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+@@ -550,3 +550,8 @@ You can cancel anytime with your iTunes account settings. Any unused portion of
+ "Music player" = "Lecteur de musique";
+ "Tracks" = "Musiques";
+ 
++// Villagers sorting
++"villager.sort.title" = "Trier les villageois";
++"villager.sort.name" = "Nom";
++"villager.sort.species" = "Espèce";
++"villager.sort.clear" = "Effacer le tri";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+index 70909fb..1486621 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+@@ -11,6 +11,20 @@ import Combine
+ import Backend
+ 
+ class VillagersViewModel: ObservableObject {
++    enum Sort: String, CaseIterable {
++        case name
++        case species
++        
++        var localizedString: String {
++            switch self {
++            case .name:
++                return NSLocalizedString("villager.sort.name", comment: "")
++            case .species:
++                return NSLocalizedString("villager.sort.species", comment: "")
++            }
++        }
++    }
++    
+     private static var cachedVillagers: [Villager] = []
+     
+     @Published var villagers: [Villager] = [] {
+@@ -26,6 +40,38 @@ class VillagersViewModel: ObservableObject {
+     @Published var searchResults: [Villager] = []
+     @Published var searchText = ""
+     @Published var todayBirthdays: [Villager] = []
++    @Published var sort: Sort? = nil {
++        didSet {
++            if let sort = sort, sort == oldValue {
++                // Same sort selected - toggle direction
++                sortAscending.toggle()
++            } else if sort != nil {
++                // New sort selected - reset to ascending
++                sortAscending = true
++            }
++        }
++    }
++    @Published private var sortAscending: Bool = true
++    
++    var sortedVillagers: [Villager] {
++        guard let sort = sort else {
++            return villagers
++        }
++        
++        let sorted: [Villager]
++        switch sort {
++        case .name:
++            sorted = villagers.sorted { (v1, v2) in
++                v1.localizedName.localizedStandardCompare(v2.localizedName) == .orderedAscending
++            }
++        case .species:
++            sorted = villagers.sorted { (v1, v2) in
++                v1.species.localizedStandardCompare(v2.species) == .orderedAscending
++            }
++        }
++        
++        return sortAscending ? sorted : sorted.reversed()
++    }
+     
+     private var apiPublisher: AnyPublisher<[String: Villager], Never>?
+     private var searchCancellable: AnyCancellable?
+@@ -65,4 +111,3 @@ class VillagersViewModel: ObservableObject {
+         }
+     }
+ }
+-
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+index 1980295..07960e0 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+@@ -12,13 +12,26 @@ import UI
+ 
+ struct VillagersListView: View {
+     @ObservedObject var viewModel = VillagersViewModel()
++    @State private var showSortSheet = false
+     
+     var currentVillagers: [Villager] {
+         get {
+             if !viewModel.searchText.isEmpty {
+                 return viewModel.searchResults
+             } else {
+-                return viewModel.villagers
++                return viewModel.sortedVillagers
++            }
++        }
++    }
++    
++    var sortButton: some View {
++        Button(action: {
++            showSortSheet = true
++        }) {
++            if viewModel.sort != nil {
++                Image(systemName: "line.horizontal.3.decrease.circle.fill")
++            } else {
++                Image(systemName: "line.horizontal.3.decrease.circle")
+             }
+         }
+     }
+@@ -39,6 +52,13 @@ struct VillagersListView: View {
+             .listStyle(GroupedListStyle())
+             .navigationBarTitle(Text("Villagers"),
+                                 displayMode: .automatic)
++            .navigationBarItems(trailing: sortButton)
++            .actionSheet(isPresented: $showSortSheet) {
++                ActionSheet(
++                    title: Text(NSLocalizedString("villager.sort.title", comment: "")),
++                    buttons: sortActionButtons()
++                )
++            }
+             .modifier(DismissingKeyboardOnSwipe())
+             if !viewModel.villagers.isEmpty {
+                 VillagerDetailView(villager: viewModel.villagers.first!)
+@@ -47,6 +67,26 @@ struct VillagersListView: View {
+             }
+         }
+     }
++    
++    private func sortActionButtons() -> [ActionSheet.Button] {
++        var buttons: [ActionSheet.Button] = []
++        
++        for sortOption in VillagersViewModel.Sort.allCases {
++            buttons.append(.default(Text(sortOption.localizedString)) {
++                viewModel.sort = sortOption
++            })
++        }
++        
++        if viewModel.sort != nil {
++            buttons.append(.default(Text(NSLocalizedString("villager.sort.clear", comment: ""))) {
++                viewModel.sort = nil
++            })
++        }
++        
++        buttons.append(.cancel())
++        
++        return buttons
++    }
+ }
+ 
+ struct VillagersListView_Previews: PreviewProvider {

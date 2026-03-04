@@ -1,0 +1,263 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
+index 80d9cd2..d3fa004 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
+@@ -18,8 +18,9 @@ class LikeButtonViewModel: ObservableObject {
+     let villager: Villager?
+     
+     @Published var isInCollection = false
++    @Published var completionStatus: VariantsCompletionStatus = .unstarted
+     
+-    private let collection: UserCollection
++    let collection: UserCollection
+     private var cancellable: AnyCancellable?
+     
+     init(item: Item? = nil,
+@@ -38,7 +39,12 @@ class LikeButtonViewModel: ObservableObject {
+             .sink{ [weak self] items, critters, variants, villagers in
+                 guard let self = self else { return }
+                 if let item = self.item {
+-                    if let variant = variant {
++                    if item.hasSomeVariations {
++                        self.completionStatus = variants.completionStatus(for: item)
++                    } else {
++                        self.completionStatus = (items.contains(item) || critters.contains(item)) ? .complete : .unstarted
++                    }
++                    if let variant = variant, item.hasSomeVariations {
+                         self.isInCollection = variants.contains(for: item, variant: variant)
+                         return
+                     }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/items/VariantSelectionView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/items/VariantSelectionView.swift
+new file mode 100644
+index 0000000..2878912
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/items/VariantSelectionView.swift
+@@ -0,0 +1,52 @@
++//
++//  VariantSelectionView.swift
++//  ACHNBrowserUI
++//
++//  Created by OpenAI on 2024-xx-xx.
++//
++
++import SwiftUI
++import Backend
++import UI
++
++struct VariantSelectionView: View {
++    let item: Item
++
++    private var variants: [Variant] {
++        item.variations ?? []
++    }
++
++    var body: some View {
++        NavigationView {
++            List {
++                ForEach(variants) { variant in
++                    HStack {
++                        ItemImage(path: variant.content.image, size: 45)
++                        VStack(alignment: .leading, spacing: 4) {
++                            Text(variant.content.colors?.joined(separator: ", ").capitalized ?? "Variant")
++                                .foregroundColor(.acText)
++                                .font(.callout)
++                            if let colors = variant.content.colors, !colors.isEmpty {
++                                Text(colors.joined(separator: ", ").capitalized)
++                                    .foregroundColor(.acSecondaryText)
++                                    .font(.footnote)
++                            }
++                        }
++                        Spacer()
++                        LikeButtonView(item: item, variant: variant)
++                    }
++                    .padding(.vertical, 4)
++                }
++            }
++            .listStyle(InsetGroupedListStyle())
++            .navigationBarTitle(Text(item.localizedName.capitalized), displayMode: .inline)
++        }
++    }
++}
++
++struct VariantSelectionView_Previews: PreviewProvider {
++    static var previews: some View {
++        VariantSelectionView(item: static_item)
++            .environmentObject(UserCollection.shared)
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
+index c0bc1d7..adef0c1 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
+@@ -8,9 +8,11 @@
+ 
+ import SwiftUI
+ import Backend
++import UI
+ 
+ struct LikeButtonView: View {
+     @StateObject private var viewModel: LikeButtonViewModel
++    @State private var isVariantSheetPresented = false
+     
+     init(item: Item, variant: Variant?) {
+         _viewModel = StateObject(wrappedValue: LikeButtonViewModel(item: item, variant: variant))
+@@ -21,12 +23,21 @@ struct LikeButtonView: View {
+     }
+         
+     var imageName: String {
+-        if viewModel.item != nil {
+-            if viewModel.item?.isCritter == true {
++        if let item = viewModel.item {
++            if item.isCritter {
+                 return viewModel.isInCollection ? "checkmark.seal.fill" : "checkmark.seal"
+-            } else {
+-                return viewModel.isInCollection ? "star.fill" : "star"
+             }
++            if item.hasSomeVariations && viewModel.variant == nil {
++                switch viewModel.completionStatus {
++                case .unstarted:
++                    return "star"
++                case .partial:
++                    return "star.leadinghalf.filled"
++                case .complete:
++                    return "star.fill"
++                }
++            }
++            return viewModel.isInCollection ? "star.fill" : "star"
+         } else {
+             return viewModel.isInCollection ? "heart.fill" : "heart"
+         }
+@@ -44,6 +55,10 @@ struct LikeButtonView: View {
+     
+     var body: some View {
+         Button(action: {
++            if let item = viewModel.item, item.hasSomeVariations, viewModel.variant == nil {
++                isVariantSheetPresented = true
++                return
++            }
+             let added = self.viewModel.toggleCollection()
+             FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
+         }) {
+@@ -52,6 +67,12 @@ struct LikeButtonView: View {
+         .scaleEffect(viewModel.isInCollection ? 1.3 : 1.0)
+         .buttonStyle(BorderlessButtonStyle())
+         .animation(.spring(response: 0.5, dampingFraction: 0.3, blendDuration: 0.5))
++        .sheet(isPresented: $isVariantSheetPresented) {
++            if let item = viewModel.item {
++                VariantSelectionView(item: item)
++                    .environmentObject(viewModel.collection)
++            }
++        }
+     }
+ }
+ 
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+index f5642f1..70e60d4 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+@@ -136,8 +136,17 @@ public class UserCollection: ObservableObject {
+         guard let filename = item.filename else {
+             return false
+         }
++        let totalVariants = item.variations?.count ?? 0
+         if variants[filename]?.contains(variant) == true {
+             variants[filename]?.removeAll(where: { $0 == variant })
++            if (variants[filename]?.isEmpty ?? true) {
++                variants[filename] = nil
++                if totalVariants > 1 {
++                    _ = items.remove(item: item)
++                }
++            } else if totalVariants > 1 && items.contains(item) == false {
++                _ = items.append(item: item)
++            }
+             save()
+             return false
+         } else {
+@@ -145,6 +154,9 @@ public class UserCollection: ObservableObject {
+                 variants[filename] = []
+             }
+             variants[filename]?.append(variant)
++            if totalVariants > 1 && !items.contains(item) {
++                _ = items.append(item: item)
++            }
+             save()
+             return true
+         }
+@@ -506,3 +518,16 @@ public extension Dictionary where Key == String, Value == [Variant] {
+         return self[filename]?.contains(variant) == true
+     }
+ }
++
++public extension Dictionary where Key == String, Value == [Variant] {
++    public func completionStatus(for item: Item) -> VariantsCompletionStatus {
++        guard item.hasSomeVariations else { return .unstarted }
++        guard let filename = item.filename else { return .unstarted }
++        let total = item.variations?.count ?? 0
++        if total == 0 { return .unstarted }
++        let collected = self[filename]?.count ?? 0
++        if collected <= 0 { return .unstarted }
++        if collected >= total { return .complete }
++        return .partial
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Array.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Array.swift
+index b791b6f..d454bc9 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Array.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Array.swift
+@@ -35,3 +35,21 @@ public extension Array where Element: Equatable {
+         return added
+     }
+ }
++
++public extension Array where Element: Equatable {
++    mutating func append(item: Element) -> Bool {
++        if contains(item) {
++            return false
++        }
++        append(item)
++        return true
++    }
++
++    mutating func remove(item: Element) -> Bool {
++        if !contains(item) {
++            return false
++        }
++        removeAll(where: { $0 == item })
++        return true
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+index 46b91a9..d803872 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+@@ -284,3 +284,10 @@ public let static_item = Item(name: "Acoustic guitar",
+                        styles: nil,
+                        themes: nil,
+                        colors: nil)
++
++public extension Item {
++    public var hasSomeVariations: Bool {
++        guard let variations = variations else { return false }
++        return variations.count > 1
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/VariantsCompletionStatus.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/VariantsCompletionStatus.swift
+new file mode 100644
+index 0000000..79e20b9
+--- /dev/null
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/VariantsCompletionStatus.swift
+@@ -0,0 +1,14 @@
++//
++//  VariantsCompletionStatus.swift
++//  ACHNBrowserUI
++//
++//  Created by OpenAI on 2024-xx-xx.
++//
++
++import Foundation
++
++public enum VariantsCompletionStatus: Equatable {
++    case unstarted
++    case partial
++    case complete
++}

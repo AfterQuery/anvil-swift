@@ -1,0 +1,421 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
+index 80d9cd2..88c6221 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
+@@ -18,6 +18,7 @@ class LikeButtonViewModel: ObservableObject {
+     let villager: Villager?
+     
+     @Published var isInCollection = false
++    @Published var variantsCompletionStatus: VariantsCompletionStatus = .unstarted
+     
+     private let collection: UserCollection
+     private var cancellable: AnyCancellable?
+@@ -42,6 +43,11 @@ class LikeButtonViewModel: ObservableObject {
+                         self.isInCollection = variants.contains(for: item, variant: variant)
+                         return
+                     }
++                    if item.hasSomeVariations {
++                        self.variantsCompletionStatus = variants.completionStatus(for: item)
++                        self.isInCollection = self.variantsCompletionStatus != .unstarted
++                        return
++                    }
+                     self.isInCollection = items.contains(item) || critters.contains(item)
+                     return
+                 } else if let villager = villager {
+@@ -70,4 +76,8 @@ class LikeButtonViewModel: ObservableObject {
+         }
+         return added
+     }
++
++    var hasSomeVariations: Bool {
++        variant == nil && item?.hasSomeVariations == true
++    }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/items/ItemsView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/items/ItemsView.swift
+index 56c5b3d..c2c3192 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/items/ItemsView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/items/ItemsView.swift
+@@ -29,6 +29,7 @@ struct ItemsView: View {
+     
+     @StateObject var viewModel: ItemsViewModel
+     @State private var contentMode: ContentMode = .listLarge
++    @State private var likedItemWithVariants: Item?
+     let customTitle: String?
+     
+     init(category: Backend.Category, items: [Item]? = nil, keyword: String? = nil) {
+@@ -110,30 +111,36 @@ struct ItemsView: View {
+     
+     @ViewBuilder
+     private var contentView: some View {
+-        if contentMode == .grid {
+-            ScrollView {
+-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 16)], spacing: 16) {
+-                    ForEach(viewModel.items) { item in
+-                        ItemGridItemView(item: item)
++        ZStack {
++            if contentMode == .grid {
++                ScrollView {
++                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 16)], spacing: 16) {
++                        ForEach(viewModel.items) { item in
++                            ItemGridItemView(item: item)
++                        }
+                     }
+-                }
+-                .padding(8)
+-                .background(Color.acBackground)
+-            }.background(Color.acBackground)
+-        } else {
+-            List {
+-                Section(header: SearchField(searchText: $viewModel.searchText)) {
+-                    ForEach(viewModel.items) { item in
+-                        NavigationLink(destination: LazyView(ItemDetailView(item: item))) {
+-                            ItemRowView(displayMode: contentMode == .listLarge ? .large : .compact,
+-                                        item: item)
++                    .padding(8)
++                    .background(Color.acBackground)
++                }.background(Color.acBackground)
++            } else {
++                List {
++                    Section(header: SearchField(searchText: $viewModel.searchText)) {
++                        ForEach(viewModel.items) { item in
++                            NavigationLink(destination: LazyView(ItemDetailView(item: item))) {
++                                ItemRowView(
++                                    displayMode: contentMode == .listLarge ? .large : .compact,
++                                    item: item,
++                                    likedItemWithVariants: $likedItemWithVariants
++                                )
++                            }
++                            .listRowBackground(Color.acSecondaryBackground)
+                         }
+-                        .listRowBackground(Color.acSecondaryBackground)
+                     }
+                 }
++                .listStyle(GroupedListStyle())
++                .id(viewModel.sort)
+             }
+-            .listStyle(GroupedListStyle())
+-            .id(viewModel.sort)
++            VariantsForLikeView(item: $likedItemWithVariants)
+         }
+     }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/items/detail/ItemDetailView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/items/detail/ItemDetailView.swift
+index 1c3ad72..3b58cae 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/items/detail/ItemDetailView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/items/detail/ItemDetailView.swift
+@@ -20,6 +20,7 @@ struct ItemDetailView: View {
+     
+     @State private var displayedVariant: Variant?
+     @State private var selectedSheet: Sheet.SheetType?
++    @State private var itemToDisplayVariantsLike: Item?
+ 
+     init(item: Item) {
+         self._itemViewModel = StateObject(wrappedValue: ItemDetailViewModel(item: item))
+@@ -46,6 +47,13 @@ struct ItemDetailView: View {
+     
+     // MARK: - Boby
+     var body: some View {
++        ZStack {
++            content
++            VariantsForLikeView(item: $itemToDisplayVariantsLike)
++        }
++    }
++
++    var content: some View {
+         List {
+             ItemDetailInfoView(item: itemViewModel.item,
+                                recipe: itemViewModel.recipe,
+@@ -123,12 +131,22 @@ extension ItemDetailView {
+     
+     private var navButtons: some View {
+         HStack {
+-            LikeButtonView(item: itemViewModel.item,
+-                           variant: displayedVariant).imageScale(.large)
+-                .safeHoverEffectBarItem(position: .trailing)
++            LikeButtonView(
++                item: itemViewModel.item,
++                variant: displayedVariant,
++                customAction: tapOnMainLikeButton
++            )
++            .imageScale(.large)
++            .safeHoverEffectBarItem(position: .trailing)
++
+             shareButton
+         }
+     }
++
++    private func tapOnMainLikeButton() {
++        // Display variants bottom sheet only if the item has some variants
++        itemToDisplayVariantsLike = itemViewModel.item.hasSomeVariations ? itemViewModel.item : nil
++    }
+     
+     private var keywordsSection: some View {
+         Section(header: SectionHeaderView(text: "Keywords", icon: "link")) {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemRowView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemRowView.swift
+index bfc8032..b0d580a 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemRowView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemRowView.swift
+@@ -17,9 +17,20 @@ struct ItemRowView: View {
+     
+     let displayMode: DisplayMode
+     let item: Item
++    @Binding var likedItemWithVariants: Item?
+     
+     @State private var displayedVariant: Variant?
+     
++    init(
++        displayMode: DisplayMode,
++        item: Item,
++        likedItemWithVariants: Binding<Item?> = .constant(nil)
++    ) {
++        self.displayMode = displayMode
++        self.item = item
++        self._likedItemWithVariants = likedItemWithVariants
++    }
++    
+     private var imageSize: CGFloat {
+         switch displayMode {
+         case .compact:
+@@ -87,7 +98,11 @@ struct ItemRowView: View {
+     var body: some View {
+         HStack(spacing: 8) {
+             if displayMode != .largeNoButton {
+-                LikeButtonView(item: item, variant: displayedVariant)
++                LikeButtonView(
++                    item: item,
++                    variant: displayedVariant,
++                    likedItemWithVariants: $likedItemWithVariants
++                )
+             }
+             if item.finalImage == nil && displayedVariant == nil {
+                 Image(item.appCategory.iconName())
+@@ -144,9 +159,8 @@ struct ItemRowView_Previews: PreviewProvider {
+                     ItemRowView(displayMode: .large, item: static_item)
+                         .environmentObject(UserCollection.shared)
+                 }
+-                .environment(\.colorScheme, .dark)
++                .environment(.colorScheme, .dark)
+             }
+         }
+     }
+ }
+-
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
+index c0bc1d7..68154a7 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
+@@ -11,13 +11,23 @@ import Backend
+ 
+ struct LikeButtonView: View {
+     @StateObject private var viewModel: LikeButtonViewModel
++    @Binding private var likedItemWithVariants: Item?
++    private var customAction: () -> Void = { }
+     
+-    init(item: Item, variant: Variant?) {
++    init(
++        item: Item,
++        variant: Variant?,
++        likedItemWithVariants: Binding<Item?> = .constant(nil),
++        customAction: @escaping () -> Void = { }
++    ) {
+         _viewModel = StateObject(wrappedValue: LikeButtonViewModel(item: item, variant: variant))
++        _likedItemWithVariants = likedItemWithVariants
++        self.customAction = customAction
+     }
+     
+     init(villager: Villager) {
+         _viewModel = StateObject(wrappedValue: LikeButtonViewModel(villager: villager))
++        _likedItemWithVariants = .constant(nil)
+     }
+         
+     var imageName: String {
+@@ -25,6 +35,13 @@ struct LikeButtonView: View {
+             if viewModel.item?.isCritter == true {
+                 return viewModel.isInCollection ? "checkmark.seal.fill" : "checkmark.seal"
+             } else {
++                if viewModel.hasSomeVariations {
++                    switch viewModel.variantsCompletionStatus {
++                    case .unstarted: return "star"
++                    case .partial: return "star.leadinghalf.fill"
++                    case .complete: return "star.fill"
++                    }
++                }
+                 return viewModel.isInCollection ? "star.fill" : "star"
+             }
+         } else {
+@@ -44,8 +61,13 @@ struct LikeButtonView: View {
+     
+     var body: some View {
+         Button(action: {
+-            let added = self.viewModel.toggleCollection()
+-            FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++            if viewModel.hasSomeVariations {
++                likedItemWithVariants = viewModel.item
++            } else {
++                let added = self.viewModel.toggleCollection()
++                FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++            }
++            customAction()
+         }) {
+             Image(systemName: imageName).foregroundColor(color)
+         }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/shared/VariantsForLikeView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/shared/VariantsForLikeView.swift
+new file mode 100644
+index 0000000..5622c79
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/shared/VariantsForLikeView.swift
+@@ -0,0 +1,67 @@
++//
++//  VariantsForLikeView.swift
++//  ACHNBrowserUI
++//
++//  Created by Renaud JENNY on 02/01/2021.
++//  Copyright © 2021 Thomas Ricouard. All rights reserved.
++//
++
++import SwiftUI
++import Backend
++import UI
++
++struct VariantsForLikeView: View {
++    @Binding var item: Item?
++    
++    var body: some View {
++        ZStack {
++            Color.black
++                .opacity(item != nil ? 1/6 : 0)
++                .onTapGesture { item = nil }
++            if let item = item {
++                VStack {
++                    Spacer()
++                    VStack {
++                        SectionHeaderView(text: "Variants", icon: "paintbrush.fill").padding()
++                        ScrollView(.horizontal, showsIndicators: false) {
++                            HStack {
++                                ForEach(item.variations ?? []) { variant in
++                                    ZStack(alignment: .topLeading) {
++                                        ItemImage(path: variant.content.image, size: 75)
++                                        LikeButtonView(item: item, variant: variant)
++                                    }
++                                }
++                            }.padding()
++                        }
++                        .listRowInsets(EdgeInsets())
++                    }
++                    .background(Color.acSecondaryBackground.shadow(radius: 2, x: 0, y: -2))
++                }
++                .transition(.move(edge: .bottom))
++            }
++        }
++        .animation(.easeInOut)
++    }
++}
++
++#if DEBUG
++struct VariantsForLikeView_Previews: PreviewProvider {
++    static var previews: some View {
++        Preview()
++    }
++
++    private struct Preview: View {
++        @State private var item: Item?
++
++        var body: some View {
++            ZStack {
++                Button { item = static_item } label: {
++                    Text("Show Variants")
++                }
++                VariantsForLikeView(item: $item)
++            }
++        }
++    }
++}
++
++#endif
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+index f5642f1..a951d81 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+@@ -131,25 +131,35 @@ public class UserCollection: ObservableObject {
+         save()
+         return added
+     }
+-    
+     public func toggleVariant(item: Item, variant: Variant) -> Bool {
+         guard let filename = item.filename else {
+             return false
+         }
++        let isAdded: Bool
+         if variants[filename]?.contains(variant) == true {
+             variants[filename]?.removeAll(where: { $0 == variant })
+             save()
+-            return false
++            isAdded = false
+         } else {
+             if variants[filename] == nil {
+                 variants[filename] = []
+             }
+             variants[filename]?.append(variant)
+             save()
+-            return true
++            isAdded = true
++        }
++
++        if !items.contains(item) && variants.completionStatus(for: item) != .unstarted {
++            // We add the item to the liked items if at least one of its variant is added
++            _ = toggleItem(item: item)
++        } else if items.contains(item) && variants.completionStatus(for: item) == .unstarted {
++            // We remove the item from the liked items if there is none of its variants liked
++            _ = toggleItem(item: item)
+         }
++
++        return isAdded
+     }
+-    
++
+     public func toggleCritters(critter: Item) -> Bool {
+         let added = critters.toggle(item: critter)
+         save()
+@@ -506,3 +516,27 @@ public extension Dictionary where Key == String, Value == [Variant] {
+         return self[filename]?.contains(variant) == true
+     }
+ }
++
++
++extension Dictionary where Key == String, Value == [Variant] {
++    func completionStatus(for item: Item) -> VariantsCompletionStatus {
++        guard let filename = item.filename,
++              let itemVariations = item.variations,
++              let currentVariations = self[filename]
++        else { return .unstarted }
++
++        if currentVariations.count <= 0 {
++            return .unstarted
++        } else if currentVariations.count < itemVariations.count {
++            return .partial
++        } else {
++            return .complete
++        }
++    }
++}
++
++public enum VariantsCompletionStatus {
++    case unstarted
++    case partial
++    case complete
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+index 46b91a9..1fc0639 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+@@ -82,6 +82,10 @@ public struct Item: Codable, Equatable, Identifiable, Hashable {
+     
+     public var variations: [Variant]?
+     
++
++    public var hasSomeVariations: Bool {
++        variations?.count ?? 0 > 1
++    }
+     public let category: String
+     
+     public var appCategory: Category {

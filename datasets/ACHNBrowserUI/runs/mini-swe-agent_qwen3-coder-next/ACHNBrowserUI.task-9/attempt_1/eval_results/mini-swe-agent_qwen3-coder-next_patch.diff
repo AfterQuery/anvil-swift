@@ -1,0 +1,823 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
+index 1fc5b95..0a10ed3 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
+@@ -824,6 +824,11 @@ Du kannst das Abonnement jederzeit in deinen iTunes Kontoeinstellungen beenden.
+ "Chores" = "Aufgaben";
+ "Have a friend to visit? A gift to a villager? Track your chores and to-dos here." = "Du willst einen Freund besuchen? Einem Bewohner ein bestimmtes Geschenk überreichen? Verwalte hier deine Augaben und To-Dos.";
+ "Manage and keep track of your chores and to-dos." = "Verwalte und beobachte deine Aufgaben und To-Dos.";
++// Added 2020-06-xx
++// Villager Visits
++"Villager Visits" = "Bewohnerbesuche";
++"Reset" = "Zurücksetzen";
++
+ 
+ // Design
+ "Creators and Designs" = "Ersteller und Designs";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings
+index 3afddd4..fd991aa 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings
+@@ -54,3 +54,7 @@ You can cancel anytime with your iTunes account settings. Any unused portion of
+ "fossils" = "Fossils";
+ 
+ "%lld upcomingDailyNotifications" = "You'll receive turnips predictions in %lld upcoming notifications.";
++// Added 2020-06-xx
++// Villager Visits
++"Villager Visits" = "Villager Visits";
++"Reset" = "Reset";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
+index faecdd7..05ca29a 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
+@@ -24,6 +24,8 @@ public class UserCollection: ObservableObject {
+     @Published public var designs: [Design] = []
+     @Published public var dailyCustomTasks = DailyCustomTasks()
+     @Published public var chores: [Chore] = []
++    @Published public var visitedResidents: [Villager] = []
++    public var lastVisitUpdate = Date()
+     
+     @Published public var isCloudEnabled = true
+     @Published public var isSynched = false
+@@ -39,6 +41,8 @@ public class UserCollection: ObservableObject {
+         let dailyCustomTasks: DailyCustomTasks?
+         let designs: [Design]?
+         let chores: [Chore]?
++        let visitedResidents: [Villager]?
++        let lastVisitUpdate: Date?
+     }
+     
+     private let filePath: URL
+@@ -277,6 +281,23 @@ public class UserCollection: ObservableObject {
+         }
+         save()
+     }
++    // MARK: - Villager Visits
++
++    public func toggleVisitedResident(villager: Villager) {
++        if let index = visitedResidents.firstIndex(of: villager) {
++            visitedResidents.remove(at: index)
++        } else {
++            visitedResidents.append(villager)
++        }
++        save()
++    }
++
++    public func resetVisitedResidents() {
++        visitedResidents = []
++        lastVisitUpdate = Date()
++        save()
++    }
++
+ 
+     public func updateChore(_ chore: Chore) {
+         guard let index = chores.firstIndex(of: chore) else { return }
+@@ -377,7 +398,9 @@ public class UserCollection: ObservableObject {
+                                           lists: self.lists,
+                                           dailyCustomTasks: self.dailyCustomTasks,
+                                           designs: self.designs,
+-                                          chores: self.chores)
++                                          chores: self.chores,
++                                          visitedResidents: self.visitedResidents,
++                                          lastVisitUpdate: self.lastVisitUpdate)
+                 let data = try self.encoder.encode(savedData)
+                 try data.write(to: self.filePath, options: .atomicWrite)
+                 
+@@ -408,6 +431,8 @@ public class UserCollection: ObservableObject {
+                 self.designs = savedData.designs ?? []
+                 self.dailyCustomTasks = savedData.dailyCustomTasks ?? DailyCustomTasks()
+                 self.chores = savedData.chores ?? []
++                self.visitedResidents = savedData.visitedResidents ?? []
++                self.lastVisitUpdate = savedData.lastVisitUpdate ?? Date()
+                 return true
+             } catch {
+                 return false
+@@ -427,6 +452,8 @@ public class UserCollection: ObservableObject {
+             self.dailyCustomTasks = DailyCustomTasks()
+             self.designs = []
+             self.chores = []
++            self.visitedResidents = []
++            self.lastVisitUpdate = Date()
+             save()
+             return true
+         } catch {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift.bak b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift.bak
+new file mode 100644
+index 0000000..faecdd7
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift.bak
+@@ -0,0 +1,473 @@
++//
++//  CollectionViewModel.swift
++//  ACHNBrowserUI
++//
++//  Created by Thomas Ricouard on 08/04/2020.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import Foundation
++import Combine
++import CloudKit
++import os.log
++
++public class UserCollection: ObservableObject {
++    public static let shared = UserCollection(iCloudDisabled: false)
++    
++    // MARK: - Published properties
++    @Published public var items: [Item] = []
++    @Published public var variants: [String: [Variant]] = [:]
++    @Published public var villagers: [Villager] = []
++    @Published public var residents: [Villager] = []
++    @Published public var critters: [Item] = []
++    @Published public var lists: [UserList] = []
++    @Published public var designs: [Design] = []
++    @Published public var dailyCustomTasks = DailyCustomTasks()
++    @Published public var chores: [Chore] = []
++    
++    @Published public var isCloudEnabled = true
++    @Published public var isSynched = false
++    
++    // MARK: - Private properties
++    private struct SavedData: Codable {
++        let items: [Item]
++        let variants: [String: [Variant]]?
++        let villagers: [Villager]
++        let residents: [Villager]?
++        let critters: [Item]
++        let lists: [UserList]?
++        let dailyCustomTasks: DailyCustomTasks?
++        let designs: [Design]?
++        let chores: [Chore]?
++    }
++    
++    private let filePath: URL
++    private let encoder = JSONEncoder()
++    private let decoder = JSONDecoder()
++    
++    private let saveQueue = DispatchQueue(label: "achelper.save.queue")
++    
++    private static let recordType = "UserCollection"
++    private static let recordId = CKRecord.ID(recordName: "CurrentUserCollection")
++    private static let assetKey = "data"
++    private var cloudKitDatabase: CKDatabase? = nil
++    private var currentRecord: CKRecord? = nil
++    
++    private let logHandler = OSLog(subsystem: "com.achelper.collection", category: "ac-perf")
++    
++    public init(iCloudDisabled: Bool) {
++        do {
++            filePath = try FileManager.default.url(for: .documentDirectory,
++                                                   in: .userDomainMask,
++                                                   appropriateFor: nil,
++                                                   create: false).appendingPathComponent("collection")
++            _ = self.loadCollection(file: filePath)
++            
++            if !iCloudDisabled {
++                checkiCloudStatus()
++            } else {
++                isCloudEnabled = false
++            }
++                        
++        } catch let error {
++            fatalError(error.localizedDescription)
++        }
++    }
++    
++    // MARK: - Items management
++    public func itemsIn(category: Category, items: [Item]) -> Int {
++        os_signpost(.begin,
++                    log: logHandler,
++                    name: "Counting items with passed array",
++                    "Begin for category %{public}s",
++                    category.rawValue)
++        
++        let allItems = Items.shared.categories[category] ?? []
++        let inCollection = items.count(where: { allItems.contains($0) && !$0.name.contains("(fake)") })
++        
++        os_signpost(.end,
++                    log: logHandler,
++                    name: "Counting items with passed array",
++                    "Done for category %{public}s",
++                    category.rawValue)
++        
++        return inCollection
++    }
++    
++    public func itemsIn(category: Category) -> Int {
++        os_signpost(.begin,
++                    log: logHandler,
++                    name: "Counting items",
++                    "Begin for category %{public}s",
++                    category.rawValue)
++        
++        let items = Items.shared.categories[category] ?? []
++        var caught = self.critters.count(where: { items.contains($0) } )
++        caught += self.items.count(where: { items.contains($0) && !$0.name.contains("(fake)") })
++        
++        os_signpost(.end,
++                    log: logHandler,
++                    name: "Counting items",
++                    "Done for category %{public}s",
++                    category.rawValue)
++        
++        return caught
++    }
++
++    public func toggleItem(item: Item) -> Bool {
++        let added = items.toggle(item: item)
++        save()
++        return added
++    }
++    
++    public func variantIn(item: Item, variant: Variant) -> Bool {
++        guard let filename = item.filename else {
++            return false
++        }
++        return variants[filename]?.contains(variant) == true
++    }
++    
++    public func toggleVariant(item: Item, variant: Variant) -> Bool {
++        guard let filename = item.filename else {
++            return false
++        }
++        if variants[filename]?.contains(variant) == true {
++            variants[filename]?.removeAll(where: { $0 == variant })
++            save()
++            return false
++        } else {
++            if variants[filename] == nil {
++                variants[filename] = []
++            }
++            variants[filename]?.append(variant)
++            save()
++            return true
++        }
++    }
++    
++    public func toggleCritters(critter: Item) -> Bool {
++        let added = critters.toggle(item: critter)
++        save()
++        return added
++    }
++    
++    public func toggleVillager(villager: Villager) -> Bool {
++        let added = villagers.toggle(item: villager)
++        save()
++        return added
++    }
++    
++    public func toggleResident(villager: Villager) -> Bool {
++        let added = residents.toggle(item: villager)
++        save()
++        return added
++    }
++    
++    // MARK: - Todays Tasks
++    public func addCustomTask(task: DailyCustomTasks.CustomTask) {
++        dailyCustomTasks.tasks.append(task)
++        save()
++    }
++    
++    public func editCustomTask(task: DailyCustomTasks.CustomTask) {
++        guard let index = dailyCustomTasks.tasks.firstIndex(where: { $0.id == task.id } )
++            else { return }
++        dailyCustomTasks.tasks[index] = task
++        save()
++    }
++    
++    public func deleteCustomTask(at index: Int) {
++        dailyCustomTasks.tasks.remove(at: index)
++        save()
++    }
++    
++    public func moveCustomTask(from: IndexSet, to: Int) {
++        dailyCustomTasks.tasks.move(fromOffsets: from, toOffset: to)
++        save()
++    }
++    
++    public func updateProgress(taskId: Int) {
++        dailyCustomTasks.lastUpdate = Date()
++        dailyCustomTasks.tasks[taskId].curProgress += 1
++        save()
++    }
++
++    public func resetProgress(taskId: Int) {
++        dailyCustomTasks.lastUpdate = Date()
++        dailyCustomTasks.tasks[taskId].curProgress = 0
++        save()
++    }
++    
++    public func resetTasks() {
++        dailyCustomTasks.lastUpdate = Date()
++        for(taskId, _) in dailyCustomTasks.tasks.enumerated() {
++            dailyCustomTasks.tasks[taskId].curProgress = 0
++        }
++        save()
++    }
++    
++    // MARK: - User items list
++    public func addList(userList: UserList) {
++        lists.append(userList)
++        save()
++    }
++    
++    public func editList(userList: UserList) {
++        let index = lists.firstIndex(where: { $0.id == userList.id} )!
++        lists[index] = userList
++        save()
++    }
++    
++    public func deleteList(at index: Int) {
++        lists.remove(at: index)
++        save()
++    }
++    
++    public func addItems(for list: UUID, items: [Item]) {
++        let index = lists.firstIndex(where: { $0.id == list })!
++        lists[index].items.append(contentsOf: items)
++        save()
++    }
++    
++    public func deleteItem(for list: UUID, at: Int) {
++        let index = lists.firstIndex(where: { $0.id == list })!
++        lists[index].items.remove(at: at)
++        save()
++    }
++
++    // MARK: - Custom Designs
++
++    public func addDesign(_ design: Design) {
++        designs.append(design)
++        save()
++    }
++
++    public func deleteDesign(at index: Int) {
++        designs.remove(at: index)
++        save()
++    }
++
++    public func updateDesign(_ design: Design) {
++        guard let index = designs.firstIndex(of: design) else { return }
++        designs[index] = design
++        save()
++    }
++
++    // MARK: - Chores
++
++    public func addChore(_ chore: Chore) {
++        chores.append(chore)
++        save()
++    }
++
++    public func deleteChore(_ chore: Chore) {
++        chores.removeAll { $0 == chore }
++        save()
++    }
++
++    public func toggleChore(_ chore: Chore) {
++        guard let index = chores.firstIndex(of: chore) else { return }
++        chores[index].isFinished.toggle()
++        save()
++    }
++
++    public func resetChores() {
++        for index in 0..<chores.count {
++            chores[index].isFinished = false
++        }
++        save()
++    }
++
++    public func updateChore(_ chore: Chore) {
++        guard let index = chores.firstIndex(of: chore) else { return }
++        chores[index] = chore
++        save()
++    }
++
++    // MARK: - CloudKit
++    private func checkiCloudStatus() {
++        CKContainer.default().accountStatus { (status, error) in
++            if error != nil || status != .available {
++                DispatchQueue.main.async {
++                    self.isCloudEnabled = false
++                }
++            } else {
++                self.cloudKitDatabase = CKContainer.default().privateCloudDatabase
++                self.reloadFromCloudKit()
++                self.subscribeToCloudKit()
++            }
++        }
++    }
++    
++    private func subscribeToCloudKit() {
++        cloudKitDatabase?.fetchAllSubscriptions { (subs, _) in
++            if subs == nil || subs?.isEmpty == true {
++                self.createSubscription()
++            }
++        }
++    }
++    
++    private func createSubscription() {
++        let sub = CKQuerySubscription(recordType: Self.recordType,
++                                      predicate: NSPredicate(value: true),
++                                      options: .firesOnRecordUpdate)
++        let notif = CKSubscription.NotificationInfo()
++        notif.shouldSendContentAvailable = true
++        sub.notificationInfo = notif
++        cloudKitDatabase?.save(sub) { (_, _) in }
++    }
++    
++    public func reloadFromCloudKit() {
++        cloudKitDatabase?.fetch(withRecordID: Self.recordId) { (record, error) in
++            if record == nil {
++                DispatchQueue.main.async {
++                    self.save()
++                }
++            } else {
++                self.currentRecord = record
++                if let asset = record?[Self.assetKey] as? CKAsset,
++                    let url = asset.fileURL {
++                    DispatchQueue.main.async {
++                        self.isSynched = true
++                        _ = self.loadCollection(file: url)
++                        try? FileManager.default.removeItem(at: self.filePath)
++                        try? FileManager.default.copyItem(at: url, to: self.filePath)
++                    }
++                }
++            }
++        }
++    }
++    
++    private func saveToCloudKit() {
++        if let record = currentRecord {
++            record[Self.assetKey] = CKAsset(fileURL: filePath)
++            let modified = CKModifyRecordsOperation(recordsToSave: [record], recordIDsToDelete: nil)
++            modified.savePolicy = .allKeys
++            modified.completionBlock = {
++                DispatchQueue.main.async {
++                    self.isSynched = true
++                }
++            }
++            cloudKitDatabase?.add(modified)
++        } else {
++            let record = CKRecord(recordType: Self.recordType,
++                                  recordID: Self.recordId)
++            let asset = CKAsset(fileURL: filePath)
++            record[Self.assetKey] = asset
++            
++            cloudKitDatabase?.save(record) { (record, error) in
++                DispatchQueue.main.async {
++                    self.currentRecord = record
++                    self.isSynched = true
++                }
++            }
++        }
++    }
++    
++    // MARK: - Import / Export
++    private func save() {
++        saveQueue.async { [weak self] in
++            guard let self = self else { return }
++            do {
++                let savedData = SavedData(items: self.items,
++                                          variants: self.variants,
++                                          villagers: self.villagers,
++                                          residents: self.residents,
++                                          critters: self.critters,
++                                          lists: self.lists,
++                                          dailyCustomTasks: self.dailyCustomTasks,
++                                          designs: self.designs,
++                                          chores: self.chores)
++                let data = try self.encoder.encode(savedData)
++                try data.write(to: self.filePath, options: .atomicWrite)
++                
++                if self.isCloudEnabled {
++                    DispatchQueue.main.async {
++                        self.isSynched = false
++                        self.saveToCloudKit()
++                    }
++                }
++            } catch let error {
++                print("Error while saving collection: \(error.localizedDescription)")
++            }
++            self.encoder.dataEncodingStrategy = .base64
++        }
++    }
++    
++    private func loadCollection(file: URL) -> Bool {
++        if let data = try? Data(contentsOf: file) {
++            decoder.dataDecodingStrategy = .base64
++            do {
++                let savedData = try decoder.decode(SavedData.self, from: data)
++                self.items = savedData.items
++                self.variants = savedData.variants ?? [:]
++                self.villagers = savedData.villagers
++                self.residents = savedData.residents ?? []
++                self.critters = savedData.critters
++                self.lists = savedData.lists ?? []
++                self.designs = savedData.designs ?? []
++                self.dailyCustomTasks = savedData.dailyCustomTasks ?? DailyCustomTasks()
++                self.chores = savedData.chores ?? []
++                return true
++            } catch {
++                return false
++            }
++        }
++        return false
++    }
++    
++    public func deleteCollection() -> Bool {
++        do {
++            try FileManager.default.removeItem(at: filePath)
++            self.items = []
++            self.villagers = []
++            self.residents = []
++            self.critters = []
++            self.lists = []
++            self.dailyCustomTasks = DailyCustomTasks()
++            self.designs = []
++            self.chores = []
++            save()
++            return true
++        } catch {
++            return false
++        }
++    }
++    
++    public func generateExportURL() -> URL? {
++        do {
++            var sharedURL = try FileManager.default.url(for: .documentDirectory,
++                                                                    in: .userDomainMask,
++                                                                    appropriateFor: nil,
++                                                                    create: false)
++            sharedURL.appendPathComponent("exported-collection")
++            sharedURL.appendPathExtension("achelper")
++            try? FileManager.default.removeItem(at: sharedURL)
++            try FileManager.default.copyItem(at: filePath, to: sharedURL)
++            return sharedURL
++        } catch let error {
++            print(error.localizedDescription)
++            return nil
++        }
++    }
++    
++    public func sizeOfArchivedState() -> String {
++        do {
++            let resources = try filePath.resourceValues(forKeys:[.fileSizeKey])
++            let formatter = ByteCountFormatter()
++            formatter.allowedUnits = .useKB
++            formatter.countStyle = .file
++            return formatter.string(fromByteCount: Int64(resources.fileSize ?? 0))
++        } catch {
++            return "0"
++        }
++    }
++    
++    public func processImportedFile(url: URL) -> Bool {
++        let success = loadCollection(file: url)
++        if success {
++            save()
++        }
++        return success
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/TodaySection.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/TodaySection.swift
+index 45658fc..e662fb2 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/TodaySection.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/TodaySection.swift
+@@ -35,6 +35,7 @@ extension TodaySection {
+         case music
+         case tasks
+         case chores
++        case villagerVisits
+         case nookazon
+     }
+ 
+@@ -51,5 +52,6 @@ extension TodaySection {
+         TodaySection(name: .music, enabled: true),
+         //TodaySection(name: .nameNookazon, enabled: true)
+         TodaySection(name: .mysteryIsland, enabled: true),
++        TodaySection(name: .villagerVisits, enabled: true),
+     ]
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/TodayVillagerVisitsSectionViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/TodayVillagerVisitsSectionViewModel.swift
+new file mode 100644
+index 0000000..6545233
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/TodayVillagerVisitsSectionViewModel.swift
+@@ -0,0 +1,56 @@
++//
++//  TodayVillagerVisitsSectionViewModel.swift
++//  ACHNBrowserUI
++//
++//  Created by AC Helper Team on 2020.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import Backend
++import Combine
++import SwiftUI
++
++final class TodayVillagerVisitsSectionViewModel: ObservableObject {
++
++    // MARK: - Public properties
++
++    @Published var residents: [Villager] = []
++    @Published var visitedResidents: [Villager] = []
++
++    // MARK: - Private properties
++
++    @ObservedObject private var userCollection: UserCollection
++    private var cancellable: AnyCancellable?
++
++    // MARK: - Life cycle
++
++    init(userCollection: UserCollection = .shared) {
++        self.userCollection = userCollection
++
++        cancellable = self.userCollection.$residents
++            .receive(on: DispatchQueue.main)
++            .sink { [weak self] residents in
++                self?.residents = residents
++        }
++
++        cancellable = self.userCollection.$visitedResidents
++            .receive(on: DispatchQueue.main)
++            .sink { [weak self] visitedResidents in
++                self?.visitedResidents = visitedResidents
++        }
++    }
++
++    // MARK: - Public methods
++
++    func toggleVisitedResident(villager: Villager) {
++        userCollection.toggleVisitedResident(villager: villager)
++    }
++
++    func resetVisitedResidents() {
++        userCollection.resetVisitedResidents()
++    }
++
++    func hasVisitedResidents() -> Bool {
++        !visitedResidents.isEmpty
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/shared/Sheet.swift b/ACHNBrowserUI/ACHNBrowserUI/views/shared/Sheet.swift
+index 6c57c4b..c965427 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/shared/Sheet.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/shared/Sheet.swift
+@@ -21,6 +21,7 @@ struct Sheet: View {
+         case settings(subManager: SubscriptionManager, collection: UserCollection)
+         case designForm(editingDesign: Design?)
+         case choreForm(chore: Chore?)
++        case villager(villager: Villager)
+ 
+         var id: String {
+             switch self {
+@@ -46,6 +47,8 @@ struct Sheet: View {
+                 return "designForm"
+             case .choreForm:
+                 return "choreForm"
++            case .villager:
++                return "villager"
+             }
+         }
+     }
+@@ -86,6 +89,8 @@ struct Sheet: View {
+         case .choreForm(let chore):
+             let viewModel = ChoreFormViewModel(chore: chore)
+             return AnyView(ChoreFormView(viewModel: viewModel))
++        case .villager(let villager):
++            return AnyView(VillagerDetailView(villager: villager))
+         }
+     }
+ 
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionView.swift
+index 2c6dfa7..dee7036 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionView.swift
+@@ -53,6 +53,8 @@ struct TodaySectionView: View {
+             return AnyView(TodayTasksSection(sheet: $selectedSheet))
+         case .chores:
+             return AnyView(TodayChoresSection())
++        case .villagerVisits:
++            return AnyView(TodayVillagerVisitsSection(sheet: $selectedSheet))
+         case .nookazon:
+             return AnyView(TodayNookazonSection(sheet: $selectedSheet, viewModel: viewModel))
+         }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodayVillagerVisitsSection.swift b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodayVillagerVisitsSection.swift
+new file mode 100644
+index 0000000..2232e5b
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodayVillagerVisitsSection.swift
+@@ -0,0 +1,111 @@
++//
++//  TodayVillagerVisitsSection.swift
++//  ACHNBrowserUI
++//
++//  Created by AC Helper Team on 2020.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import SwiftUI
++import Backend
++import UI
++
++struct TodayVillagerVisitsSection: View {
++    
++    // MARK: - Properties
++    
++    @ObservedObject private var viewModel: TodayVillagerVisitsSectionViewModel
++    @EnvironmentObject private var collection: UserCollection
++    @Binding var sheet: Sheet.SheetType?
++    
++    // MARK: - Life cycle
++    
++    public init(viewModel: TodayVillagerVisitsSectionViewModel = TodayVillagerVisitsSectionViewModel()) {
++        self.viewModel = viewModel
++    }
++    
++    var body: some View {
++        Section(header: SectionHeaderView(text: NSLocalizedString("Villager Visits", comment: ""), icon: "hand.thumbsup.fill")) {
++            VStack(spacing: 15) {
++                GridStack<AnyView>(rows: self.rows, columns: 4, showDivider: false) { (row, column) in
++                    let residentIndex = row * 4 + column
++                    guard let resident = self.viewModel.residents[safe: residentIndex] else {
++                        return EmptyView().eraseToAnyView()
++                    }
++                    return self.makeResidentBubble(resident: resident, index: residentIndex).eraseToAnyView()
++                }
++                
++                if self.viewModel.hasVisitedResidents() {
++                    HStack {
++                        Spacer()
++                        Text("Reset")
++                            .onTapGesture {
++                                self.viewModel.resetVisitedResidents()
++                        }
++                        .foregroundColor(.acText)
++                        .padding(.vertical, 8)
++                        .padding(.horizontal, 14)
++                        .background(Color.acText.opacity(0.2))
++                        .mask(RoundedRectangle(cornerRadius: 14, style: .continuous))
++                        Spacer()
++                    }
++                }
++            }
++            .frame(maxWidth: .infinity)
++            .padding(.vertical, 8)
++        }
++    }
++    
++    // MARK: - Private
++    
++    private var rows: Int {
++        var rowsFloat = CGFloat(self.viewModel.residents.count) / 4.0
++        rowsFloat.round(.up)
++        return Int(rowsFloat)
++    }
++    
++    private func makeResidentBubble(resident: Villager, index: Int) -> some View {
++        let isVisited = self.viewModel.visitedResidents.contains(resident)
++        
++        return ZStack {
++            Circle()
++                .foregroundColor(isVisited ? Color.acHeaderBackground : Color("ACBackground"))
++            Image("icon-villager")
++                .resizable()
++                .scaleEffect(0.9)
++                .aspectRatio(contentMode: .fit)
++            if isVisited {
++                Image(systemName: "checkmark.seal.fill")
++                    .foregroundColor(.green)
++                    .font(.system(size: 20))
++            }
++        }
++        .frame(maxHeight: 44)
++        .onTapGesture {
++            self.viewModel.toggleVisitedResident(villager: resident)
++            FeedbackGenerator.shared.triggerSelection()
++        }
++        .onLongPressGesture {
++            // Open villager detail view to check gift preferences
++            self.sheet = .villager(villager: resident)
++        }
++    }
++}
++
++// MARK: - Preview
++
++#if DEBUG
++struct TodayVillagerVisitsSection_Previews: PreviewProvider {
++    static var previews: some View {
++        NavigationView {
++            List {
++                TodayVillagerVisitsSection(sheet: .constant(nil))
++            }
++            .listStyle(GroupedListStyle())
++            .environment(\.horizontalSizeClass, .regular)
++        }
++        .previewLayout(.sizeThatFits)
++        .environmentObject(UserCollection.shared)
++    }
++}
++#endif

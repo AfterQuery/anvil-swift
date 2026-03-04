@@ -1,0 +1,194 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/extensions/View.swift b/ACHNBrowserUI/ACHNBrowserUI/extensions/View.swift
+index 5cf9069..a87070e 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/extensions/View.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/extensions/View.swift
+@@ -142,3 +142,9 @@ enum BarItemPosition {
+     case leading
+     case trailing
+ }
++
++extension View {
++    func eraseToAnyView() -> AnyView {
++        AnyView(self)
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+index 64f896e..5173501 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+@@ -163,8 +163,9 @@ extension TurnipsView {
+                     }
+                 } else if turnipsDisplay == .minMax {
+                     ForEach(0..<viewModel.minMaxPrices!.count) { i in
+-                        TurnipsAveragePriceRow(label: self.labels[i],
+-                                               minMaxPrices: self.viewModel.minMaxPrices![i])
++                        TurnipsMinMaxPriceRow(label: self.labels[i],
++                                               prices: self.viewModel.minMaxPrices![i],
++                                               averagePrices: self.viewModel.averagesPrices?[i])
+                     }
+                 } else if turnipsDisplay == .profits {
+                     if viewModel.averagesProfits != nil {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
+index 0edd497..80aaa96 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
+@@ -7,21 +7,35 @@
+ //
+ 
+ import SwiftUI
++import Backend
+ 
+-struct TurnipsAveragePriceRow: View {
++protocol TurnipsPriceRow {
++    func isEntered(meridian: TurnipsAveragePriceRow.Meridian) -> Bool
++}
++
++struct TurnipsAveragePriceRow: View, TurnipsPriceRow {
++    enum Meridian {
++        case am, pm
++    }
++    
+     let label: String
+-    let prices: [Int]?
++    let prices: [Int]
+     let minMaxPrices: [[Int]]?
+     
+-    init(label: String, prices: [Int]) {
++    init(label: String, prices: [Int], minMaxPrices: [[Int]]? = nil) {
+         self.label = label
+         self.prices = prices
+-        self.minMaxPrices = nil
++        self.minMaxPrices = minMaxPrices
+     }
+     
++    // Convenience for backward compatibility
++    init(label: String, prices: [Int]) {
++        self.init(label: label, prices: prices, minMaxPrices: nil)
++    }
++
+     init(label: String, minMaxPrices: [[Int]]) {
+         self.label = label
+-        self.prices = nil
++        self.prices = []
+         self.minMaxPrices = minMaxPrices
+     }
+     
+@@ -35,8 +49,10 @@ struct TurnipsAveragePriceRow: View {
+         }
+     }
+     
+-    private func color(prices: [Int]) -> Color {
+-        color(price: Int(prices.average))
++    func isEntered(meridian: Meridian) -> Bool {
++        let index = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].firstIndex(of: label) ?? 0
++        let fieldIndex = index * 2 + (meridian == .am ? 0 : 1)
++        return !(TurnipPredictionsService.shared.fields?.fields[fieldIndex].isEmpty ?? true)
+     }
+     
+     var body: some View {
+@@ -45,29 +61,91 @@ struct TurnipsAveragePriceRow: View {
+                 .font(.body)
+                 .foregroundColor(.acText)
+             Spacer()
+-            if prices != nil {
+-                Text("\(prices!.first!)")
+-                    .font(.headline)
+-                    .fontWeight(.bold)
+-                    .foregroundColor(color(price: prices!.first!))
++            if !prices.isEmpty {
++                priceText(price: prices.first!, meridian: .am)
+                 Spacer()
+-                Text("\(prices!.last!)")
+-                    .font(.headline)
+-                    .fontWeight(.bold)
+-                    .foregroundColor(color(price: prices!.last!))
+-            } else if minMaxPrices != nil {
+-                Text("\(minMaxPrices!.first!.first!) - \(minMaxPrices!.first!.last!)")
++                priceText(price: prices.last!, meridian: .pm)
++            } else if let minMax = minMaxPrices {
++                Text("\(minMax.first!.first!) - \(minMax.first!.last!)")
+                     .font(.headline)
+                     .fontWeight(.bold)
+-                    .foregroundColor(color(prices: minMaxPrices!.first!))
++                    .foregroundColor(color(price: Int(minMax.first!.average)))
+                 Spacer()
+-                Text("\(minMaxPrices!.last!.first!) - \(minMaxPrices!.last!.last!)")
++                Text("\(minMax.last!.first!) - \(minMax.last!.last!)")
+                     .font(.headline)
+                     .fontWeight(.bold)
+-                    .foregroundColor(color(prices: minMaxPrices!.last!))
++                    .foregroundColor(color(price: Int(minMax.last!.average)))
++            }
++        }
++    }
++    
++    private func priceText(price: Int, meridian: Meridian) -> some View {
++        let entered = isEntered(meridian: meridian)
++        return Text("\(price)")
++            .font(.headline)
++            .fontWeight(.bold)
++            .foregroundColor(entered ? .acText : color(price: price))
++    }
++}
++
++struct TurnipsMinMaxPriceRow: View, TurnipsPriceRow {
++    let label: String
++    let prices: [[Int]]
++    let averagePrices: [Int]?
++    
++    init(label: String, prices: [[Int]], averagePrices: [Int]? = nil) {
++        self.label = label
++        self.prices = prices
++        self.averagePrices = averagePrices
++    }
++    
++    func isEntered(meridian: TurnipsAveragePriceRow.Meridian) -> Bool {
++        let index = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].firstIndex(of: label) ?? 0
++        let fieldIndex = index * 2 + (meridian == .am ? 0 : 1)
++        return !(TurnipPredictionsService.shared.fields?.fields[fieldIndex].isEmpty ?? true)
++    }
++    
++    private func color(price: Int) -> Color {
++        if price <= 90 {
++            return .red
++        } else if price >= 150 {
++            return .acTabBarBackground
++        } else {
++            return .acSecondaryText
++        }
++    }
++
++    var body: some View {
++        HStack {
++            Text(LocalizedStringKey(label))
++                .font(.body)
++                .foregroundColor(.acText)
++            Spacer()
++            if prices.count >= 2 {
++                minMaxText(minMax: prices[0], meridian: .am)
++                Spacer()
++                minMaxText(minMax: prices[1], meridian: .pm)
+             }
+         }
+     }
++    
++    private func minMaxText(minMax: [Int], meridian: TurnipsAveragePriceRow.Meridian) -> some View {
++        let entered = isEntered(meridian: meridian)
++        if entered {
++            return Text("\(minMax.first!)")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(.acText)
++                .eraseToAnyView()
++        } else {
++            let avg = Int(minMax.average)
++            return Text("\(minMax.first!) - \(minMax.last!)")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(color(price: avg))
++                .eraseToAnyView()
++        }
++    }
+ }
+ 
+ struct TurnipsAveragePriceRow_Previews: PreviewProvider {

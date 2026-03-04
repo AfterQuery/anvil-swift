@@ -1,0 +1,149 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings
+index 02fae42..e4ebf42 100644
+Binary files a/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings and b/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings differ
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+index 5869b7a..da40adc 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+@@ -550,3 +550,7 @@ You can cancel anytime with your iTunes account settings. Any unused portion of
+ "Music player" = "Lecteur de musique";
+ "Tracks" = "Musiques";
+ 
++
++"Sort" = "Trier";
++
++"Clear" = "Effacer";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+index 70909fb..34cd05f 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+@@ -20,6 +20,7 @@ class VillagersViewModel: ObservableObject {
+             formatter.dateFormat = "d/M"
+             let today = formatter.string(from: Date())
+             todayBirthdays = villagers.filter( { $0.birthday == today })
++            updateSortedVillagers()
+         }
+     }
+     
+@@ -27,6 +28,56 @@ class VillagersViewModel: ObservableObject {
+     @Published var searchText = ""
+     @Published var todayBirthdays: [Villager] = []
+     
++    public enum Sort: String, CaseIterable {
++        case name, species
++    }
++    
++    @Published var sort: Sort? = nil {
++        didSet {
++            if sort == oldValue && sort != nil {
++                sortDirection.toggle()
++            } else if sort != oldValue && sort != nil {
++                sortDirection = .ascending
++            }
++            updateSortedVillagers()
++        }
++    }
++    
++    enum SortDirection {
++        case ascending, descending
++        mutating func toggle() {
++            self = (self == .ascending) ? .descending : .ascending
++        }
++    }
++    
++    private var sortDirection: SortDirection = .ascending
++    
++    @Published var sortedVillagers: [Villager] = []
++
++    private func updateSortedVillagers() {
++        guard let sort = sort else {
++            sortedVillagers = villagers
++            return
++        }
++        
++        sortedVillagers = villagers.sorted {
++            switch sort {
++            case .name:
++                let lhs = $0.localizedName
++                let rhs = $1.localizedName
++                return sortDirection == .ascending 
++                    ? lhs.localizedCompare(rhs) == .orderedAscending 
++                    : lhs.localizedCompare(rhs) == .orderedDescending
++            case .species:
++                let lhs = NSLocalizedString($0.species, comment: "")
++                let rhs = NSLocalizedString($1.species, comment: "")
++                return sortDirection == .ascending
++                    ? lhs.localizedCompare(rhs) == .orderedAscending
++                    : lhs.localizedCompare(rhs) == .orderedDescending
++            }
++        }
++    }
++    
+     private var apiPublisher: AnyPublisher<[String: Villager], Never>?
+     private var searchCancellable: AnyCancellable?
+     private var apiCancellable: AnyCancellable? {
+@@ -65,4 +116,3 @@ class VillagersViewModel: ObservableObject {
+         }
+     }
+ }
+-
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+index 1980295..b7466ff 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+@@ -12,16 +12,29 @@ import UI
+ 
+ struct VillagersListView: View {
+     @ObservedObject var viewModel = VillagersViewModel()
++    @State private var showSortSheet = false
+     
+     var currentVillagers: [Villager] {
+         get {
+             if !viewModel.searchText.isEmpty {
+                 return viewModel.searchResults
++            } else if viewModel.sort != nil {
++                return viewModel.sortedVillagers
+             } else {
+                 return viewModel.villagers
+             }
+         }
+     }
++    
++    private var sortButton: some View {
++        Button(action: {
++            self.showSortSheet.toggle()
++        }) {
++            Image(systemName: viewModel.sort == nil ? "arrow.up.arrow.down.circle" : "arrow.up.arrow.down.circle.fill")
++                .imageScale(.large)
++                .foregroundColor(.acText)
++        }
++    }
+         
+     var body: some View {
+         NavigationView {
+@@ -39,6 +52,25 @@ struct VillagersListView: View {
+             .listStyle(GroupedListStyle())
+             .navigationBarTitle(Text("Villagers"),
+                                 displayMode: .automatic)
++            .navigationBarItems(trailing: sortButton)
++            .actionSheet(isPresented: $showSortSheet) {
++                var buttons: [ActionSheet.Button] = []
++                for sortOption in VillagersViewModel.Sort.allCases {
++                    buttons.append(.default(Text(LocalizedStringKey(sortOption.rawValue.capitalized)), action: {
++                        self.viewModel.sort = sortOption
++                    }))
++                }
++                
++                if viewModel.sort != nil {
++                    buttons.append(.destructive(Text("Clear"), action: {
++                        self.viewModel.sort = nil
++                    }))
++                }
++                
++                buttons.append(.cancel())
++                
++                return ActionSheet(title: Text("Sort"), buttons: buttons)
++            }
+             .modifier(DismissingKeyboardOnSwipe())
+             if !viewModel.villagers.isEmpty {
+                 VillagerDetailView(villager: viewModel.villagers.first!)

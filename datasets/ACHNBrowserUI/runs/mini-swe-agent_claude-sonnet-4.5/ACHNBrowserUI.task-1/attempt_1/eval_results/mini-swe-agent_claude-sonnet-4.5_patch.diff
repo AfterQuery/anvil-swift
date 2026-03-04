@@ -1,0 +1,185 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings
+index 0f2d004..cdfc315 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings
+@@ -62,3 +62,7 @@ You can delete and close your gates at any moment.
+ Please be respectful, any Dodo code reported will be deleted.";
+ "ACDodoCode.notification.title" = "A new Dodo code is available";
+ "ACDodoCode.notification.subtitle" = "Someone opened their gates and posted a new Dodo code on the application, go check it out!";
++
++// Active Critters
++"To catch now" = "To catch now";
++"To catch later" = "To catch later";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+index 03834a4..e521b9b 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+@@ -863,3 +863,7 @@ Merci d'être respecteux. Tout code signalé sera supprimé";
+ "To help us support the application and get notifications when a new Dodo code is posted, you can try out AC Helper+" = "Pour nous aider à supporter l'application et recevoir des notifications quand un nouveau Dodo codes est posté, vous pouvez souscrire à AC Helper+";
+ "ACDodoCode.notification.title" = "Un nouveau Dodo code est disponible";
+ "ACDodoCode.notification.subtitle" = "Quelqu'un a ouvert ses portes et a posté un Dodo code dans l'application!";
++
++// Active Critters
++"To catch now" = "À attraper maintenant";
++"To catch later" = "À attraper plus tard";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
+index 451a265..7495e65 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
+@@ -13,6 +13,10 @@ public extension BidirectionalCollection where Element == Item {
+     func filterActive() -> [Item] {
+         self.filter({ $0.isActive() })
+     }
++    
++    func filterActiveThisMonth() -> [Item] {
++        self.filter({ $0.isActiveThisMonth() })
++    }
+ }
+ 
+ public extension Collection where Element: Numeric {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
+index 69bc1e8..7ea7810 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
+@@ -176,6 +176,78 @@ public extension Item {
+         return activeMonthsCalendar?.contains(currentMonth) == false
+     }
+     
++    func isActiveThisMonth() -> Bool {
++        return isActive()
++    }
++    
++    func isActiveAtThisHour() -> Bool {
++        // First check if active this month
++        guard isActiveThisMonth() else {
++            return false
++        }
++        
++        // Get the current month for hemisphere adjustment
++        let currentMonth = Int(Item.monthFormatter.string(from: Date()))!
++        let isSouth = AppUserDefaults.shared.hemisphere == .south
++        var monthKey = currentMonth - 1
++        
++        // Adjust for southern hemisphere
++        if isSouth {
++            monthKey = (monthKey + 6) % 12
++        }
++        
++        // Get active times for the current month
++        guard let activeTimes = activeMonths?[String(monthKey)]?.activeTimes,
++              let startTime = activeTimes.first,
++              let endTime = activeTimes.last else {
++            return false
++        }
++        
++        // If both are "0" or the same, it means all day
++        if (Int(startTime) == 0 && Int(endTime) == 0) || startTime == endTime {
++            return true
++        }
++        
++        // Parse start hour
++        var startHour = 0
++        if let hour = Int(startTime.prefix(1)) {
++            startHour = hour
++            if startTime.suffix(2) == "pm" && hour != 12 {
++                startHour += 12
++            } else if startTime.suffix(2) == "am" && hour == 12 {
++                startHour = 0
++            }
++        } else if let hour = Int(startTime.prefix(2)) {
++            startHour = hour
++        }
++        
++        // Parse end hour
++        var endHour = 0
++        if let hour = Int(endTime.prefix(1)) {
++            endHour = hour
++            if endTime.suffix(2) == "pm" && hour != 12 {
++                endHour += 12
++            } else if endTime.suffix(2) == "am" && hour == 12 {
++                endHour = 0
++            }
++        } else if let hour = Int(endTime.prefix(2)) {
++            endHour = hour
++        }
++        
++        // Get current hour
++        let calendar = Calendar.current
++        let currentHour = calendar.component(.hour, from: Date())
++        
++        // Check if current hour is within range
++        // Handle cases where the time range crosses midnight
++        if startHour <= endHour {
++            return currentHour >= startHour && currentHour < endHour
++        } else {
++            // Wraps around midnight (e.g., 9pm to 4am)
++            return currentHour >= startHour || currentHour < endHour
++        }
++    }
++    
+     func formattedTimes() -> String? {
+         guard let activeTimes = activeMonths?.first?.value.activeTimes,
+             let startTime = activeTimes.first,
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
+index 08c305e..d6b0a2b 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
+@@ -38,6 +38,8 @@ class ActiveCrittersViewModel: ObservableObject {
+         let leaving: [Item]
+         let caught: [Item]
+         let toCatch: [Item]
++        let toCatchNow: [Item]
++        let toCatchLater: [Item]
+     }
+     
+     @Published var crittersInfo: [CritterType: CritterInfo] = [:]
+@@ -60,6 +62,8 @@ class ActiveCrittersViewModel: ObservableObject {
+                     var leaving = active.filter{ $0.leavingThisMonth() }
+                     let caught = active.filter{ critters.contains($0) }
+                     let toCatch = active.filter{ !critters.contains($0) }
++                    let toCatchNow = toCatch.filter{ $0.isActiveAtThisHour() }
++                    let toCatchLater = toCatch.filter{ !$0.isActiveAtThisHour() }
+                     
+                     if filterOutInCollection {
+                         new = new.filter{ !critters.contains($0) }
+@@ -71,7 +75,9 @@ class ActiveCrittersViewModel: ObservableObject {
+                                                            new: new,
+                                                            leaving: leaving,
+                                                            caught: caught,
+-                                                           toCatch: toCatch)
++                                                           toCatch: toCatch,
++                                                           toCatchNow: toCatchNow,
++                                                           toCatchLater: toCatchLater)
+                 }
+         }
+     }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
+index 75df943..1c1edea 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
+@@ -31,16 +31,19 @@ struct ActiveCritterSections: View {
+     
+     var body: some View {
+         Group {
+-            makeSectionOrPlaceholder(title: "New this month",
++            makeSectionOrPlaceholder(title: NSLocalizedString("New this month", comment: ""),
+                                      icon: "calendar.badge.plus",
+                                      critters: viewModel.crittersInfo[selectedTab]?.new ?? [])
+-            makeSectionOrPlaceholder(title: "To catch",
+-                                     icon: "calendar",
+-                                     critters: viewModel.crittersInfo[selectedTab]?.toCatch ?? [])
+-            makeSectionOrPlaceholder(title: "Leaving this month",
++            makeSectionOrPlaceholder(title: NSLocalizedString("To catch now", comment: ""),
++                                     icon: "clock",
++                                     critters: viewModel.crittersInfo[selectedTab]?.toCatchNow ?? [])
++            makeSectionOrPlaceholder(title: NSLocalizedString("To catch later", comment: ""),
++                                     icon: "clock.badge.exclamationmark",
++                                     critters: viewModel.crittersInfo[selectedTab]?.toCatchLater ?? [])
++            makeSectionOrPlaceholder(title: NSLocalizedString("Leaving this month", comment: ""),
+                                      icon: "calendar.badge.minus",
+                                      critters: viewModel.crittersInfo[selectedTab]?.leaving ?? [])
+-            Section(header: SectionHeaderView(text: "Caught",
++            Section(header: SectionHeaderView(text: NSLocalizedString("Caught", comment: ""),
+                                               icon: "tray.2"))
+             {
+                 ForEach(viewModel.crittersInfo[selectedTab]?.caught ?? [],

@@ -1,0 +1,924 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
+index 80d9cd2..eb46532 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
+@@ -18,6 +18,7 @@ class LikeButtonViewModel: ObservableObject {
+     let villager: Villager?
+     
+     @Published var isInCollection = false
++    @Published var variantsCompletionStatus: VariantsCompletionStatus = .unstarted
+     
+     private let collection: UserCollection
+     private var cancellable: AnyCancellable?
+@@ -42,6 +43,11 @@ class LikeButtonViewModel: ObservableObject {
+                         self.isInCollection = variants.contains(for: item, variant: variant)
+                         return
+                     }
++                    if item.hasSomeVariations {
++                        self.variantsCompletionStatus = variants.completionStatus(for: item)
++                        self.isInCollection = self.variantsCompletionStatus != .unstarted
++                        return
++                    }
+                     self.isInCollection = items.contains(item) || critters.contains(item)
+                     return
+                 } else if let villager = villager {
+@@ -70,4 +76,8 @@ class LikeButtonViewModel: ObservableObject {
+         }
+         return added
+     }
++    
++    var hasSomeVariations: Bool {
++        variant == nil && item?.hasSomeVariations == true
++    }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/items/ItemsView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/items/ItemsView.swift
+index 56c5b3d..72fbbaf 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/items/ItemsView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/items/ItemsView.swift
+@@ -29,6 +29,7 @@ struct ItemsView: View {
+     
+     @StateObject var viewModel: ItemsViewModel
+     @State private var contentMode: ContentMode = .listLarge
++    @State private var likedItemWithVariants: Item?
+     let customTitle: String?
+     
+     init(category: Backend.Category, items: [Item]? = nil, keyword: String? = nil) {
+@@ -110,31 +111,65 @@ struct ItemsView: View {
+     
+     @ViewBuilder
+     private var contentView: some View {
+-        if contentMode == .grid {
+-            ScrollView {
+-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 16)], spacing: 16) {
+-                    ForEach(viewModel.items) { item in
+-                        ItemGridItemView(item: item)
++        ZStack {
++            if contentMode == .grid {
++                ScrollView {
++                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 16)], spacing: 16) {
++                        ForEach(viewModel.items) { item in
++                            ItemGridItemView(item: item)
++                        }
+                     }
+-                }
+-                .padding(8)
+-                .background(Color.acBackground)
+-            }.background(Color.acBackground)
+-        } else {
+-            List {
+-                Section(header: SearchField(searchText: $viewModel.searchText)) {
+-                    ForEach(viewModel.items) { item in
+-                        NavigationLink(destination: LazyView(ItemDetailView(item: item))) {
+-                            ItemRowView(displayMode: contentMode == .listLarge ? .large : .compact,
+-                                        item: item)
++                    .padding(8)
++                    .background(Color.acBackground)
++                }.background(Color.acBackground)
++            } else {
++                List {
++                    Section(header: SearchField(searchText: $viewModel.searchText)) {
++                        ForEach(viewModel.items) { item in
++                            NavigationLink(destination: LazyView(ItemDetailView(item: item))) {
++                                ItemRowView(
++                                    displayMode: contentMode == .listLarge ? .large : .compact,
++                                    item: item,
++                                    likedItemWithVariants: $likedItemWithVariants
++                                )
++                            }
++                            .listRowBackground(Color.acSecondaryBackground)
+                         }
+-                        .listRowBackground(Color.acSecondaryBackground)
+                     }
+                 }
++                .listStyle(GroupedListStyle())
++                .id(viewModel.sort)
++            }
++            likedItemWithVariants.map { item in
++                ZStack {
++                    Color.black
++                        .opacity(1/6)
++                        .onTapGesture { likedItemWithVariants = nil }
++                    VStack {
++                        Spacer()
++                        itemVariants(for: item)
++                    }
++                }
++            }
++        }
++    }
++    
++    private func itemVariants(for item: Item) -> some View {
++        VStack {
++            SectionHeaderView(text: "Variants", icon: "paintbrush.fill").padding()
++            ScrollView(.horizontal, showsIndicators: false) {
++                HStack {
++                    ForEach(item.variations ?? []) { variant in
++                        ZStack(alignment: .topLeading) {
++                            ItemImage(path: variant.content.image, size: 75)
++                            LikeButtonView(item: item, variant: variant)
++                        }
++                    }
++                }.padding()
+             }
+-            .listStyle(GroupedListStyle())
+-            .id(viewModel.sort)
++            .listRowInsets(EdgeInsets())
+         }
++        .background(Color.acSecondaryBackground)
+     }
+ }
+ 
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/items/detail/ItemDetailView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/items/detail/ItemDetailView.swift
+index 1c3ad72..7df11af 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/items/detail/ItemDetailView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/items/detail/ItemDetailView.swift
+@@ -20,6 +20,7 @@ struct ItemDetailView: View {
+     
+     @State private var displayedVariant: Variant?
+     @State private var selectedSheet: Sheet.SheetType?
++    @State private var likedItemWithVariants: Item?
+ 
+     init(item: Item) {
+         self._itemViewModel = StateObject(wrappedValue: ItemDetailViewModel(item: item))
+@@ -46,12 +47,13 @@ struct ItemDetailView: View {
+     
+     // MARK: - Boby
+     var body: some View {
+-        List {
+-            ItemDetailInfoView(item: itemViewModel.item,
+-                               recipe: itemViewModel.recipe,
+-                               displayedVariant: $displayedVariant)
+-                .listRowBackground(Color.acSecondaryBackground)
+-            Group {
++        ZStack {
++            List {
++                ItemDetailInfoView(item: itemViewModel.item,
++                                   recipe: itemViewModel.recipe,
++                                   displayedVariant: $displayedVariant)
++                    .listRowBackground(Color.acSecondaryBackground)
++                Group {
+                 if itemViewModel.item.variations != nil {
+                     variantsSection
+                 }
+@@ -96,6 +98,18 @@ struct ItemDetailView: View {
+             }.listRowBackground(Color.acSecondaryBackground)
+             
+             listsSection
++            }
++            likedItemWithVariants.map { item in
++                ZStack {
++                    Color.black
++                        .opacity(1/6)
++                        .onTapGesture { likedItemWithVariants = nil }
++                    VStack {
++                        Spacer()
++                        itemVariants(for: item)
++                    }
++                }
++            }
+         }
+         .listStyle(InsetGroupedListStyle())
+         .onAppear(perform: {
+@@ -124,7 +138,8 @@ extension ItemDetailView {
+     private var navButtons: some View {
+         HStack {
+             LikeButtonView(item: itemViewModel.item,
+-                           variant: displayedVariant).imageScale(.large)
++                           variant: displayedVariant,
++                           likedItemWithVariants: $likedItemWithVariants).imageScale(.large)
+                 .safeHoverEffectBarItem(position: .trailing)
+             shareButton
+         }
+@@ -175,6 +190,24 @@ extension ItemDetailView {
+         }
+     }
+     
++    private func itemVariants(for item: Item) -> some View {
++        VStack {
++            SectionHeaderView(text: "Variants", icon: "paintbrush.fill").padding()
++            ScrollView(.horizontal, showsIndicators: false) {
++                HStack {
++                    ForEach(item.variations ?? []) { variant in
++                        ZStack(alignment: .topLeading) {
++                            ItemImage(path: variant.content.image, size: 75)
++                            LikeButtonView(item: item, variant: variant)
++                        }
++                    }
++                }.padding()
++            }
++            .listRowInsets(EdgeInsets())
++        }
++        .background(Color.acSecondaryBackground)
++    }
++    
+     private var materialsSection: some View {
+         Section(header: SectionHeaderView(text: "Materials", icon: "leaf.arrow.circlepath")) {
+             ScrollView(.horizontal, showsIndicators: false) {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemGridItemView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemGridItemView.swift
+index a9bf05e..87382af 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemGridItemView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemGridItemView.swift
+@@ -14,7 +14,7 @@ struct ItemGridItemView: View {
+     let item: Item
+     var body: some View {
+         ZStack(alignment: .topLeading) {
+-            LikeButtonView(item: item, variant: nil)
++            LikeButtonView(item: item, variant: nil, likedItemWithVariants: .constant(nil))
+                 .padding(.top, 8)
+                 .padding(.leading, 8)
+             HStack {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemRowView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemRowView.swift
+index bfc8032..b0d580a 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemRowView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/items/row/ItemRowView.swift
+@@ -17,9 +17,20 @@ struct ItemRowView: View {
+     
+     let displayMode: DisplayMode
+     let item: Item
++    @Binding var likedItemWithVariants: Item?
+     
+     @State private var displayedVariant: Variant?
+     
++    init(
++        displayMode: DisplayMode,
++        item: Item,
++        likedItemWithVariants: Binding<Item?> = .constant(nil)
++    ) {
++        self.displayMode = displayMode
++        self.item = item
++        self._likedItemWithVariants = likedItemWithVariants
++    }
++    
+     private var imageSize: CGFloat {
+         switch displayMode {
+         case .compact:
+@@ -87,7 +98,11 @@ struct ItemRowView: View {
+     var body: some View {
+         HStack(spacing: 8) {
+             if displayMode != .largeNoButton {
+-                LikeButtonView(item: item, variant: displayedVariant)
++                LikeButtonView(
++                    item: item,
++                    variant: displayedVariant,
++                    likedItemWithVariants: $likedItemWithVariants
++                )
+             }
+             if item.finalImage == nil && displayedVariant == nil {
+                 Image(item.appCategory.iconName())
+@@ -144,9 +159,8 @@ struct ItemRowView_Previews: PreviewProvider {
+                     ItemRowView(displayMode: .large, item: static_item)
+                         .environmentObject(UserCollection.shared)
+                 }
+-                .environment(\.colorScheme, .dark)
++                .environment(.colorScheme, .dark)
+             }
+         }
+     }
+ }
+-
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
+index c0bc1d7..ca80b34 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
+@@ -11,13 +11,20 @@ import Backend
+ 
+ struct LikeButtonView: View {
+     @StateObject private var viewModel: LikeButtonViewModel
++    @Binding private var likedItemWithVariants: Item?
+     
+-    init(item: Item, variant: Variant?) {
++    init(
++        item: Item,
++        variant: Variant?,
++        likedItemWithVariants: Binding<Item?> = .constant(nil)
++    ) {
+         _viewModel = StateObject(wrappedValue: LikeButtonViewModel(item: item, variant: variant))
++        _likedItemWithVariants = likedItemWithVariants
+     }
+     
+     init(villager: Villager) {
+         _viewModel = StateObject(wrappedValue: LikeButtonViewModel(villager: villager))
++        _likedItemWithVariants = .constant(nil)
+     }
+         
+     var imageName: String {
+@@ -25,6 +32,13 @@ struct LikeButtonView: View {
+             if viewModel.item?.isCritter == true {
+                 return viewModel.isInCollection ? "checkmark.seal.fill" : "checkmark.seal"
+             } else {
++                if viewModel.hasSomeVariations {
++                    switch viewModel.variantsCompletionStatus {
++                    case .unstarted: return "star"
++                    case .partial: return "star.leadinghalf.fill"
++                    case .complete: return "star.fill"
++                    }
++                }
+                 return viewModel.isInCollection ? "star.fill" : "star"
+             }
+         } else {
+@@ -44,8 +58,12 @@ struct LikeButtonView: View {
+     
+     var body: some View {
+         Button(action: {
+-            let added = self.viewModel.toggleCollection()
+-            FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++            if viewModel.hasSomeVariations {
++                likedItemWithVariants = viewModel.item
++            } else {
++                let added = self.viewModel.toggleCollection()
++                FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++            }
+         }) {
+             Image(systemName: imageName).foregroundColor(color)
+         }
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+index f5642f1..baad98c 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+@@ -138,6 +138,15 @@ public class UserCollection: ObservableObject {
+         }
+         if variants[filename]?.contains(variant) == true {
+             variants[filename]?.removeAll(where: { $0 == variant })
++            // If no more variants, remove parent item
++            if variants[filename]?.isEmpty ?? true {
++                variants[filename] = nil
++                _ = items.toggle(item: item)
++            } else if variants[filename]?.count == 1 {
++                // Just removed the last variant, but there might be more
++                // The parent should stay in collection if any variant is collected
++                // This is handled by the fact that we check if any variants exist
++            }
+             save()
+             return false
+         } else {
+@@ -145,6 +154,10 @@ public class UserCollection: ObservableObject {
+                 variants[filename] = []
+             }
+             variants[filename]?.append(variant)
++            // If this is the first variant, add parent item
++            if variants[filename]?.count == 1 {
++                _ = items.toggle(item: item)
++            }
+             save()
+             return true
+         }
+@@ -498,11 +511,26 @@ public class UserCollection: ObservableObject {
+     }
+ }
+ 
++public enum VariantsCompletionStatus {
++    case unstarted
++    case partial
++    case complete
++}
++
+ public extension Dictionary where Key == String, Value == [Variant] {
+-    public func contains(for item: Item, variant: Variant) -> Bool {
+-        guard let filename = item.filename else {
+-            return false
++    func completionStatus(for item: Item) -> VariantsCompletionStatus {
++        guard let filename = item.filename,
++              let itemVariations = item.variations,
++              let currentVariations = self[filename]
++        else { return .unstarted }
++        
++        if currentVariations.count <= 0 {
++            return .unstarted
++        } else if currentVariations.count < itemVariations.count {
++            return .partial
++        } else {
++            return .complete
+         }
+-        return self[filename]?.contains(variant) == true
+     }
+ }
++
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift.bak b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift.bak
+new file mode 100644
+index 0000000..f5642f1
+--- /dev/null
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift.bak
+@@ -0,0 +1,508 @@
++//
++//  CollectionViewModel.swift
++//  ACHNBrowserUI
++//
++//  Created by Thomas Ricouard on 08/04/2020.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import Foundation
++import Combine
++import CloudKit
++import os.log
++import WidgetKit
++
++public class UserCollection: ObservableObject {
++    public static let shared = UserCollection(iCloudDisabled: false)
++    
++    // MARK: - Published properties
++    @Published public var items: [Item] = []
++    @Published public var variants: [String: [Variant]] = [:]
++    @Published public var villagers: [Villager] = []
++    @Published public var residents: [Villager] = []
++    @Published public var visitedResidents: [Villager] = []
++    @Published public var critters: [Item] = []
++    @Published public var lists: [UserList] = []
++    @Published public var designs: [Design] = []
++    @Published public var dailyCustomTasks = DailyCustomTasks()
++    @Published public var chores: [Chore] = []
++    
++    @Published public var isCloudEnabled = true
++    @Published public var isSynched = false
++    
++    // MARK: - Private properties
++    private struct SavedData: Codable {
++        let items: [Item]
++        let variants: [String: [Variant]]?
++        let villagers: [Villager]
++        let residents: [Villager]?
++        let visitedResidents: [Villager]?
++        let critters: [Item]
++        let lists: [UserList]?
++        let dailyCustomTasks: DailyCustomTasks?
++        let designs: [Design]?
++        let chores: [Chore]?
++    }
++    
++    private let filePath: URL
++    private let sharedFilePath: URL?
++    private let encoder = JSONEncoder()
++    private let decoder = JSONDecoder()
++    
++    private let saveQueue = DispatchQueue(label: "achelper.save.queue")
++    
++    private static let recordType = "UserCollection"
++    private static let recordId = CKRecord.ID(recordName: "CurrentUserCollection")
++    private static let assetKey = "data"
++    private var cloudKitDatabase: CKDatabase? = nil
++    private var currentRecord: CKRecord? = nil
++    
++    private let logHandler = OSLog(subsystem: "com.achelper.collection", category: "ac-perf")
++    
++    public init(iCloudDisabled: Bool, fromSharedURL: Bool = false) {
++        do {
++            filePath = try FileManager.default.url(for: .documentDirectory,
++                                                   in: .userDomainMask,
++                                                   appropriateFor: nil,
++                                                   create: false).appendingPathComponent("collection")
++            sharedFilePath = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.achelper.com")?.appendingPathComponent("collection")
++            if fromSharedURL, let url = sharedFilePath {
++                _ = self.loadCollection(file: url)
++            } else {
++                _ = self.loadCollection(file: filePath)
++            }
++            
++            if !iCloudDisabled {
++                checkiCloudStatus()
++            } else {
++                isCloudEnabled = false
++            }
++                        
++        } catch let error {
++            fatalError(error.localizedDescription)
++        }
++    }
++    
++    // MARK: - Items management
++    public func itemsIn(category: Category, items: [Item]) -> Int {
++        os_signpost(.begin,
++                    log: logHandler,
++                    name: "Counting items with passed array",
++                    "Begin for category %{public}s",
++                    category.rawValue)
++        
++        let allItems = Items.shared.categories[category] ?? []
++        let inCollection = items.count(where: { allItems.contains($0) && !$0.name.contains("(fake)") })
++        
++        os_signpost(.end,
++                    log: logHandler,
++                    name: "Counting items with passed array",
++                    "Done for category %{public}s",
++                    category.rawValue)
++        
++        return inCollection
++    }
++    
++    public func itemsIn(useItems: Bool = true, category: Category) -> Int {
++        os_signpost(.begin,
++                    log: logHandler,
++                    name: "Counting items",
++                    "Begin for category %{public}s",
++                    category.rawValue)
++        
++        var items: [Item] = []
++        if useItems {
++            items = Items.shared.categories[category] ?? []
++        }
++        var caught = self.critters.count(where: { items.contains($0) || items.isEmpty && $0.appCategory == category } )
++        caught += self.items.count(where: { (items.contains($0) || items.isEmpty && $0.appCategory == category) && !$0.name.contains("(fake)") })
++        
++        os_signpost(.end,
++                    log: logHandler,
++                    name: "Counting items",
++                    "Done for category %{public}s",
++                    category.rawValue)
++        
++        return caught
++    }
++
++    public func toggleItem(item: Item) -> Bool {
++        let added = items.toggle(item: item)
++        save()
++        return added
++    }
++    
++    public func toggleVariant(item: Item, variant: Variant) -> Bool {
++        guard let filename = item.filename else {
++            return false
++        }
++        if variants[filename]?.contains(variant) == true {
++            variants[filename]?.removeAll(where: { $0 == variant })
++            save()
++            return false
++        } else {
++            if variants[filename] == nil {
++                variants[filename] = []
++            }
++            variants[filename]?.append(variant)
++            save()
++            return true
++        }
++    }
++    
++    public func toggleCritters(critter: Item) -> Bool {
++        let added = critters.toggle(item: critter)
++        save()
++        return added
++    }
++    
++    public func toggleVillager(villager: Villager) -> Bool {
++        let added = villagers.toggle(item: villager)
++        save()
++        return added
++    }
++    
++    public func toggleResident(villager: Villager) -> Bool {
++        let added = residents.toggle(item: villager)
++        save()
++        return added
++    }
++
++    @discardableResult
++    public func toggleVisitedResident(villager: Villager) -> Bool {
++        let added = visitedResidents.toggle(item: villager)
++        save()
++        return added
++    }
++
++    public func resetVisitedResidents() {
++        visitedResidents = []
++        save()
++    }
++    
++    // MARK: - Todays Tasks
++    public func addCustomTask(task: DailyCustomTasks.CustomTask) {
++        dailyCustomTasks.tasks.append(task)
++        save()
++    }
++    
++    public func editCustomTask(task: DailyCustomTasks.CustomTask) {
++        guard let index = dailyCustomTasks.tasks.firstIndex(where: { $0.id == task.id } )
++            else { return }
++        dailyCustomTasks.tasks[index] = task
++        save()
++    }
++    
++    public func deleteCustomTask(at index: Int) {
++        dailyCustomTasks.tasks.remove(at: index)
++        save()
++    }
++    
++    public func moveCustomTask(from: IndexSet, to: Int) {
++        dailyCustomTasks.tasks.move(fromOffsets: from, toOffset: to)
++        save()
++    }
++    
++    public func updateProgress(taskId: Int) {
++        dailyCustomTasks.lastUpdate = Date()
++        dailyCustomTasks.tasks[taskId].curProgress += 1
++        save()
++    }
++
++    public func resetProgress(taskId: Int) {
++        dailyCustomTasks.lastUpdate = Date()
++        dailyCustomTasks.tasks[taskId].curProgress = 0
++        save()
++    }
++    
++    public func resetTasks() {
++        dailyCustomTasks.lastUpdate = Date()
++        for(taskId, _) in dailyCustomTasks.tasks.enumerated() {
++            dailyCustomTasks.tasks[taskId].curProgress = 0
++        }
++        save()
++    }
++    
++    // MARK: - User items list
++    public func addList(userList: UserList) {
++        lists.append(userList)
++        save()
++    }
++    
++    public func editList(userList: UserList) {
++        let index = lists.firstIndex(where: { $0.id == userList.id} )!
++        lists[index] = userList
++        save()
++    }
++    
++    public func deleteList(at index: Int) {
++        lists.remove(at: index)
++        save()
++    }
++    
++    public func addItems(for list: UUID, items: [Item]) {
++        let index = lists.firstIndex(where: { $0.id == list })!
++        lists[index].items.append(contentsOf: items)
++        save()
++    }
++    
++    public func deleteItem(for list: UUID, at: Int) {
++        let index = lists.firstIndex(where: { $0.id == list })!
++        lists[index].items.remove(at: at)
++        save()
++    }
++
++    // MARK: - Custom Designs
++
++    public func addDesign(_ design: Design) {
++        designs.append(design)
++        save()
++    }
++
++    public func deleteDesign(at index: Int) {
++        designs.remove(at: index)
++        save()
++    }
++
++    public func updateDesign(_ design: Design) {
++        guard let index = designs.firstIndex(of: design) else { return }
++        designs[index] = design
++        save()
++    }
++
++    // MARK: - Chores
++
++    public func addChore(_ chore: Chore) {
++        chores.append(chore)
++        save()
++    }
++
++    public func deleteChore(_ chore: Chore) {
++        chores.removeAll { $0 == chore }
++        save()
++    }
++
++    public func toggleChore(_ chore: Chore) {
++        guard let index = chores.firstIndex(of: chore) else { return }
++        chores[index].isFinished.toggle()
++        save()
++    }
++
++    public func resetChores() {
++        for index in 0..<chores.count {
++            chores[index].isFinished = false
++        }
++        save()
++    }
++
++    public func updateChore(_ chore: Chore) {
++        guard let index = chores.firstIndex(of: chore) else { return }
++        chores[index] = chore
++        save()
++    }
++
++    // MARK: - CloudKit
++    private func checkiCloudStatus() {
++        CKContainer.default().accountStatus { (status, error) in
++            if error != nil || status != .available {
++                DispatchQueue.main.async {
++                    self.isCloudEnabled = false
++                }
++            } else {
++                self.cloudKitDatabase = CKContainer.default().privateCloudDatabase
++                self.reloadFromCloudKit()
++                self.subscribeToCloudKit()
++            }
++        }
++    }
++    
++    private func subscribeToCloudKit() {
++        cloudKitDatabase?.fetchAllSubscriptions { (subs, _) in
++            if subs == nil || subs?.isEmpty == true {
++                self.createSubscription()
++            }
++        }
++    }
++    
++    private func createSubscription() {
++        let sub = CKQuerySubscription(recordType: Self.recordType,
++                                      predicate: NSPredicate(value: true),
++                                      options: .firesOnRecordUpdate)
++        let notif = CKSubscription.NotificationInfo()
++        notif.shouldSendContentAvailable = true
++        sub.notificationInfo = notif
++        cloudKitDatabase?.save(sub) { (_, _) in }
++    }
++    
++    public func reloadFromCloudKit() {
++        cloudKitDatabase?.fetch(withRecordID: Self.recordId) { (record, error) in
++            if record == nil {
++                DispatchQueue.main.async {
++                    self.save()
++                }
++            } else {
++                self.currentRecord = record
++                if let asset = record?[Self.assetKey] as? CKAsset,
++                    let url = asset.fileURL {
++                    DispatchQueue.main.async {
++                        self.isSynched = true
++                        _ = self.loadCollection(file: url)
++                        try? FileManager.default.removeItem(at: self.filePath)
++                        try? FileManager.default.copyItem(at: url, to: self.filePath)
++                    }
++                }
++            }
++        }
++    }
++    
++    private func saveToCloudKit() {
++        if let record = currentRecord {
++            record[Self.assetKey] = CKAsset(fileURL: filePath)
++            let modified = CKModifyRecordsOperation(recordsToSave: [record], recordIDsToDelete: nil)
++            modified.savePolicy = .allKeys
++            modified.completionBlock = {
++                DispatchQueue.main.async {
++                    self.isSynched = true
++                }
++            }
++            cloudKitDatabase?.add(modified)
++        } else {
++            let record = CKRecord(recordType: Self.recordType,
++                                  recordID: Self.recordId)
++            let asset = CKAsset(fileURL: filePath)
++            record[Self.assetKey] = asset
++            
++            cloudKitDatabase?.save(record) { (record, error) in
++                DispatchQueue.main.async {
++                    self.currentRecord = record
++                    self.isSynched = true
++                }
++            }
++        }
++    }
++    
++    // MARK: - Import / Export
++    private func save() {
++        saveQueue.async { [weak self] in
++            guard let self = self else { return }
++            do {
++                let savedData = SavedData(items: self.items,
++                                          variants: self.variants,
++                                          villagers: self.villagers,
++                                          residents: self.residents,
++                                          visitedResidents: self.visitedResidents,
++                                          critters: self.critters,
++                                          lists: self.lists,
++                                          dailyCustomTasks: self.dailyCustomTasks,
++                                          designs: self.designs,
++                                          chores: self.chores)
++                let data = try self.encoder.encode(savedData)
++                try data.write(to: self.filePath, options: .atomicWrite)
++                if let url = self.sharedFilePath {
++                    try data.write(to: url, options: .atomicWrite)
++                }
++                
++                if self.isCloudEnabled {
++                    DispatchQueue.main.async {
++                        self.isSynched = false
++                        self.saveToCloudKit()
++                    }
++                }
++                
++                WidgetCenter.shared.reloadAllTimelines()
++                
++            } catch let error {
++                print("Error while saving collection: \(error.localizedDescription)")
++            }
++            self.encoder.dataEncodingStrategy = .base64
++        }
++    }
++    
++    private func loadCollection(file: URL) -> Bool {
++        if let data = try? Data(contentsOf: file) {
++            decoder.dataDecodingStrategy = .base64
++            do {
++                let savedData = try decoder.decode(SavedData.self, from: data)
++                self.items = savedData.items
++                self.variants = savedData.variants ?? [:]
++                self.villagers = savedData.villagers
++                self.residents = savedData.residents ?? []
++                self.visitedResidents = savedData.visitedResidents ?? []
++                self.critters = savedData.critters
++                self.lists = savedData.lists ?? []
++                self.designs = savedData.designs ?? []
++                self.dailyCustomTasks = savedData.dailyCustomTasks ?? DailyCustomTasks()
++                self.chores = savedData.chores ?? []
++                return true
++            } catch {
++                return false
++            }
++        }
++        return false
++    }
++    
++    public func deleteCollection() -> Bool {
++        do {
++            try FileManager.default.removeItem(at: filePath)
++            self.items = []
++            self.villagers = []
++            self.residents = []
++            self.visitedResidents = []
++            self.critters = []
++            self.lists = []
++            self.dailyCustomTasks = DailyCustomTasks()
++            self.designs = []
++            self.chores = []
++            save()
++            return true
++        } catch {
++            return false
++        }
++    }
++    
++    public func generateExportURL() -> URL? {
++        do {
++            var sharedURL = try FileManager.default.url(for: .documentDirectory,
++                                                                    in: .userDomainMask,
++                                                                    appropriateFor: nil,
++                                                                    create: false)
++            sharedURL.appendPathComponent("exported-collection")
++            sharedURL.appendPathExtension("achelper")
++            try? FileManager.default.removeItem(at: sharedURL)
++            try FileManager.default.copyItem(at: filePath, to: sharedURL)
++            return sharedURL
++        } catch let error {
++            print(error.localizedDescription)
++            return nil
++        }
++    }
++    
++    public func sizeOfArchivedState() -> String {
++        do {
++            let resources = try filePath.resourceValues(forKeys:[.fileSizeKey])
++            let formatter = ByteCountFormatter()
++            formatter.allowedUnits = .useKB
++            formatter.countStyle = .file
++            return formatter.string(fromByteCount: Int64(resources.fileSize ?? 0))
++        } catch {
++            return "0"
++        }
++    }
++    
++    public func processImportedFile(url: URL) -> Bool {
++        let success = loadCollection(file: url)
++        if success {
++            save()
++        }
++        return success
++    }
++}
++
++public extension Dictionary where Key == String, Value == [Variant] {
++    public func contains(for item: Item, variant: Variant) -> Bool {
++        guard let filename = item.filename else {
++            return false
++        }
++        return self[filename]?.contains(variant) == true
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+index 46b91a9..c73518c 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+@@ -248,6 +248,10 @@ public extension Item {
+     var isCritter: Bool {
+         appCategory == .fish || appCategory == .bugs || appCategory == .seaCreatures
+     }
++    
++    var hasSomeVariations: Bool {
++        variations?.count ?? 0 > 1
++    }
+ }
+ 
+ // MARK: - Array

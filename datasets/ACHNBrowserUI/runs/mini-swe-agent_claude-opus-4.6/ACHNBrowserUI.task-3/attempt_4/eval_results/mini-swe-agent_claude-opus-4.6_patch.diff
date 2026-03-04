@@ -1,0 +1,75 @@
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+index f5642f1..dc3b0dc 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+@@ -138,6 +138,11 @@ public class UserCollection: ObservableObject {
+         }
+         if variants[filename]?.contains(variant) == true {
+             variants[filename]?.removeAll(where: { $0 == variant })
++            // If no variants remain, remove the parent item from the collection
++            if variants[filename]?.isEmpty == true {
++                variants[filename] = nil
++                items.removeAll(where: { $0 == item })
++            }
+             save()
+             return false
+         } else {
+@@ -145,6 +150,10 @@ public class UserCollection: ObservableObject {
+                 variants[filename] = []
+             }
+             variants[filename]?.append(variant)
++            // Auto-add the parent item to the collection if not already there
++            if !items.contains(item) {
++                items.append(item)
++            }
+             save()
+             return true
+         }
+@@ -505,4 +514,21 @@ public extension Dictionary where Key == String, Value == [Variant] {
+         }
+         return self[filename]?.contains(variant) == true
+     }
++    
++    func completionStatus(for item: Item) -> VariantsCompletionStatus {
++        guard let filename = item.filename,
++              let allVariations = item.variations,
++              allVariations.count > 1 else {
++            return .unstarted
++        }
++        
++        let collected = self[filename] ?? []
++        if collected.isEmpty {
++            return .unstarted
++        } else if collected.count >= allVariations.count {
++            return .complete
++        } else {
++            return .partial
++        }
++    }
+ }
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+index 46b91a9..a776216 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+@@ -250,6 +250,21 @@ public extension Item {
+     }
+ }
+ 
++
++// MARK: - Variants
++public extension Item {
++    var hasSomeVariations: Bool {
++        guard let variations = variations else { return false }
++        return variations.count > 1
++    }
++}
++
++public enum VariantsCompletionStatus {
++    case unstarted
++    case partial
++    case complete
++}
++
+ // MARK: - Array
+ public extension Sequence {
+     func sorted<T: Comparable>(by keyPath: KeyPath<Element, T>) -> [Element] {

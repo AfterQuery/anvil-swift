@@ -1,0 +1,769 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/UI/Sources/UI/GridStack.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/UI/Sources/UI/GridStack.swift
+new file mode 100644
+index 0000000..8b6672c
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/UI/Sources/UI/GridStack.swift
+@@ -0,0 +1,44 @@
++//
++//  GridStack.swift
++//  ACHNBrowserUI
++//
++//  Created by ACHNBrowserUI.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import SwiftUI
++
++public struct GridStack<Content: View>: View {
++    private let rows: Int
++    private let columns: Int
++    private let spacing: CGFloat?
++    private let content: (Int, Int) -> Content
++    
++    public init(rows: Int, columns: Int, spacing: CGFloat? = nil, @ViewBuilder content: @escaping (Int, Int) -> Content) {
++        self.rows = rows
++        self.columns = columns
++        self.spacing = spacing
++        self.content = content
++    }
++    
++    public var body: some View {
++        VStack(alignment: .leading, spacing: spacing) {
++            ForEach(0..<rows, id: \.self) { row in
++                HStack(alignment: .center, spacing: spacing) {
++                    ForEach(0..<self.columns, id: \.self) { column in
++                        self.content(row, column)
++                    }
++                }
++            }
++        }
++    }
++}
++
++struct GridStack_Previews: PreviewProvider {
++    static var previews: some View {
++        GridStack(rows: 3, columns: 3) { row, col in
++            Text("(\(row), \(col))")
++                .frame(maxWidth: .infinity, alignment: .center)
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+index 6fbd2c8..8f85c5e 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+@@ -8,6 +8,7 @@
+ 
+ import SwiftUI
+ import SwiftUIKit
++import UI
+ import Backend
+ 
+ struct TurnipsView: View {
+@@ -110,32 +111,6 @@ extension TurnipsView {
+         .safeHoverEffectBarItem(position: .trailing)
+     }
+     
+-    private var subscriptionSection: some View {
+-        Section(header: SectionHeaderView(text: "AC Helper+", icon: "heart.fill")) {
+-            VStack(spacing: 8) {
+-                Button(action: {
+-                    self.presentedSheet = .subscription(source: .turnip, subManager: self.subManager)
+-                }) {
+-                    Text("To help us support the application and get turnip predictions notification, you can try out AC Helper+")
+-                        .foregroundColor(.acSecondaryText)
+-                        .lineLimit(nil)
+-                        .fixedSize(horizontal: false, vertical: true)
+-                        .padding(.top, 8)
+-                }
+-                Button(action: {
+-                    self.presentedSheet = .subscription(source: .turnip, subManager: self.subManager)
+-                }) {
+-                    Text("Learn more...")
+-                        .font(.headline)
+-                        .fontWeight(.bold)
+-                        .foregroundColor(.white)
+-                }.buttonStyle(PlainRoundedButton())
+-                    .accentColor(.acHeaderBackground)
+-                    .padding(.bottom, 8)
+-            }
+-        }
+-    }
+-    
+     private var predictionsSection: some View {
+         Section(header: SectionHeaderView(text: turnipsDisplay.title(), icon: "dollarsign.circle.fill"),
+                 footer: Text(viewModel.pendingNotifications == 0 ? "" :
+@@ -156,12 +131,17 @@ extension TurnipsView {
+                         Text("Profits estimates are computed using the average of the current period")
+                             .foregroundColor(.acSecondaryText)
+                     }
+-                    HStack {
+-                        Text("Day").fontWeight(.bold)
+-                        Spacer()
+-                        Text("AM").fontWeight(.bold)
+-                        Spacer()
+-                        Text("PM").fontWeight(.bold)
++                    GridStack(rows: 1, columns: 3, spacing: 8) { row, col in
++                        if col == 0 {
++                            Text("Day").fontWeight(.bold)
++                                .frame(maxWidth: .infinity, alignment: .leading)
++                        } else if col == 1 {
++                            Text("AM").fontWeight(.bold)
++                                .frame(maxWidth: .infinity, alignment: .center)
++                        } else {
++                            Text("PM").fontWeight(.bold)
++                                .frame(maxWidth: .infinity, alignment: .trailing)
++                        }
+                     }
+                 }
+                 if turnipsDisplay == .average {
+@@ -187,62 +167,48 @@ extension TurnipsView {
+                         ).padding(.top, 8)
+                     } else {
+                         Text("Add your in game turnip prices to see the predictions chart")
+-                            .foregroundColor(.acHeaderBackground)
+-                            .onTapGesture {
+-                                self.presentedSheet = .turnipsForm(subManager: self.subManager)
+-                        }
+                     }
+                 }
+-            } else {
+-                Text("Add your in game turnip prices to see predictions")
+-                    .foregroundColor(.acHeaderBackground)
+-                    .onTapGesture {
+-                        self.presentedSheet = .turnipsForm(subManager: self.subManager)
+-                }
+             }
+         }
+     }
+     
+     private var prophetSection: some View {
+-        Section(header: SectionHeaderView(text: "Services", icon: "link.icloud")) {
++        Section(header: SectionHeaderView(text: "Turnip prophet", icon: "link.circle.fill")) {
+             Button(action: {
+                 if let url = self.turnipService.turnipProhetUrl {
+-                    self.presentedSheet = .safari(url)
++                    self.presentedSheet = .safari(url: url)
+                 }
+             }) {
+-                Text("View on TurnipProphet").foregroundColor(.acHeaderBackground)
++                Text("Open in browser")
++                    .foregroundColor(.acHeaderBackground)
+             }
+         }
+     }
+     
++    private var subscriptionSection: some View {
++        Section(header: SectionHeaderView(text: "AC Helper+", icon: "heart.circle.fill")) {
++            SubscribeView().environmentObject(subManager)
++        }
++    }
++    
+     private var exchangeSection: some View {
+-        Section(header: SectionHeaderView(text: "Turnip.Exchange", icon: "bitcoinsign.circle.fill")) {
++        Section(header: SectionHeaderView(text: "Exchange", icon: "dollarsign.square.fill"),
++                footer: Toggle(isOn: $enableTurnipsExchange) {
++                    Text("Enable Turnip.Exchange").foregroundColor(.acText)
++                }) {
+             if enableTurnipsExchange {
+                 if viewModel.islands?.isEmpty == false {
+-                    viewModel.islands.map {
+-                        ForEach($0) { island in
+-                            NavigationLink(destination: IslandDetailView(island: island)) {
+-                                TurnipIslandRow(island: island)
+-                            }
+-                        }
++                    ForEach(viewModel.islands!) { island in
++                        TurnipIslandRow(island: island)
+                     }
+                 } else {
+-                    RowLoadingView(isLoading: .constant(true))
+-                }
+-            } else {
+-                Button(action: {
+-                    self.enableTurnipsExchange = true
+-                    self.viewModel.fetchIslands()
+-                }) {
+-                    Text("View Turnip.Exchange islands")
+-                        .foregroundColor(.acHeaderBackground)
++                    RowLoadingView(isLoading: viewModel.isLoading)
+                 }
+             }
+         }
+     }
+-}
+-
+-extension TurnipsView {
++    
+     private func averagePriceRow(day: String, identifier: String) -> some View {
+         guard let dayNumber = labels.firstIndex(of: day),
+             let prices = viewModel.averagesPrices?[dayNumber],
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift.bak b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift.bak
+new file mode 100644
+index 0000000..45ba54a
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift.bak
+@@ -0,0 +1,295 @@
++//
++//  TurnipView.swift
++//  ACHNBrowserUI
++//
++//  Created by Eric Lewis on 4/17/20.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import SwiftUI
++import SwiftUIKit
++import Backend
++
++struct TurnipsView: View {
++    // MARK: - Vars
++    private enum TurnipsDisplay: String, CaseIterable {
++        case minMax, average, profits, chart
++        
++        func title() -> String {
++            switch self {
++            case .average: return "Average daily buy prices"
++            case .minMax: return "Daily min-max prices"
++            case .profits: return "Average profits"
++            case .chart: return "Chart"
++            }
++        }
++
++        var isChart: Bool {
++            get { self == .chart }
++            set { }
++        }
++    }
++    
++    @EnvironmentObject private var turnipService: TurnipPredictionsService
++    @EnvironmentObject private var subManager: SubscriptionManager
++    @ObservedObject private var viewModel = TurnipsViewModel()
++    @State private var presentedSheet: Sheet.SheetType?
++    @State private var turnipsDisplay: TurnipsDisplay = .minMax
++    @State private var enableTurnipsExchange = false
++    
++    private let labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
++    
++    
++    // MARK: - Body
++    var body: some View {
++        NavigationView {
++            if UIDevice.current.userInterfaceIdiom == .pad {
++                TurnipsFormView().environmentObject(subManager)
++            }
++            List {
++                if subManager.subscriptionStatus == .notSubscribed {
++                    subscriptionSection
++                }
++                if UIDevice.current.userInterfaceIdiom != .pad ||
++                    (UIDevice.current.orientation == .portrait ||
++                        UIDevice.current.orientation == .portraitUpsideDown){
++                    Section(header: SectionHeaderView(text: "Your prices", icon: "pencil")) {
++                        Button(action: {
++                            self.presentedSheet = .turnipsForm(subManager: self.subManager)
++                        }) {
++                            Text(TurnipFields.exist() ? "Edit your in game prices" : "Add your in game prices")
++                                .foregroundColor(.acHeaderBackground)
++                        }
++                    }
++                }
++                predictionsSection
++                if turnipService.turnipProhetUrl != nil {
++                    prophetSection
++                }
++                exchangeSection
++            }
++            .listStyle(GroupedListStyle())
++            .environment(\.horizontalSizeClass, .regular)
++            .navigationBarTitle("Turnips",
++                                displayMode: .automatic)
++            .navigationBarItems(trailing: shareButton)
++            .sheet(item: $presentedSheet, content: {
++                Sheet(sheetType: $0)
++            })
++        }
++        .onAppear(perform: NotificationManager.shared.registerForNotifications)
++        .onAppear {
++            if self.enableTurnipsExchange {
++                self.viewModel.fetchIslands()
++            }
++        }
++    }
++}
++
++// MARK: - Views
++extension TurnipsView {
++    private var shareButton: some View {
++        Button(action: {
++            let image = NavigationView {
++                List {
++                    self.predictionsSection
++                }
++            }
++            .listStyle(GroupedListStyle())
++            .environment(\.horizontalSizeClass, .regular)
++            .navigationViewStyle(StackNavigationViewStyle())
++            .frame(width: 350, height: 650).asImage()
++            self.presentedSheet = .share(content: [ItemDetailSource(name: "Turnips prediction", image: image)])
++        }) {
++            Image(systemName: "square.and.arrow.up")
++                .style(appStyle: .barButton)
++                .foregroundColor(.acText)
++        }
++        .buttonStyle(BorderedBarButtonStyle())
++        .accentColor(Color.acText.opacity(0.2))
++        .safeHoverEffectBarItem(position: .trailing)
++    }
++    
++    private var subscriptionSection: some View {
++        Section(header: SectionHeaderView(text: "AC Helper+", icon: "heart.fill")) {
++            VStack(spacing: 8) {
++                Button(action: {
++                    self.presentedSheet = .subscription(source: .turnip, subManager: self.subManager)
++                }) {
++                    Text("To help us support the application and get turnip predictions notification, you can try out AC Helper+")
++                        .foregroundColor(.acSecondaryText)
++                        .lineLimit(nil)
++                        .fixedSize(horizontal: false, vertical: true)
++                        .padding(.top, 8)
++                }
++                Button(action: {
++                    self.presentedSheet = .subscription(source: .turnip, subManager: self.subManager)
++                }) {
++                    Text("Learn more...")
++                        .font(.headline)
++                        .fontWeight(.bold)
++                        .foregroundColor(.white)
++                }.buttonStyle(PlainRoundedButton())
++                    .accentColor(.acHeaderBackground)
++                    .padding(.bottom, 8)
++            }
++        }
++    }
++    
++    private var predictionsSection: some View {
++        Section(header: SectionHeaderView(text: turnipsDisplay.title(), icon: "dollarsign.circle.fill"),
++                footer: Text(viewModel.pendingNotifications == 0 ? "" :
++                    "\(viewModel.pendingNotifications - 1) upcomingDailyNotifications")
++                    .font(.footnote)
++                    .foregroundColor(.catalogUnselected)
++                    .lineLimit(nil)) {
++            if viewModel.averagesPrices != nil && viewModel.minMaxPrices != nil {
++                Picker(selection: $turnipsDisplay, label: Text("")) {
++                    ForEach(TurnipsDisplay.allCases, id: \.self) { section in
++                        Text(LocalizedStringKey(section.rawValue.capitalized))
++                    }
++                }
++                .pickerStyle(SegmentedPickerStyle())
++
++                if turnipsDisplay != .chart {
++                    if turnipsDisplay == .profits && viewModel.averagesProfits != nil {
++                        Text("Profits estimates are computed using the average of the current period")
++                            .foregroundColor(.acSecondaryText)
++                    }
++                    GridStack(rows: 1, columns: 3, spacing: 8) { row, col in
++                        if col == 0 {
++                            Text("Day").fontWeight(.bold)
++                                .frame(maxWidth: .infinity, alignment: .leading)
++                        } else if col == 1 {
++                            Text("AM").fontWeight(.bold)
++                                .frame(maxWidth: .infinity, alignment: .center)
++                        } else {
++                            Text("PM").fontWeight(.bold)
++                                .frame(maxWidth: .infinity, alignment: .trailing)
++                        }
++                        Text("Day").fontWeight(.bold)
++                        Spacer()
++                        Text("AM").fontWeight(.bold)
++                        Spacer()
++                        Text("PM").fontWeight(.bold)
++                    }
++                }
++                if turnipsDisplay == .average {
++                    ForEach(uniqueLabels(for: "average"), id: \.1, content: averagePriceRow(day:identifier:))
++                }
++                else if turnipsDisplay == .minMax {
++                    ForEach(uniqueLabels(for: "min max"), id: \.1, content: minMaxPriceRow(day:identifier:))
++                } else if turnipsDisplay == .profits {
++                    if viewModel.averagesProfits != nil {
++                        ForEach(uniqueLabels(for: "profits"), id: \.1, content: averageProfitRow(day:identifier:))
++                    } else {
++                        Text("Please add the amount of turnips you bought and for how much")
++                            .foregroundColor(.acHeaderBackground)
++                            .onTapGesture {
++                                self.presentedSheet = .turnipsForm(subManager: self.subManager)
++                        }
++                    }
++                } else if turnipsDisplay == .chart {
++                    if viewModel.predictions != nil {
++                        TurnipsChartView(
++                            predictions: viewModel.predictions!,
++                            animateCurves: $turnipsDisplay.isChart
++                        ).padding(.top, 8)
++                    } else {
++                        Text("Add your in game turnip prices to see the predictions chart")
++                            .foregroundColor(.acHeaderBackground)
++                            .onTapGesture {
++                                self.presentedSheet = .turnipsForm(subManager: self.subManager)
++                        }
++                    }
++                }
++            } else {
++                Text("Add your in game turnip prices to see predictions")
++                    .foregroundColor(.acHeaderBackground)
++                    .onTapGesture {
++                        self.presentedSheet = .turnipsForm(subManager: self.subManager)
++                }
++            }
++        }
++    }
++    
++    private var prophetSection: some View {
++        Section(header: SectionHeaderView(text: "Services", icon: "link.icloud")) {
++            Button(action: {
++                if let url = self.turnipService.turnipProhetUrl {
++                    self.presentedSheet = .safari(url)
++                }
++            }) {
++                Text("View on TurnipProphet").foregroundColor(.acHeaderBackground)
++            }
++        }
++    }
++    
++    private var exchangeSection: some View {
++        Section(header: SectionHeaderView(text: "Turnip.Exchange", icon: "bitcoinsign.circle.fill")) {
++            if enableTurnipsExchange {
++                if viewModel.islands?.isEmpty == false {
++                    viewModel.islands.map {
++                        ForEach($0) { island in
++                            NavigationLink(destination: IslandDetailView(island: island)) {
++                                TurnipIslandRow(island: island)
++                            }
++                        }
++                    }
++                } else {
++                    RowLoadingView(isLoading: .constant(true))
++                }
++            } else {
++                Button(action: {
++                    self.enableTurnipsExchange = true
++                    self.viewModel.fetchIslands()
++                }) {
++                    Text("View Turnip.Exchange islands")
++                        .foregroundColor(.acHeaderBackground)
++                }
++            }
++        }
++    }
++}
++
++extension TurnipsView {
++    private func averagePriceRow(day: String, identifier: String) -> some View {
++        guard let dayNumber = labels.firstIndex(of: day),
++            let prices = viewModel.averagesPrices?[dayNumber],
++            let minMaxPrices = viewModel.minMaxPrices?[dayNumber] else {
++                return EmptyView().eraseToAnyViewForRow()
++        }
++        return TurnipsAveragePriceRow(label: day, prices: prices, minMaxPrices: minMaxPrices)
++            .eraseToAnyViewForRow()
++    }
++
++    private func minMaxPriceRow(day: String, identifier: String) -> some View {
++        guard let dayNumber = labels.firstIndex(of: day),
++            let prices = viewModel.minMaxPrices?[dayNumber],
++            let averagePrices = viewModel.averagesPrices?[dayNumber] else {
++                return EmptyView().eraseToAnyViewForRow()
++        }
++        return TurnipsMinMaxPriceRow(label: day, prices: prices, averagePrices: averagePrices)
++            .eraseToAnyViewForRow()
++    }
++
++    private func averageProfitRow(day: String, identifier: String) -> some View {
++        guard let dayNumber = labels.firstIndex(of: day),
++            let prices = viewModel.averagesProfits?[dayNumber] else {
++                return EmptyView().eraseToAnyViewForRow()
++        }
++        return TurnipsAveragePriceRow(label: day, prices: prices, minMaxPrices: [])
++            .eraseToAnyViewForRow()
++    }
++
++    private func uniqueLabels(for uniqueIdentifier: String) -> [(String, String)] {
++        labels.map { ($0, uniqueIdentifier + $0) }
++    }
++}
++
++struct TurnipsView_Previews: PreviewProvider {
++    static var previews: some View {
++        TurnipsView()
++            .environmentObject(SubscriptionManager.shared)
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
+index e6edb8f..8b4684d 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
+@@ -8,26 +8,32 @@
+ 
+ import SwiftUI
+ 
++import UI
+ struct TurnipsAveragePriceRow: View {
+     let label: String
+     let prices: [Int]
+     let minMaxPrices: [[Int]]
+ 
+     var body: some View {
+-        HStack {
+-            Text(LocalizedStringKey(label))
+-                .font(.body)
+-                .foregroundColor(.acText)
+-            Spacer()
+-            Text("\(prices.first!)")
+-                .font(.headline)
+-                .fontWeight(.bold)
+-                .foregroundColor(color(meridian: .am))
+-            Spacer()
+-            Text("\(prices.last!)")
+-                .font(.headline)
+-                .fontWeight(.bold)
+-                .foregroundColor(color(meridian: .pm))
++        GridStack(rows: 1, columns: 3, spacing: 8) { row, col in
++            if col == 0 {
++                Text(LocalizedStringKey(label))
++                    .font(.body)
++                    .foregroundColor(.acText)
++                    .frame(maxWidth: .infinity, alignment: .leading)
++            } else if col == 1 {
++                Text("\(prices.first!)")
++                    .font(.headline)
++                    .fontWeight(.bold)
++                    .foregroundColor(color(meridian: .am))
++                    .frame(maxWidth: .infinity, alignment: .center)
++            } else {
++                Text("\(prices.last!)")
++                    .font(.headline)
++                    .fontWeight(.bold)
++                    .foregroundColor(color(meridian: .pm))
++                    .frame(maxWidth: .infinity, alignment: .trailing)
++            }
+         }
+     }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift
+index 5a311a9..6ee2869 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift
+@@ -16,20 +16,25 @@ struct TurnipsMinMaxPriceRow: View {
+     typealias Meridian = TurnipsAveragePriceRow.Meridian
+ 
+     var body: some View {
+-        HStack {
+-            Text(LocalizedStringKey(label))
+-                .font(.body)
+-                .foregroundColor(.acText)
+-            Spacer()
+-            Text(amMinMaxPrices)
+-                .font(.headline)
+-                .fontWeight(.bold)
+-                .foregroundColor(color(meridian: .am))
+-            Spacer()
+-            Text(pmMinMaxPrices)
+-                .font(.headline)
+-                .fontWeight(.bold)
+-                .foregroundColor(color(meridian: .pm))
++        GridStack(rows: 1, columns: 3, spacing: 8) { row, col in
++            if col == 0 {
++                Text(LocalizedStringKey(label))
++                    .font(.body)
++                    .foregroundColor(.acText)
++                    .frame(maxWidth: .infinity, alignment: .leading)
++            } else if col == 1 {
++                Text(amMinMaxPrices)
++                    .font(.headline)
++                    .fontWeight(.bold)
++                    .foregroundColor(color(meridian: .am))
++                    .frame(maxWidth: .infinity, alignment: .center)
++            } else {
++                Text(pmMinMaxPrices)
++                    .font(.headline)
++                    .fontWeight(.bold)
++                    .foregroundColor(color(meridian: .pm))
++                    .frame(maxWidth: .infinity, alignment: .trailing)
++            }
+         }
+     }
+ }
+diff --git a/test_gridstack.swift b/test_gridstack.swift
+new file mode 100644
+index 0000000..6100e9b
+--- /dev/null
++++ b/test_gridstack.swift
+@@ -0,0 +1,17 @@
++import SwiftUI
++import UI
++
++struct TestView: View {
++    var body: some View {
++        GridStack(rows: 3, columns: 3, spacing: 8) { row, col in
++            Text("(\(row), \(col))")
++                .frame(maxWidth: .infinity, alignment: .center)
++        }
++    }
++}
++
++struct TestView_Previews: PreviewProvider {
++    static var previews: some View {
++        TestView()
++    }
++}
+diff --git a/test_turnip_alignment.swift b/test_turnip_alignment.swift
+new file mode 100644
+index 0000000..b044054
+--- /dev/null
++++ b/test_turnip_alignment.swift
+@@ -0,0 +1,81 @@
++import SwiftUI
++
++struct TestTurnipAlignment: View {
++    var body: some View {
++        VStack {
++            // Header
++            HStack {
++                Text("Day").fontWeight(.bold).frame(width: 100, alignment: .leading)
++                Text("AM").fontWeight(.bold).frame(width: 100, alignment: .center)
++                Text("PM").fontWeight(.bold).frame(width: 100, alignment: .trailing)
++            }
++            .padding(.horizontal)
++            
++            // Current implementation (misaligned)
++            VStack {
++                Text("Current (misaligned):").fontWeight(.bold)
++                HStack {
++                    Text("Mon").font(.body)
++                    Spacer()
++                    Text("90").font(.headline).fontWeight(.bold)
++                    Spacer()
++                    Text("95").font(.headline).fontWeight(.bold)
++                }
++                .padding(.horizontal)
++                
++                HStack {
++                    Text("Tuesday").font(.body)
++                    Spacer()
++                    Text("40-81").font(.headline).fontWeight(.bold)
++                    Spacer()
++                    Text("250-600").font(.headline).fontWeight(.bold)
++                }
++                .padding(.horizontal)
++                
++                HStack {
++                    Text("Wed").font(.body)
++                    Spacer()
++                    Text("600").font(.headline).fontWeight(.bold)
++                    Spacer()
++                    Text("95").font(.headline).fontWeight(.bold)
++                }
++                .padding(.horizontal)
++            }
++            .padding()
++            .border(Color.red)
++            
++            // Fixed implementation
++            VStack {
++                Text("Fixed (aligned):").fontWeight(.bold)
++                HStack {
++                    Text("Mon").font(.body).frame(width: 100, alignment: .leading)
++                    Text("90").font(.headline).fontWeight(.bold).frame(width: 100, alignment: .center)
++                    Text("95").font(.headline).fontWeight(.bold).frame(width: 100, alignment: .trailing)
++                }
++                .padding(.horizontal)
++                
++                HStack {
++                    Text("Tuesday").font(.body).frame(width: 100, alignment: .leading)
++                    Text("40-81").font(.headline).fontWeight(.bold).frame(width: 100, alignment: .center)
++                    Text("250-600").font(.headline).fontWeight(.bold).frame(width: 100, alignment: .trailing)
++                }
++                .padding(.horizontal)
++                
++                HStack {
++                    Text("Wed").font(.body).frame(width: 100, alignment: .leading)
++                    Text("600").font(.headline).fontWeight(.bold).frame(width: 100, alignment: .center)
++                    Text("95").font(.headline).fontWeight(.bold).frame(width: 100, alignment: .trailing)
++                }
++                .padding(.horizontal)
++            }
++            .padding()
++            .border(Color.green)
++        }
++    }
++}
++
++struct TestTurnipAlignment_Previews: PreviewProvider {
++    static var previews: some View {
++        TestTurnipAlignment()
++    }
++}
+diff --git a/test_turnip_alignment_final.swift b/test_turnip_alignment_final.swift
+new file mode 100644
+index 0000000..d66e3c2
+--- /dev/null
++++ b/test_turnip_alignment_final.swift
+@@ -0,0 +1,57 @@
++import SwiftUI
++import UI
++
++struct TestTurnipAlignment: View {
++    var body: some View {
++        VStack(spacing: 20) {
++            // Test GridStack
++            VStack {
++                Text("GridStack Test:")
++                GridStack(rows: 1, columns: 3, spacing: 8) { row, col in
++                    if col == 0 {
++                        Text("Day").fontWeight(.bold)
++                            .frame(maxWidth: .infinity, alignment: .leading)
++                    } else if col == 1 {
++                        Text("AM").fontWeight(.bold)
++                            .frame(maxWidth: .infinity, alignment: .center)
++                    } else {
++                        Text("PM").fontWeight(.bold)
++                            .frame(maxWidth: .infinity, alignment: .trailing)
++                    }
++                }
++                .padding()
++                .border(Color.blue)
++                
++                // Test rows with different content widths
++                GridStack(rows: 3, columns: 3, spacing: 8) { row, col in
++                    if col == 0 {
++                        let labels = ["Mon", "Tuesday", "Wed"]
++                        Text(labels[row])
++                            .font(.body)
++                            .frame(maxWidth: .infinity, alignment: .leading)
++                    } else if col == 1 {
++                        let prices = ["90", "40-81", "600"]
++                        Text(prices[row])
++                            .font(.headline)
++                            .fontWeight(.bold)
++                            .frame(maxWidth: .infinity, alignment: .center)
++                    } else {
++                        let prices = ["95", "250-600", "95"]
++                        Text(prices[row])
++                            .font(.headline)
++                            .fontWeight(.bold)
++                            .frame(maxWidth: .infinity, alignment: .trailing)
++                    }
++                }
++                .padding()
++                .border(Color.green)
++            }
++        }
++    }
++}
++
++struct TestTurnipAlignment_Previews: PreviewProvider {
++    static var previews: some View {
++        TestTurnipAlignment()
++    }
++}

@@ -1,0 +1,3487 @@
+HEAD is now at b63c510 Merge pull request #248 from merlos/enhancements/add-openseamap
+Looking in links: /tmp/tmpwgbds6kw
+Requirement already satisfied: pip in /usr/local/lib/python3.12/site-packages (23.3.2)
+👋 This is mini-swe-agent version 2.2.5.
+Check the v2 migration guide at https://klieret.short.gy/mini-v2-migration
+Loading global config from '/root/.config/mini-swe-agent/.env'
+Building agent config from specs: ['mini.yaml', '/tmp/anvil_override.yaml']
+
+System:
+You are a helpful assistant that can interact with a computer.
+
+User:
+Please solve this issue: ## Feature: Auto-recover last track on launch with 
+toast notifications
+
+### Problem Description
+
+In the **iOS-Open-GPX-Tracker** app, when a previously recorded session is 
+recovered from Core Data upon launch, the app presents a blocking dialog asking 
+the user whether to continue the session. This interrupts the startup flow, 
+especially for users who always want to resume tracking.
+
+Additionally, the app has no lightweight, non-intrusive notification system for 
+informing users about transient events (like file recovery, errors, or 
+successful saves). All user feedback relies on modal alert dialogs, which 
+require explicit dismissal.
+
+### Expected Behavior
+
+- When the app launches and detects a recoverable session, it automatically 
+loads the session without presenting a dialog.
+- A non-blocking toast notification briefly appears informing the user that the 
+previous session was recovered.
+- A reusable toast notification system is available with multiple severity 
+levels and auto-dismissal.
+- The app title bar updates to display the current session filename instead of 
+always showing the default app title.
+- The app title reverts to the default when the session is reset.
+
+### Acceptance Criteria
+
+1. Recoverable sessions load automatically on launch without a confirmation 
+dialog — the blocking recovery dialog must be removed.
+2. A toast notification informs the user of the automatic recovery.
+3. The toast system supports multiple severity levels with distinct styling, and
+each toast must be visible on screen.
+4. The app title label reflects the current session filename.
+5. The app builds and runs without regressions.
+
+### Required API Surface
+
+The implementation must expose these names (tests depend on them to compile):
+
+- `Toast` — `regular(_:)`, `info(_:)`, `warning(_:)`, `success(_:)`, `error(_:)`
+- `Toast.Position` — `.bottom`, `.center`, `.top`
+- `Toast.kDelayShort`, `Toast.kDelayLong`
+- `ToastLabel(text:)`
+- `kAppTitle`
+- `ViewController.lastGpxFilename`, `ViewController.appTitleLabel`
+- `CoreDataAlertView` must be **deleted**
+
+## Important constraints
+- Do NOT create, modify, or delete any test files or test cases. The existing 
+test suite will be used to verify your implementation.
+
+## Efficiency constraint
+Start implementing changes within the first 5-8 steps. Keep analysis brief; 
+prefer quick exploration followed by edits.
+
+
+You can execute bash commands and edit files to implement the necessary changes.
+
+## Recommended Workflow
+
+This workflows should be done step-by-step so that you can iterate on your 
+changes and any possible problems.
+
+1. Analyze the codebase by finding and reading relevant files
+2. Create a script to reproduce the issue
+3. Edit the source code to resolve the issue
+4. Verify your fix works by running your script again
+5. Test edge cases to ensure your fix is robust
+6. Submit your changes and finish your work by issuing the following command: 
+`echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+   Do not combine it with any other command. <important>After this command, you 
+cannot continue working on this task.</important>
+
+## Command Execution Rules
+
+You are operating in an environment where
+
+1. You issue at least one command
+2. The system executes the command(s) in a subshell
+3. You see the result(s)
+4. You write your next command(s)
+
+Each response should include:
+
+1. **Reasoning text** where you explain your analysis and plan
+2. At least one tool call with your command
+
+**CRITICAL REQUIREMENTS:**
+
+- Your response SHOULD include reasoning text explaining what you're doing
+- Your response MUST include AT LEAST ONE bash tool call
+- Directory or environment variable changes are not persistent. Every action is 
+executed in a new subshell.
+- However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd 
+/path/to/working/dir && ...` or write/load environment variables from files
+- Submit your changes and finish your work by issuing the following command: 
+`echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+  Do not combine it with any other command. <important>After this command, you 
+cannot continue working on this task.</important>
+
+Example of a CORRECT response:
+<example_response>
+I need to understand the structure of the repository first. Let me check what 
+files are in the current directory to get a better understanding of the 
+codebase.
+
+[Makes bash tool call with {"command": "ls -la"} as arguments]
+</example_response>
+
+<system_information>
+Linux 4.4.0 #1 SMP Sun Jan 10 15:06:54 PST 2016 x86_64
+</system_information>
+
+## Useful command examples
+
+### Create a new file:
+
+```bash
+cat <<'EOF' > newfile.py
+import numpy as np
+hello = "world"
+print(hello)
+EOF
+```
+
+### Edit files with sed:```bash
+# Replace all occurrences
+sed -i 's/old_string/new_string/g' filename.py
+
+# Replace only first occurrence
+sed -i 's/old_string/new_string/' filename.py
+
+# Replace first occurrence on line 1
+sed -i '1s/old_string/new_string/' filename.py
+
+# Replace all occurrences in lines 1-10
+sed -i '1,10s/old_string/new_string/g' filename.py
+```
+
+### View file content:
+
+```bash
+# View specific lines with numbers
+nl -ba filename.py | sed -n '10,20p'
+```
+
+### Any other command you want to run
+
+```bash
+anything
+```
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 1, $0.01):
+
+
+Let me start by exploring the codebase structure to understand the project 
+layout.
+
+```
+find / -type f -name "*.swift" 2>/dev/null | head -50
+```
+
+Tool:
+<returncode>
+0
+<output>
+/app/OpenGpxTracker-Watch Extension/GPXFileTableRowController.swift
+/app/OpenGpxTracker-Watch Extension/InterfaceController.swift
+/app/OpenGpxTracker-Watch Extension/GPXFileTableInterfaceController.swift
+/app/OpenGpxTracker-Watch Extension/ExtensionDelegate.swift
+/app/OpenGpxTracker-Watch Extension/ComplicationController.swift
+/app/OpenGpxTracker/GPXFilesTableViewControlllerDelegate.swift
+/app/OpenGpxTracker/GPXTrackPoint+MapKit.swift
+/app/OpenGpxTracker/GPXRoot+length.swift
+/app/OpenGpxTracker/CoreDataAlertView.swift
+/app/OpenGpxTracker/MailerManager.swift
+/app/OpenGpxTracker/CoreDataHelper.swift
+/app/OpenGpxTracker/String+CountInstances.swift
+/app/OpenGpxTracker/DefaultDateFormat.swift
+/app/OpenGpxTracker/StopWatch.swift
+/app/OpenGpxTracker/GPXFileManager.swift
+/app/OpenGpxTracker/GPXFilesTableViewController.swift
+/app/OpenGpxTracker/DistanceLabel.swift
+/app/OpenGpxTracker/GPXWaypoint+MKAnnotation.swift
+/app/OpenGpxTracker/UIInsetLabel.swift
+/app/OpenGpxTracker/AboutViewController.swift
+/app/OpenGpxTracker/MapViewDelegate.swift
+/app/OpenGpxTracker/Double+Measures.swift
+/app/OpenGpxTracker/AppDelegate.swift
+/app/OpenGpxTracker/GPXFileInfo.swift
+/app/OpenGpxTracker/StopWatchDelegate.swift
+/app/OpenGpxTracker/Int+asFilesize.swift
+/app/OpenGpxTracker/TrackerButton.swift
+/app/OpenGpxTracker/CoreDataHelper+FetchRequests.swift
+/app/OpenGpxTracker/GPXTileServer.swift
+/app/OpenGpxTracker/GPXSession.swift
+/app/OpenGpxTracker/DefaultNameSetupViewController.swift
+/app/OpenGpxTracker/DateField.swift
+/app/OpenGpxTracker/UIColor+DarkMode.swift
+/app/OpenGpxTracker/GPXExtentCoordinates.swift
+/app/OpenGpxTracker/Preferences.swift
+/app/OpenGpxTracker/ViewController.swift
+/app/OpenGpxTracker/DateFieldTypeView.swift
+/app/OpenGpxTracker/Date+timeAgo.swift
+/app/OpenGpxTracker/PreferencesTableViewController.swift
+/app/OpenGpxTracker/MKMapView+ConvenientOverlayInserts.swift
+/app/OpenGpxTracker/DatePatternButton.swift
+/app/OpenGpxTracker/UIColor+Keyboard.swift
+/app/OpenGpxTracker/GPXTrack+length.swift
+/app/OpenGpxTracker/CLActivityType+Info.swift
+/app/OpenGpxTracker/PreferencesTableViewControllerDelegate.swift
+/app/OpenGpxTracker/GPXTrackSegment+MapKit.swift
+/app/OpenGpxTracker/CoreDataHelper+BatchDelete.swift
+/app/OpenGpxTracker/GPXMapView.swift
+/app/Pods/MapCache/MapCache/Classes/ZoomRangeIterator.swift
+/app/Pods/MapCache/MapCache/Classes/MapCacheConfig.swift
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 2, $0.03):
+```
+find /app -type f -name "*Test*" -o -name "*test*" -o -name "*Spec*" 2>/dev/null
+| grep -i "\.swift"
+```
+
+Tool:
+<returncode>
+0
+<output>
+/app/OpenGpxTrackerTests/OpenGpxTrackerTests.swift
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 3, $0.05):
+```
+cat /app/OpenGpxTrackerTests/OpenGpxTrackerTests.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+//
+//  OpenGpxTrackerTests.swift
+//  OpenGpxTrackerTests
+//
+//  Created by merlos on 13/09/14.
+//  Copyright (c) 2014 TransitBox. All rights reserved.
+//
+
+import UIKit
+import XCTest
+
+class OpenGpxTrackerTests: XCTestCase {
+    
+    override func setUp() {
+        super.setUp()
+        // Put setup code here. This method is called before the invocation of 
+each test method in the class.
+    }
+    
+    override func tearDown() {
+        // Put teardown code here. This method is called after the invocation of
+each test method in the class.
+        super.tearDown()
+    }
+    
+    func testExample() {
+        // This is an example of a functional test case.
+        XCTAssert(true, "Pass")
+    }
+    
+    func testPerformanceExample() {
+        // This is an example of a performance test case.
+        self.measure {
+            // Put the code you want to measure the time of here.
+        }
+    }
+    
+}
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 4, $0.07):
+```
+find /app -type f -name "*Test*.swift" -o -name "*test*.swift" | head -20
+```
+
+Tool:
+<returncode>
+0
+<output>
+/app/OpenGpxTrackerTests/OpenGpxTrackerTests.swift
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 5, $0.09):
+```
+find /app -path "*/Tests/*" -name "*.swift" -o -path "*Test*" -name "*.swift" 
+2>/dev/null
+```
+
+Tool:
+<returncode>
+0
+<output>
+/app/OpenGpxTrackerTests/OpenGpxTrackerTests.swift
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 6, $0.11):
+Let me look at the test file more carefully, and also read the key source files:
+
+```
+cat /app/OpenGpxTracker/CoreDataAlertView.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+//
+//  CoreDataAlertView.swift
+//  OpenGpxTracker
+//
+//  Created by Vincent on 25/6/19.
+//
+
+import UIKit
+
+/// To display Core Data alert action sheet anywhere when needed.
+///
+/// It should display anywhere possible, in case if a gpx file loads too long 
+when file recovery with previous session's file is too big.
+struct CoreDataAlertView {
+    
+    /// shows the action sheet that prompts user on what to do with recovered 
+data.
+    func showActionSheet(_ alertController: UIAlertController) {
+        guard let appDelegate = UIApplication.shared.delegate else { return }
+        guard let rootVC = appDelegate.window!?.rootViewController else { return
+}
+        
+        if let popoverController = alertController.popoverPresentationController
+{
+            guard let view = rootVC.view else { return }
+            popoverController.sourceView = view
+            popoverController.sourceRect = CGRect(x: view.bounds.midX, y: 
+view.bounds.midY, width: 0, height: 0)
+            popoverController.permittedArrowDirections = []
+        }
+        
+        rootVC.present(alertController, animated: true, completion: nil)
+    }
+    
+}
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 7, $0.13):
+```
+cat /app/OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output_head>
+//
+//  ViewController.swift
+//  OpenGpxTracker
+//
+//  Created by merlos on 13/09/14.
+//
+//  Localized by nitricware on 19/08/19.
+//
+
+import UIKit
+import CoreLocation
+import MapKit
+import CoreGPX
+
+// swiftlint:disable line_length
+
+/// Purple color for button background
+let kPurpleButtonBackgroundColor: UIColor =  UIColor(red: 146.0/255.0, green: 
+166.0/255.0, blue: 218.0/255.0, alpha: 0.90)
+
+/// Green color for button background
+let kGreenButtonBackgroundColor: UIColor = UIColor(red: 142.0/255.0, green: 
+224.0/255.0, blue: 102.0/255.0, alpha: 0.90)
+
+/// Red color for button background
+let kRedButtonBackgroundColor: UIColor =  UIColor(red: 244.0/255.0, green: 
+94.0/255.0, blue: 94.0/255.0, alpha: 0.90)
+
+/// Blue color for button background
+let kBlueButtonBackgroundColor: UIColor = UIColor(red: 74.0/255.0, green: 
+144.0/255.0, blue: 226.0/255.0, alpha: 0.90)
+
+/// Blue color for disabled button background
+let kDisabledBlueButtonBackgroundColor: UIColor = UIColor(red: 74.0/255.0, 
+green: 144.0/255.0, blue: 226.0/255.0, alpha: 0.10)
+
+/// Red color for disabled button background
+let kDisabledRedButtonBackgroundColor: UIColor =  UIColor(red: 244.0/255.0, 
+green: 94.0/255.0, blue: 94.0/255.0, alpha: 0.10)
+
+/// White color for button background
+let kWhiteBackgroundColor: UIColor = UIColor(red: 254.0/255.0, green: 
+254.0/255.0, blue: 254.0/255.0, alpha: 0.90)
+
+/// Delete Waypoint Button tag. Used in a waypoint bubble
+let kDeleteWaypointAccesoryButtonTag = 666
+
+/// Edit Waypoint Button tag. Used in a waypoint bubble.
+let kEditWaypointAccesoryButtonTag = 333
+
+/// Text to display when the system is not providing coordinates.
+let kNotGettingLocationText = NSLocalizedString("NO_LOCATION", comment: "no 
+comment")
+
+/// Text to display unknown accuracy
+let kUnknownAccuracyText = "±···"
+
+/// Text to display unknown speed.
+let kUnknownSpeedText = "·.··"
+
+/// Size for small buttons
+let kButtonSmallSize: CGFloat = 48.0
+
+/// Size for large buttons
+let kButtonLargeSize: CGFloat = 96.0
+
+/// Separation between buttons
+let kButtonSeparation: CGFloat = 6.0
+
+/// Upper limits threshold (in meters) on signal accuracy.
+let kSignalAccuracy6 = 6.0
+/// Upper limits threshold (in meters) on signal accuracy.
+let kSignalAccuracy5 = 11.0
+/// Upper limits threshold (in meters) on signal accuracy.
+let kSignalAccuracy4 = 31.0
+/// Upper limits threshold (in meters) on signal accuracy.
+let kSignalAccuracy3 = 51.0
+/// Upper limits threshold (in meters) on signal accuracy.
+let kSignalAccuracy2 = 101.0
+/// Upper limits threshold (in meters) on signal accuracy.
+let kSignalAccuracy1 = 201.0
+
+///
+/// Main View Controller of the Application. It is loaded when the application 
+is launched
+///
+/// Displays a map and a set the buttons to control the tracking
+///
+///
+class ViewController: UIViewController, UIGestureRecognizerDelegate {
+    
+    /// Shall the map be centered on current user position?
+    /// If yes, whenever the user moves, the center of the map too.
+    var followUser: Bool = true {
+        didSet {
+            if followUser {
+                print("followUser=true")
+                followUserButton.setImage(UIImage(named: "follow_user_high"), 
+for: UIControl.State())
+                map.setCenter((map.userLocation.coordinate), animated: true)
+                
+            } else {
+                print("followUser=false")
+               followUserButton.setImage(UIImage(named: "follow_user"), for: 
+UIControl.State())
+            }
+            
+        }
+    }
+    
+    /// TBD (not currently used)
+    var followUserBeforePinchGesture = true
+
+    /// location manager instance configuration
+    let locationManager: CLLocationManager = {
+        let manager = CLLocationManager()
+        manager.requestAlwaysAuthorization()
+        manager.activityType = CLActivityType(rawValue: 
+Preferences.shared.locationActivityTypeInt)!
+        print("Chosen CLActivityType: \(manager.activityType.name)")
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.distanceFilter = 2 //meters
+        manager.headingFilter = 3 //degrees (1 is default)
+        manager.pausesLocationUpdatesAutomatically = false
+        if #available(iOS 9.0, *) {
+            manager.allowsBackgroundLocationUpdates = true
+        }
+        return manager
+    }()
+    
+    /// Map View
+    var map: GPXMapView
+    
+    /// Map View delegate 
+    let mapViewDelegate = MapViewDelegate()
+    
+    /// Stop watch instance to control elapsed time
+    var stopWatch = StopWatch()
+    
+    /// Name of the last file that was saved (without extension)
+    var lastGpxFilename: String = ""
+    
+    /// Status variable that indicates if the app was sent to background.
+    var wasSentToBackground: Bool = false
+    
+    /// Status variable that indicates if the location service auth was denied.
+    var isDisplayingLocationServicesDenied: Bool = false
+    
+    /// Has the map any waypoint?
+    var hasWaypoints: Bool = false {
+        /// Whenever it is updated, if it has waypoints it sets the save and r
+<output_tail>
+f.gpxTrackingStatus = .paused
+        
+        self.totalTrackedDistanceLabel.distance = 
+self.map.session.totalTrackedDistance
+        
+    }
+}
+
+// MARK: CLLocationManagerDelegate
+
+// Extends view controller to support Location Manager delegate protocol
+extension ViewController: CLLocationManagerDelegate {
+
+    /// Location manager calls this func to inform there was an error.
+    ///
+    /// It performs the following actions:
+    ///  - Sets coordsLabel with `kNotGettingLocationText`, signal accuracy to
+    ///    kUnknownAccuracyText and signalImageView to signalImage0.
+    ///  - If the error code is `CLError.denied` it calls 
+`checkLocationServicesStatus`
+    
+    ///
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: 
+Error) {
+        print("didFailWithError \(error)")
+        coordsLabel.text = kNotGettingLocationText
+        signalAccuracyLabel.text = kUnknownAccuracyText
+        signalImageView.image = signalImage0
+        let locationError = error as? CLError
+        switch locationError?.code {
+        case CLError.locationUnknown:
+            print("Location Unknown")
+        case CLError.denied:
+            print("Access to location services denied. Display message")
+            checkLocationServicesStatus()
+        case CLError.headingFailure:
+            print("Heading failure")
+        default:
+            print("Default error")
+        }
+  
+    }
+    
+    ///
+    /// Updates location accuracy and map information when user is in a new 
+position
+    ///
+    ///
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations 
+locations: [CLLocation]) {
+        //updates signal image accuracy
+        let newLocation = locations.first!
+        // Update horizontal accuracy
+        let hAcc = newLocation.horizontalAccuracy
+        signalAccuracyLabel.text =  hAcc.toAccuracy(useImperial: useImperial)
+        if hAcc < kSignalAccuracy6 {
+            self.signalImageView.image = signalImage6
+        } else if hAcc < kSignalAccuracy5 {
+            self.signalImageView.image = signalImage5
+        } else if hAcc < kSignalAccuracy4 {
+            self.signalImageView.image = signalImage4
+        } else if hAcc < kSignalAccuracy3 {
+            self.signalImageView.image = signalImage3
+        } else if hAcc < kSignalAccuracy2 {
+            self.signalImageView.image = signalImage2
+        } else if hAcc < kSignalAccuracy1 {
+            self.signalImageView.image = signalImage1
+        } else {
+            self.signalImageView.image = signalImage0
+        }
+        
+        //Update coordsLabel
+        let latFormat = String(format: "%.6f", newLocation.coordinate.latitude)
+        let lonFormat = String(format: "%.6f", newLocation.coordinate.longitude)
+        let altitude = newLocation.altitude.toAltitude(useImperial: useImperial)
+        coordsLabel.text = String(format: NSLocalizedString("COORDS_LABEL", 
+comment: "no comment"), latFormat, lonFormat, altitude)
+        
+        //Update speed
+        speedLabel.text = (newLocation.speed < 0) ? kUnknownSpeedText : 
+newLocation.speed.toSpeed(useImperial: useImperial)
+        
+        //Update Map center and track overlay if user is being followed
+        if followUser {
+            map.setCenter(newLocation.coordinate, animated: true)
+        }
+        if gpxTrackingStatus == .tracking {
+            print("didUpdateLocation: adding point to track 
+(\(newLocation.coordinate.latitude),\(newLocation.coordinate.longitude))")
+            map.addPointToCurrentTrackSegmentAtLocation(newLocation)
+            totalTrackedDistanceLabel.distance = 
+map.session.totalTrackedDistance
+            currentSegmentDistanceLabel.distance = 
+map.session.currentSegmentDistance
+        }
+    }
+
+    ///
+    ///
+    /// When there is a change on the heading (direction in which the device 
+oriented) it makes a request to the map
+    /// to updathe the heading indicator (a small arrow next to user location 
+point)
+    ///
+    func locationManager(_ manager: CLLocationManager, didUpdateHeading 
+newHeading: CLHeading) {
+        print("ViewController::didUpdateHeading true: \(newHeading.trueHeading) 
+magnetic: \(newHeading.magneticHeading)")
+        print("mkMapcamera heading=\(map.camera.heading)")
+        map.heading = newHeading // updates heading variable
+        map.updateHeading() // updates heading view's rotation
+        
+    }
+    
+    ///
+    /// Called by the system when `CLLocationManager` is created and when the 
+user makes a permission choice
+    ///
+    /// We handle this delegate callback so that we can check if the user has 
+allowed location access, else we show a warning
+    ///
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        checkLocationServicesStatus()
+    }
+}
+
+extension Notification.Name {
+    static let loadRecoveredFile = Notification.Name("loadRecoveredFile")
+    static let updateAppearance = Notification.Name("updateAppearance")
+    // swiftlint:disable file_length
+}
+
+// swiftlint:enable line_length
+
+<elided_chars>
+62512
+<warning>
+Output too long.
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 8, $0.17):
+Let me see the full ViewController.swift, focusing on the parts related to 
+CoreData recovery, the app title, and the viewDidLoad:
+
+```
+grep -n 
+"CoreData\|coreData\|recover\|alert\|appTitle\|kAppTitle\|titleLabel\|loadRecove
+red\|lastGpxFilename\|Toast\|toast" /app/OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+129:    var lastGpxFilename: String = ""
+179:                lastGpxFilename = "" //clear last filename, so when saving 
+it appears an empty field
+181:                map.coreDataHelper.clearAll()
+182:                map.coreDataHelper.coreDataDeleteAll(of: 
+CDRoot.self)//deleteCDRootFromCoreData()
+229:    var appTitleLabel: UILabel
+311:        self.appTitleLabel = UILabel(coder: aDecoder)!
+376:        map.coreDataHelper.retrieveFromCoreData()
+445:        appTitleLabel.text = "  Open GPX Tracker"
+446:        appTitleLabel.textAlignment = .left
+447:        appTitleLabel.font = UIFont.boldSystemFont(ofSize: 10)
+448:        //appTitleLabel.textColor = UIColor(red: 0.0/255.0, green: 
+0.0/255.0, blue: 0.0/255.0, alpha: 1.0)
+449:        appTitleLabel.textColor = UIColor.yellow
+450:        appTitleLabel.backgroundColor = UIColor(red: 58.0/255.0, green: 
+57.0/255.0, blue: 54.0/255.0, alpha: 0.80)
+451:        self.view.addSubview(appTitleLabel)
+572:        trackerButton.titleLabel?.font = UIFont.boldSystemFont(ofSize: 16)
+573:        trackerButton.titleLabel?.numberOfLines = 2
+574:        trackerButton.titleLabel?.textAlignment = .center
+600:        saveButton.titleLabel?.textAlignment = .center
+601:        saveButton.titleLabel?.adjustsFontSizeToFitWidth = true
+610:        resetButton.titleLabel?.textAlignment = .center
+611:        resetButton.titleLabel?.adjustsFontSizeToFitWidth = true
+651:        appTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+659:        NSLayoutConstraint(item: appTitleLabel, attribute: .top, relatedBy: 
+.equal, toItem: safeAreaGuide, attribute: .top, multiplier: 1, constant: 
+safeAreaInsets.top).isActive = true
+660:        NSLayoutConstraint(item: appTitleLabel, attribute: .lastBaseline, 
+relatedBy: .equal, toItem: coordsLabel, attribute: .lastBaseline, multiplier: 1,
+constant: 0).isActive = true
+661:        NSLayoutConstraint(item: appTitleLabel, attribute: .trailing, 
+relatedBy: .equal, toItem: coordsLabel, attribute: .trailing, multiplier: 1, 
+constant: 5).isActive = true
+662:        NSLayoutConstraint(item: appTitleLabel, attribute: .leading, 
+relatedBy: .equal, toItem: coordsLabel, attribute: .leading, multiplier: 1, 
+constant: 0).isActive = true
+663:        NSLayoutConstraint(item: appTitleLabel, attribute: .leading, 
+relatedBy: .equal, toItem: self.view, attribute: .leading, multiplier: 1, 
+constant: 0).isActive = true
+684:        NSLayoutConstraint(item: timeLabel, attribute: .top, relatedBy: 
+.equal, toItem: self.appTitleLabel, attribute: .top, multiplier: 1, constant: 
+20).isActive = true
+704:        NSLayoutConstraint(item: signalImageView, attribute: .top, 
+relatedBy: .equal, toItem: self.appTitleLabel, attribute: .bottom, multiplier: 
+1, constant: 5).isActive = true
+718:        NSLayoutConstraint(item: folderButton, attribute: .top, relatedBy: 
+.equal, toItem: appTitleLabel, attribute: .bottom, multiplier: 1, constant: 
+5).isActive = true
+828:    ///  5. whenever it should load file from Core Data recovery mechanism
+842:        notificationCenter.addObserver(self, selector: 
+#selector(loadRecoveredFile(_:)), name: .loadRecoveredFile, object: nil)
+856:    /// Presents alert when file received from Apple Watch
+861:            // alert to display to notify user that file has been received.
+862:            let alertTitle = NSLocalizedString("WATCH_FILE_RECEIVED_TITLE", 
+comment: "no comment")
+863:            let alertMessage = 
+NSLocalizedString("WATCH_FILE_RECEIVED_MESSAGE", comment: "no comment")
+864:            let controller = UIAlertController(title: alertTitle, message: 
+String(format: alertMessage, fileName ?? ""), preferredStyle: .alert)
+885:    @objc func loadRecoveredFile(_ notification: Notification) {
+886:        guard let root = notification.userInfo?["recoveredRoot"] as? GPXRoot
+else {
+893:        lastGpxFilename = fileName
+895:        self.map.coreDataHelper.add(toCoreData: fileName, 
+willContinueAfterSave: false)
+950:            map.coreDataHelper.coreDataDeleteAll(of: CDTrackpoint.self)
+951:            map.coreDataHelper.coreDataDeleteAll(of: CDWaypoint.self)
+998:            let filename =  self.lastGpxFilename.isEmpty ? 
+self.defaultFilename() : self.lastGpxFilename
+1089:        map.coreDataHelper.add(toCoreData: waypoint)
+1165:        // save alert configuration and presentation
+1166:        let alertController = UIAlertController(title: 
+NSLocalizedString("SAVE_AS", comment: "no comment"), message: 
+NSLocalizedString("ENTER_SESSION_NAME", comment: "no comment"), preferredStyle: 
+.alert)
+1168:        alertController.addTextField(configurationHandler: { (textField) in
+1170:            textField.text = self.lastGpxFilename.isEmpty ? 
+self.defaultFilename() : self.lastGpxFilename
+1174:            let filename = 
+(alertController.textFields?[0].text!.utf16.count == 0) ? self.defaultFilename()
+: alertController.textFields?[0].text
+1179:            self.lastGpxFilename = filename!
+1180:            self.map.coreDataHelper.coreDataDeleteAll(of: 
+CDRoot.self)//deleteCDRootFromCoreData()
+1181:            self.map.coreDataHelper.clearAllExceptWaypoints()
+1182:            self.map.coreDataHelper.add(toCoreData: filename!, 
+willContinueAfterSave: true)
+1189:        alertController.addAction(saveAction)
+1190:        alertController.addAction(cancelAction)
+1192:        present(alertController, animated: true)
+1207:    /// - Are location services enabled (access to location device wide)? 
+If not => displays an alert
+1208:    /// - Are location services allowed to this app? If not => displays an 
+alert
+1235:    /// Displays an alert that informs the user that location services are 
+disabled.
+1241:        let alertController = UIAlertController(title: 
+NSLocalizedString("LOCATION_SERVICES_DISABLED", comment: "no comment"), message:
+NSLocalizedString("ENABLE_LOCATION_SERVICES", comment: "no comment"), 
+preferredStyle: .alert)
+1254:        alertController.addAction(settingsAction)
+1255:        alertController.addAction(cancelAction)
+1257:        present(alertController, animated: true)
+1262:    /// Displays an alert that informs the user that access to location was
+denied for this app (other apps may have access).
+1269:        let alertController = UIAlertController(title: 
+NSLocalizedString("ACCESS_TO_LOCATION_DENIED", comment: "no comment"),
+1271:                                                preferredStyle: .alert)
+1287:        alertController.addAction(settingsAction)
+1288:        alertController.addAction(cancelAction)
+1290:        present(alertController, animated: true)
+1381:        lastGpxFilename = gpxFilename
+1383:        self.map.coreDataHelper.add(toCoreData: gpxFilename, 
+willContinueAfterSave: false)
+1503:    static let loadRecoveredFile = Notification.Name("loadRecoveredFile")
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 9, $0.22):
+```
+cat /app/OpenGpxTracker/CoreDataHelper.swift
+```
+
+Tool:
+<returncode>
+0
+<output_head>
+//
+//  CoreDataHelper.swift
+//  OpenGpxTracker
+//
+//  Created by Vincent on 9/4/19.
+//
+
+import UIKit
+import CoreData
+import CoreGPX
+
+/// Core Data implementation. As all Core Data related logic is contained here, 
+I considered it as a helper.
+///
+/// Implementation learnt / inspired
+/// from 4 part series:
+/// https://marcosantadev.com/coredata_crud_concurrency_swift_1/
+///
+class CoreDataHelper {
+    
+    // MARK: IDs
+    // ids to keep track of object's sequence
+    
+    /// for waypoints
+    var waypointId = Int64()
+    /// for trackpoints
+    var trackpointId = Int64()
+    
+    /// id to seperate trackpoints in different tracksegements
+    var tracksegmentId = Int64()
+    
+    var isContinued = false
+    var lastTracksegmentId = Int64()
+    
+    // MARK: Other Declarations
+    
+    /// app delegate.
+    // swiftlint:disable force_cast
+    let appDelegate = UIApplication.shared.delegate as! AppDelegate
+    
+    // arrays for handling retrieval of data when needed.
+    
+    // recovered tracksegments
+    var tracksegments = [GPXTrackSegment]()
+    
+    // recovered current segment
+    var currentSegment = GPXTrackSegment()
+    
+    // recovered waypoints, inclusive of waypoints from previous file if file is
+loaded on recovery.
+    var waypoints = [GPXWaypoint]()
+    
+    // last file name of the recovered file, if the recovered file was a 
+continuation.
+    var lastFileName = String()
+    
+    // MARK: Add to Core Data
+    
+    /// Adds the last file name to Core Data
+    ///
+    /// - Parameters:
+    ///     - lastFileName: Last file name of the previously logged GPX file.
+    ///
+    func add(toCoreData lastFileName: String, willContinueAfterSave 
+willContinue: Bool) {
+
+        let childManagedObjectContext = NSManagedObjectContext(concurrencyType: 
+.privateQueueConcurrencyType)
+        // Creates the link between child and parent
+        childManagedObjectContext.parent = appDelegate.managedObjectContext
+        
+        childManagedObjectContext.perform {
+            let root = NSEntityDescription.insertNewObject(forEntityName: 
+"CDRoot", into: childManagedObjectContext) as! CDRoot
+            
+            root.lastFileName = lastFileName
+            root.continuedAfterSave = willContinue
+            root.lastTrackSegmentId = self.tracksegmentId
+            
+            do {
+                try childManagedObjectContext.save()
+                self.appDelegate.managedObjectContext.performAndWait {
+                    do {
+                        // Saves the data from the child to the main context to 
+be stored properly
+                        try self.appDelegate.managedObjectContext.save()
+                    } catch {
+                        print("Failure to save parent context when adding last 
+file name: \(error)")
+                    }
+                }
+            } catch {
+                print("Failure to save child context when adding last file name:
+\(error)")
+            }
+        }
+    }
+    
+    /// Adds a trackpoint to Core Data
+    ///
+    /// A track segment ID should also be provided, such that trackpoints would 
+be seperated in their track segments when recovered.
+    /// - Parameters:
+    ///     - trackpoint: the trackpoint meant to be added to Core Data
+    ///     - Id: track segment ID that the trackpoint originally was in.
+    ///
+    func add(toCoreData trackpoint: GPXTrackPoint, withTrackSegmentID Id: Int) {
+        let childManagedObjectContext = NSManagedObjectContext(concurrencyType: 
+.privateQueueConcurrencyType)
+        // Creates the link between child and parent
+        childManagedObjectContext.parent = appDelegate.managedObjectContext
+        
+        childManagedObjectContext.perform {
+            print("Core Data Helper: Add trackpoint with id: 
+\(self.trackpointId)")
+            // swiftlint:disable force_cast
+            let pt = NSEntityDescription.insertNewObject(forEntityName: 
+"CDTrackpoint", into: childManagedObjectContext) as! CDTrackpoint
+            
+            guard let elevation = trackpoint.elevation else { return }
+            guard let latitude = trackpoint.latitude   else { return }
+            guard let longitude = trackpoint.longitude else { return }
+            
+            pt.elevation = elevation
+            pt.latitude = latitude
+            pt.longitude = longitude
+            pt.time = trackpoint.time
+            pt.trackpointId = self.trackpointId
+            pt.trackSegmentId = Int64(Id)
+            
+            // Serialization of trackpoint
+            do {
+                let serialized = try JSONEncoder().encode(trackpoint)
+                pt.serialized = serialized
+            } catch {
+                print("Core Data Helper: serialization error when adding 
+trackpoint: \(error)")
+            }
+            
+            self.trackpointId += 1
+            
+            do {
+                try childManagedObjectContext.save()
+                self.appDelegate.managedObjectContext.performAndWait {
+                    do {
+                        // 
+<output_tail>
+           root.waypoints = self.waypoints
+                // asks user on what to do with recovered data
+                DispatchQueue.main.sync {
+                    // for debugging
+                    // print(root.gpx())
+
+                    // main action sheet setup
+                    let alertController = UIAlertController(title: 
+NSLocalizedString("CONTINUE_SESSION_TITLE", comment: "no comment"),
+                                                            message: 
+NSLocalizedString("CONTINUE_SESSION_MESSAGE", comment: "no comment"),
+                                                            preferredStyle: 
+.actionSheet)
+                    
+                    // option to cancel
+                    let cancelAction = UIAlertAction(title: 
+NSLocalizedString("CANCEL", comment: "no comment"), style: .cancel) { _ in
+                        self.clearAll()
+                    }
+                    // option to continue previous session, which will load it, 
+but not save
+                    let continueAction = UIAlertAction(title: 
+NSLocalizedString("CONTINUE_SESSION", comment: "no comment"), style: .default) {
+_ in
+                        NotificationCenter.default.post(name: 
+.loadRecoveredFile, object: nil,
+                                                        userInfo: 
+["recoveredRoot": root, "fileName": self.lastFileName])
+                    }
+                    
+                    // option to save silently as file, session remains new
+                    let saveAction = UIAlertAction(title: 
+NSLocalizedString("SAVE_START_NEW", comment: "no comment"), style: .default) { _
+in
+                        self.saveFile(from: root, andIfAvailable: 
+self.lastFileName)
+                    }
+                    
+                    alertController.addAction(cancelAction)
+                    alertController.addAction(continueAction)
+                    alertController.addAction(saveAction)
+                    CoreDataAlertView().showActionSheet(alertController)
+                }
+            } else {
+                // no recovery file will be generated if nothing is recovered 
+(or did not crash).
+            }
+        }
+    }
+    
+    /// saves recovered data to a gpx file, silently, without loading on map.
+    func saveFile(from gpx: GPXRoot, andIfAvailable lastfileName: String) {
+        // date format same as usual.
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "dd-MMM-yyyy-HHmm"
+        var fileName = String()
+        
+        if lastfileName != "" {
+            fileName = lastfileName
+        } else if let lastTrkptDate = 
+gpx.tracks.last?.segments.last?.points.last?.time {
+            fileName = dateFormatter.string(from: lastTrkptDate)
+        } else {
+            // File name's date will be as of recovery time, not of crash time.
+            fileName = dateFormatter.string(from: Date())
+        }
+        
+        let recoveredFileName = "recovery-\(fileName)"
+        let gpxString = gpx.gpx()
+        
+        // Save the recovered file.
+        GPXFileManager.save(recoveredFileName, gpxContents: gpxString)
+        print("File \(recoveredFileName) was recovered from previous session, 
+prior to unexpected crash/exit")
+        
+        // clear aft save.
+        self.clearAll()
+        self.coreDataDeleteAll(of: CDRoot.self)
+        //self.deleteCDRootFromCoreData()
+    }
+    
+    // MARK: Reset & Clear
+    
+    /// Resets trackpoints and waypoints Id
+    ///
+    /// the Id is to ensure that when retrieving the entities, the order 
+remains.
+    /// This is important to ensure that the resulting recovery file has the 
+correct order.
+    func resetIds() {
+        self.trackpointId = 0
+        self.waypointId = 0
+        self.tracksegmentId = 0
+        
+    }
+    
+    /// Clear all arrays and current segment after recovery.
+    func clearObjects() {
+        self.tracksegments = []
+        self.waypoints = []
+        self.currentSegment = GPXTrackSegment()
+    }
+    
+    func clearAllExceptWaypoints() {
+        // once file recovery is completed, Core Data stored items are deleted.
+        self.coreDataDeleteAll(of: CDTrackpoint.self)
+        
+        // once file recovery is completed, arrays are cleared.
+        self.tracksegments = []
+        
+        // current segment should be 'reset' as well
+        self.currentSegment = GPXTrackSegment()
+        
+        // reset order sorting ids
+        self.trackpointId = 0
+        self.tracksegmentId = 0
+    }
+    
+    /// clears all
+    func clearAll() {
+        // once file recovery is completed, Core Data stored items are deleted.
+        self.coreDataDeleteAll(of: CDTrackpoint.self)
+        self.coreDataDeleteAll(of: CDWaypoint.self)
+        
+        // once file recovery is completed, arrays are cleared.
+        self.clearObjects()
+        
+        // current segment should be 'reset' as well
+        self.currentSegment = GPXTrackSegment()
+        
+        // reset order sorting ids
+        self.resetIds()
+        
+    }
+    
+}
+
+<elided_chars>
+11686
+<warning>
+Output too long.
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 10, $0.29):
+Now let me look at the `retrieveFromCoreData()` method and the 
+`loadRecoveredFile` handler more closely:
+
+```
+nl -ba /app/OpenGpxTracker/CoreDataHelper.swift | sed -n '200,400p'
+```
+
+Tool:
+<returncode>
+0
+<output_head>
+   200      
+   201      // MARK: Update Core Data
+   202      
+   203      /// Updates a previously added waypoint to Core Data
+   204      ///
+   205      /// The waypoint at the given index will be updated accordingly.
+   206      /// - Parameters:
+   207      ///     - updatedWaypoint: the waypoint meant to replace a already 
+added, Core Data waypoint.
+   208      ///     - index: the waypoint that is meant to be replaced/updated 
+to newer data.
+   209      ///
+   210      func update(toCoreData updatedWaypoint: GPXWaypoint, from index: 
+Int) {
+   211          let privateManagedObjectContext = 
+NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+   212          privateManagedObjectContext.parent = 
+appDelegate.managedObjectContext
+   213          // Creates a fetch request
+   214          let wptFetchRequest = NSFetchRequest<CDWaypoint>(entityName: 
+"CDWaypoint")
+   215          
+   216          let asynchronousWaypointFetchRequest = 
+NSAsynchronousFetchRequest(fetchRequest: wptFetchRequest) { 
+asynchronousFetchResult in
+   217              
+   218              print("Core Data Helper: updating waypoint in Core Data")
+   219              
+   220              // Retrieves an array of points from Core Data
+   221              guard let waypointResults = 
+asynchronousFetchResult.finalResult else { return }
+   222              
+   223              privateManagedObjectContext.perform {
+   224                  let objectID = waypointResults[index].objectID
+   225                  guard let pt = 
+self.appDelegate.managedObjectContext.object(with: objectID) as? CDWaypoint else
+{ return }
+   226                  
+   227                  guard let latitude = updatedWaypoint.latitude   else { 
+return }
+   228                  guard let longitude = updatedWaypoint.longitude else { 
+return }
+   229                  
+   230                  if let elevation = updatedWaypoint.elevation {
+   231                      pt.elevation = elevation
+   232                  } else {
+   233                      pt.elevation = .greatestFiniteMagnitude
+   234                  }
+   235                  
+   236                  pt.name = updatedWaypoint.name
+   237                  pt.desc = updatedWaypoint.desc
+   238                  pt.latitude = latitude
+   239                  pt.longitude = longitude
+   240                  
+   241                  do {
+   242                      try privateManagedObjectContext.save()
+   243                      self.appDelegate.managedObjectContext.performAndWait
+{
+   244                          do {
+   245                              // Saves the changes from the child to the 
+main context to be applied properly
+   246                              try 
+self.appDelegate.managedObjectContext.save()
+   247                          } catch {
+   248                              print("Failure to update and save waypoint 
+to parent context: \(error)")
+   249                          }
+   250                      }
+   251                  } catch {
+   252                      print("Failure to update and save waypoint to 
+context at child context: \(error)")
+   253                  }
+   254              }
+   255              
+   256          }
+   257          
+   258          do {
+   259              try 
+privateManagedObjectContext.execute(asynchronousWaypointFetchRequest)
+   260          } catch {
+   261              print("NSAsynchronousFetchRequest (for finding updatable 
+waypoint) error: \(error)")
+   262          }
+   263      }
+   264      
+   265      // MARK: Retrieval From Core Data
+   266      
+   267      /// Retrieves everything from Core Data
+   268      ///
+   269      /// Currently, it retrieves CDTrackpoint, CDWaypoint and CDRoot,
+   270      /// to process from those Core Data types to CoreGPX types such as 
+GPXTrackPoint, GPXWaypoint, etc.
+   271      ///
+   272      /// It will also call on crashFileRecovery() method to continue the 
+next procudure.
+   273      ///
+   274      func retrieveFromCoreData() {
+   275          let privateManagedObjectContext = 
+NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+   276          privateManagedObjectContext.parent = 
+appDelegate.managedObjectContext
+   277          
+   278          do {
+   279              // Note: it appears that the actual object context execution
+happens after all of this, probably due to its async nature.
+   280              try privateManagedObjectContext.execute(rootFetchRequest())
+   281              try 
+privateManagedObjectContext.execute(trackPointFetchRequest())
+   282              try 
+privateManagedObjectContext.execute(waypointFetchRequest())
+   283          } catch let error {
+   284              print("NSAsynchronousFetchRequest (fetch request for 
+recovery) error: \(error)")
+   285          }
+   286      }
+   287      
+   288      // MARK: Delete from Core Data
+   289  
+   290      /// Delete Waypoint from index
+   291      ///
+   292      /// - Parameters:
+   293      ///     - index: index of the waypoint that is meant to be deleted.
+   294      ///
+   295      func deleteWaypoint(
+<output_tail>
+
+   313                      do {
+   314                          // Saves the changes from the child to the main 
+context to be applied properly
+   315                          try self.appDelegate.managedObjectContext.save()
+   316                      } catch {
+   317                          print("Failure to save context (when deleting 
+waypoint): \(error)")
+   318                      }
+   319                  }
+   320              } catch {
+   321                  print("Failure to save context at child context (when 
+deleting waypoint): \(error)")
+   322              }
+   323          }
+   324          
+   325          do {
+   326              try 
+privateManagedObjectContext.execute(asynchronousWaypointFetchRequest)
+   327          } catch let error {
+   328              print("NSAsynchronousFetchRequest (for finding deletable 
+waypoint) error: \(error)")
+   329          }
+   330          
+   331      }
+   332  
+   333      /// Delete all objects of entity given as parameter in Core Data.
+   334      func coreDataDeleteAll<T: NSManagedObject>(of type: T.Type) {
+   335          
+   336          print("Core Data Helper: Batch Delete \(T.self) from Core Data")
+   337  
+   338          if #available(iOS 10.0, *) {
+   339              modernBatchDelete(of: T.self)
+   340          } else { // for pre iOS 9 (less efficient, load in memory before
+removal)
+   341              legacyBatchDelete(of: T.self)
+   342          }
+   343      }
+   344      
+   345      // MARK: Handles recovered data
+   346      
+   347      /// Prompts user on what to do with recovered data
+   348      ///
+   349      /// Adds all the 'recovered' content retrieved earlier to newly 
+initialized `GPXRoot`.
+   350      /// Deletes and clears core data stuff after user decision is made.
+   351      ///
+   352      /// Currently, there are three user decisions allowed:
+   353      /// - To continue last session, which loads the recovered data 
+including previous file data (if applicable) on the map.
+   354      /// - To save recovered data silently in background and start a 
+fresh new session immediately.
+   355      /// - To delete and ignore recovered data, to start a fresh new 
+session instead.
+   356      ///
+   357      func crashFileRecovery() {
+   358          DispatchQueue.global().async {
+   359              // checks if trackpoint and waypoint are available
+   360              if self.currentSegment.points.count > 0 || 
+self.waypoints.count > 0 {
+   361                  let root: GPXRoot
+   362                  let track = GPXTrack()
+   363  
+   364                  // will load file if file was resumed before crash
+   365                  if self.lastFileName != "" {
+   366                      let gpx = 
+GPXFileManager.URLForFilename(self.lastFileName)
+   367                      let parsedRoot = GPXParser(withURL: 
+gpx)?.parsedData()
+   368                      root = parsedRoot ?? GPXRoot(creator: 
+kGPXCreatorString)
+   369                  } else {
+   370                      root = GPXRoot(creator: kGPXCreatorString)
+   371                  }
+   372                  // generates a GPXRoot from recovered data
+   373                  if self.isContinued && self.tracksegments.count >= 
+(self.lastTracksegmentId + 1) {
+   374                      
+   375                      //Check if there was a tracksegment
+   376                      if root.tracks.last?.segments.count == 0 {
+   377                          root.tracks.last?.add(trackSegment: 
+GPXTrackSegment())
+   378                      }
+   379                      // if gpx is saved, but further trkpts are added 
+after save, and crashed, trkpt are appended, not adding to new trkseg.
+   380                      
+root.tracks.last?.segments[Int(self.lastTracksegmentId)].add(trackpoints: 
+self.tracksegments.first!.points)
+   381                      self.tracksegments.remove(at: 0)                    
+   382                  } else {
+   383                      track.segments = self.tracksegments
+   384                      root.add(track: track)
+   385                  }
+   386                  root.waypoints = self.waypoints
+   387                  // asks user on what to do with recovered data
+   388                  DispatchQueue.main.sync {
+   389                      // for debugging
+   390                      // print(root.gpx())
+   391  
+   392                      // main action sheet setup
+   393                      let alertController = UIAlertController(title: 
+NSLocalizedString("CONTINUE_SESSION_TITLE", comment: "no comment"),
+   394                                                              message: 
+NSLocalizedString("CONTINUE_SESSION_MESSAGE", comment: "no comment"),
+   395                                                              
+preferredStyle: .actionSheet)
+   396                      
+   397                      // option to cancel
+   398                      let cancelAction = UIAlertAction(title: 
+NSLocalizedString("CANCEL", comment: "no comment"), style: .cancel) { _ in
+   399                          self.clearAll()
+   400                      }
+
+<elided_chars>
+1150
+<warning>
+Output too long.
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 11, $0.37):
+Now let me look at the ViewController's `loadRecoveredFile` and `viewDidLoad`:
+
+```
+nl -ba /app/OpenGpxTracker/ViewController.swift | sed -n '880,910p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   880          let dateStr = defaultDate.getDateFromPrefs()
+   881          print("fileName:" + dateStr)//dateFormatter.string(from: 
+Date()))
+   882          return dateStr//dateFormatter.string(from: Date())
+   883      }
+   884      
+   885      @objc func loadRecoveredFile(_ notification: Notification) {
+   886          guard let root = notification.userInfo?["recoveredRoot"] as? 
+GPXRoot else {
+   887              return
+   888          }
+   889          guard let fileName = notification.userInfo?["fileName"] as? 
+String else {
+   890              return
+   891          }
+   892  
+   893          lastGpxFilename = fileName
+   894          // adds last file name to core data as well
+   895          self.map.coreDataHelper.add(toCoreData: fileName, 
+willContinueAfterSave: false)
+   896          //force reset timer just in case reset does not do it
+   897          self.stopWatch.reset()
+   898          //load data
+   899          self.map.continueFromGPXRoot(root)
+   900          //stop following user
+   901          self.followUser = false
+   902          //center map in GPX data
+   903          self.map.regionToGPXExtent()
+   904          self.gpxTrackingStatus = .paused
+   905          
+   906          self.totalTrackedDistanceLabel.distance = 
+self.map.session.totalTrackedDistance
+   907      }
+   908      
+   909      ///
+   910      /// Called when the application Becomes active (background -> 
+foreground) this function verifies if
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 12, $0.46):
+Now let me check the test files to understand what exactly the tests expect:
+
+```
+find /app -path "*Test*" -name "*.swift" -exec echo "=== {} ===" \; -exec cat {}
+\;
+```
+
+Tool:
+<returncode>
+0
+<output>
+=== /app/OpenGpxTrackerTests/OpenGpxTrackerTests.swift ===
+//
+//  OpenGpxTrackerTests.swift
+//  OpenGpxTrackerTests
+//
+//  Created by merlos on 13/09/14.
+//  Copyright (c) 2014 TransitBox. All rights reserved.
+//
+
+import UIKit
+import XCTest
+
+class OpenGpxTrackerTests: XCTestCase {
+    
+    override func setUp() {
+        super.setUp()
+        // Put setup code here. This method is called before the invocation of 
+each test method in the class.
+    }
+    
+    override func tearDown() {
+        // Put teardown code here. This method is called after the invocation of
+each test method in the class.
+        super.tearDown()
+    }
+    
+    func testExample() {
+        // This is an example of a functional test case.
+        XCTAssert(true, "Pass")
+    }
+    
+    func testPerformanceExample() {
+        // This is an example of a performance test case.
+        self.measure {
+            // Put the code you want to measure the time of here.
+        }
+    }
+    
+}
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 13, $0.55):
+The existing test file is basic. Let me check if there are more test files that 
+will be added or if a test scheme references expected symbols:
+
+```
+find /app -name "*.xcodeproj" -o -name "*.xcworkspace" | head -5
+```
+
+Tool:
+<returncode>
+0
+<output>
+/app/OpenGpxTracker.xcodeproj
+/app/OpenGpxTracker.xcodeproj/project.xcworkspace
+/app/Pods/Pods.xcodeproj
+/app/OpenGpxTracker.xcworkspace
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 14, $0.64):
+```
+cat /app/OpenGpxTracker.xcodeproj/project.pbxproj | grep -i 
+"toast\|test.*swift\|kAppTitle" | head -20
+```
+
+Tool:
+<returncode>
+0
+<output>
+                898EECF419C49B5800B4B207 /* OpenGpxTrackerTests.swift in Sources
+*/ = {isa = PBXBuildFile; fileRef = 898EECF319C49B5800B4B207 /* 
+OpenGpxTrackerTests.swift */; };
+                898EECF319C49B5800B4B207 /* OpenGpxTrackerTests.swift */ = {isa 
+= PBXFileReference; lastKnownFileType = sourcecode.swift; path = 
+OpenGpxTrackerTests.swift; sourceTree = "<group>"; };
+                                898EECF319C49B5800B4B207 /* 
+OpenGpxTrackerTests.swift */,
+                                898EECF419C49B5800B4B207 /* 
+OpenGpxTrackerTests.swift in Sources */,
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 15, $0.73):
+Now let me check how the build system works to verify compilation:
+
+```
+which xcodebuild 2>/dev/null; which swift 2>/dev/null; which swiftc 2>/dev/null
+```
+
+Tool:
+<returncode>
+1
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 16, $0.82):
+```
+ls /app/Podfile 2>/dev/null && cat /app/Podfile; ls /app/Makefile 2>/dev/null
+```
+
+Tool:
+<returncode>
+2
+<output>
+/app/Podfile
+use_frameworks!
+
+def shared_pods
+    pod 'CoreGPX', git: 'https://github.com/vincentneo/CoreGPX.git'
+end
+
+target 'OpenGpxTracker' do
+    platform :ios, '11.0'
+    shared_pods
+    pod 'MapCache', '~> 0.10.0'
+    #pod 'MapCache', git: 'https://github.com/vincentneo/MapCache.git', :branch 
+=> 'ios16-add-overlay-patch'
+    
+end
+
+target 'OpenGpxTracker-Watch Extension' do
+    platform :watchos, '4.0'
+    shared_pods
+end
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 17, $0.91):
+Now I have a good picture of the codebase. Let me look at the ViewController's 
+`viewDidLoad` and the area around line 445 where `appTitleLabel` is set:
+
+```
+nl -ba /app/OpenGpxTracker/ViewController.swift | sed -n '370,460p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   370      /// All the UI is built programatically on this method. Interface 
+builder is not used.
+   371      ///
+   372      override func viewDidLoad() {
+   373          super.viewDidLoad()
+   374          stopWatch.delegate = self
+   375          
+   376          map.coreDataHelper.retrieveFromCoreData()
+   377          
+   378          //Because of the edges, iPhone X* is slightly different on the 
+layout.
+   379          //So, Is the current device an iPhone X?
+   380          if UIDevice.current.userInterfaceIdiom == .phone, #available(iOS
+11, *) {
+   381              self.isIPhoneX = 
+UIApplication.shared.delegate?.window??.safeAreaInsets.top ?? 0 > 40
+   382          }
+   383          
+   384          // Map autorotate configuration
+   385          map.autoresizesSubviews = true
+   386          map.autoresizingMask = [.flexibleHeight, .flexibleWidth]
+   387          self.view.autoresizesSubviews = true
+   388          self.view.autoresizingMask = [.flexibleHeight, .flexibleWidth]
+   389  
+   390          // Map configuration Stuff
+   391          map.delegate = mapViewDelegate
+   392          map.showsUserLocation = true
+   393          let mapH: CGFloat = self.view.bounds.size.height - (isIPhoneX ? 
+0.0 : 20.0)
+   394          map.frame = CGRect(x: 0.0, y: (isIPhoneX ? 0.0 : 20.0), width: 
+self.view.bounds.size.width, height: mapH)
+   395          map.isZoomEnabled = true
+   396          map.isRotateEnabled = true
+   397          //set the position of the compass.
+   398          map.compassRect = CGRect(x: map.frame.width/2 - 18, y: isIPhoneX
+? 105.0 : 70.0, width: 36, height: 36)
+   399          
+   400          //If user long presses the map, it will add a Pin (waypoint) at 
+that point
+   401          map.addGestureRecognizer(
+   402              UILongPressGestureRecognizer(target: self, action: 
+#selector(ViewController.addPinAtTappedLocation(_:)))
+   403          )
+   404          
+   405          //Each time user pans, if the map is following the user, it 
+stops doing that.
+   406          let panGesture = UIPanGestureRecognizer(target: self, action: 
+#selector(ViewController.stopFollowingUser(_:)))
+   407          panGesture.delegate = self
+   408          map.addGestureRecognizer(panGesture)
+   409          
+   410          locationManager.delegate = self
+   411          locationManager.startUpdatingLocation()
+   412          locationManager.startUpdatingHeading()
+   413          
+   414          //let pinchGesture = UIPinchGestureRecognizer(target: self, 
+action: "pinchGesture")
+   415          //map.addGestureRecognizer(pinchGesture)
+   416          
+   417          //Preferences
+   418          map.tileServer = Preferences.shared.tileServer
+   419          map.useCache = Preferences.shared.useCache
+   420          useImperial = Preferences.shared.useImperial
+   421          //locationManager.activityType = 
+Preferences.shared.locationActivityType
+   422          
+   423          //
+   424          // Config user interface
+   425          //
+   426          
+   427          // Set default zoom
+   428          let center = locationManager.location?.coordinate ?? 
+CLLocationCoordinate2D(latitude: 8.90, longitude: -79.50)
+   429          let span = MKCoordinateSpan(latitudeDelta: 0.005, 
+longitudeDelta: 0.005)
+   430          let region = MKCoordinateRegion(center: center, span: span)
+   431          map.setRegion(region, animated: true)
+   432          self.view.addSubview(map)
+   433          
+   434          addNotificationObservers()
+   435          
+   436          //
+   437          // ---------------------- Build Interface Area 
+-----------------------------
+   438          //
+   439          // HEADER
+   440          let font36 = UIFont(name: "DinCondensed-Bold", size: 36.0)
+   441          let font18 = UIFont(name: "DinAlternate-Bold", size: 18.0)
+   442          let font12 = UIFont(name: "DinAlternate-Bold", size: 12.0)
+   443          
+   444          //add the app title Label (Branding, branding, branding! )
+   445          appTitleLabel.text = "  Open GPX Tracker"
+   446          appTitleLabel.textAlignment = .left
+   447          appTitleLabel.font = UIFont.boldSystemFont(ofSize: 10)
+   448          //appTitleLabel.textColor = UIColor(red: 0.0/255.0, green: 
+0.0/255.0, blue: 0.0/255.0, alpha: 1.0)
+   449          appTitleLabel.textColor = UIColor.yellow
+   450          appTitleLabel.backgroundColor = UIColor(red: 58.0/255.0, green: 
+57.0/255.0, blue: 54.0/255.0, alpha: 0.80)
+   451          self.view.addSubview(appTitleLabel)
+   452          
+   453          // CoordLabel
+   454          coordsLabel.textAlignment = .right
+   455          coordsLabel.font = font12
+   456          coordsLabel.textColor = UIColor.white
+   457          coordsLabel.text = kNotGettingLocationText
+   458          self.view.addSubview(coordsLabel)
+   459          
+   460          // Tracked info
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 18, $1.02):
+Now let me look at the `hasWaypoints` section and the area where 
+`lastGpxFilename` is cleared on reset:
+
+```
+nl -ba /app/OpenGpxTracker/ViewController.swift | sed -n '160,200p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   160      
+   161      /// Tells what is the current status of the Map Instance.
+   162      var gpxTrackingStatus: GpxTrackingStatus = 
+GpxTrackingStatus.notStarted {
+   163          didSet {
+   164              print("gpxTrackingStatus changed to \(gpxTrackingStatus)")
+   165              switch gpxTrackingStatus {
+   166              case .notStarted:
+   167                  print("switched to non started")
+   168                  // set Tracker button to allow Start 
+   169                  
+trackerButton.setTitle(NSLocalizedString("START_TRACKING", comment: "no 
+comment"), for: UIControl.State())
+   170                  trackerButton.backgroundColor = 
+kGreenButtonBackgroundColor
+   171                  //save & reset button to transparent.
+   172                  saveButton.backgroundColor = 
+kDisabledBlueButtonBackgroundColor
+   173                  resetButton.backgroundColor = 
+kDisabledRedButtonBackgroundColor
+   174                  //reset clock
+   175                  stopWatch.reset()
+   176                  timeLabel.text = stopWatch.elapsedTimeString
+   177                  
+   178                  map.clearMap() //clear map
+   179                  lastGpxFilename = "" //clear last filename, so when 
+saving it appears an empty field
+   180  
+   181                  map.coreDataHelper.clearAll()
+   182                  map.coreDataHelper.coreDataDeleteAll(of: 
+CDRoot.self)//deleteCDRootFromCoreData()
+   183                  
+   184                  totalTrackedDistanceLabel.distance = 
+(map.session.totalTrackedDistance)
+   185                  currentSegmentDistanceLabel.distance = 
+(map.session.currentSegmentDistance)
+   186                  
+   187                  /*
+   188                  // XXX Left here for reference
+   189                  UIView.animateWithDuration(0.2, delay: 0.0, options: 
+UIViewAnimationOptions.CurveLinear, animations: { () -> Void in
+   190                      self.trackerButton.hidden = true
+   191                      self.pauseButton.hidden = false
+   192                      }, completion: {(f: Bool) -> Void in
+   193                          println("finished animation start tracking")
+   194                  })
+   195                  */
+   196                  
+   197              case .tracking:
+   198                  print("switched to tracking mode")
+   199                  // set tracerkButton to allow Pause
+   200                  trackerButton.setTitle(NSLocalizedString("PAUSE", 
+comment: "no comment"), for: UIControl.State())
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 19, $1.16):
+Now I have a comprehensive understanding of the codebase. Let me now implement 
+the required changes:
+
+1. **Create `Toast.swift`** with the Toast system (`Toast`, `Toast.Position`, 
+`ToastLabel`, constants)
+2. **Add `kAppTitle` constant** 
+3. **Delete `CoreDataAlertView.swift`**
+4. **Modify `CoreDataHelper.swift`** to auto-recover instead of showing dialog
+5. **Modify `ViewController.swift`** to update `appTitleLabel` with filename
+
+Let me start implementing:
+
+```
+cat <<'EOF' > /app/OpenGpxTracker/Toast.swift
+//
+//  Toast.swift
+//  OpenGpxTracker
+//
+//  Toast notification system for non-blocking user feedback.
+//
+
+import UIKit
+
+/// A reusable, non-blocking toast notification system with multiple severity 
+levels.
+enum Toast {
+
+    // MARK: - Severity levels
+
+    case regular(String)
+    case info(String)
+    case warning(String)
+    case success(String)
+    case error(String)
+
+    // MARK: - Position
+
+    enum Position {
+        case bottom
+        case center
+        case top
+    }
+
+    // MARK: - Delay constants
+
+    /// Short display duration (2 seconds).
+    static let kDelayShort: TimeInterval = 2.0
+    /// Long display duration (4 seconds).
+    static let kDelayLong: TimeInterval = 4.0
+
+    // MARK: - Computed helpers
+
+    /// The user-visible message carried by the toast.
+    var message: String {
+        switch self {
+        case .regular(let m), .info(let m), .warning(let m), .success(let m), 
+.error(let m):
+            return m
+        }
+    }
+
+    /// Background colour that corresponds to the severity level.
+    var backgroundColor: UIColor {
+        switch self {
+        case .regular:
+            return UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 0.9)
+        case .info:
+            return UIColor(red: 0.20, green: 0.60, blue: 0.86, alpha: 0.95)
+        case .warning:
+            return UIColor(red: 0.95, green: 0.77, blue: 0.06, alpha: 0.95)
+        case .success:
+            return UIColor(red: 0.18, green: 0.80, blue: 0.44, alpha: 0.95)
+        case .error:
+            return UIColor(red: 0.91, green: 0.30, blue: 0.24, alpha: 0.95)
+        }
+    }
+
+    /// Text colour that corresponds to the severity level.
+    var textColor: UIColor {
+        switch self {
+        case .warning:
+            return .black
+        default:
+            return .white
+        }
+    }
+
+    // MARK: - Show
+
+    /// Present the toast on the given view (defaults to the key window's root 
+view).
+    ///
+    /// - Parameters:
+    ///   - view:     The parent view. If `nil`, uses the key window's root 
+view.
+    ///   - duration: How long the toast stays visible.
+    ///   - position: Vertical position of the toast.
+    func show(in view: UIView? = nil,
+              duration: TimeInterval = Toast.kDelayShort,
+              position: Position = .bottom) {
+
+        guard let parentView = view ?? 
+UIApplication.shared.delegate?.window??.rootViewController?.view else {
+            return
+        }
+
+        let label = ToastLabel(text: message)
+        label.backgroundColor = backgroundColor
+        label.textColor = textColor
+
+        let maxWidth = parentView.frame.width - 40
+        let textSize = label.intrinsicContentSize
+        let labelWidth = min(textSize.width + 30, maxWidth)
+        let labelHeight = textSize.height + 20
+
+        label.frame = CGRect(x: (parentView.frame.width - labelWidth) / 2,
+                             y: yOrigin(for: position, in: parentView, height: 
+labelHeight),
+                             width: labelWidth,
+                             height: labelHeight)
+        label.alpha = 0.0
+        parentView.addSubview(label)
+
+        UIView.animate(withDuration: 0.3, animations: {
+            label.alpha = 1.0
+        }) { _ in
+            UIView.animate(withDuration: 0.3, delay: duration, options: [], 
+animations: {
+                label.alpha = 0.0
+            }) { _ in
+                label.removeFromSuperview()
+            }
+        }
+    }
+
+    // MARK: - Private
+
+    private func yOrigin(for position: Position, in view: UIView, height: 
+CGFloat) -> CGFloat {
+        switch position {
+        case .top:
+            let topInset: CGFloat
+            if #available(iOS 11.0, *) {
+                topInset = view.safeAreaInsets.top
+            } else {
+                topInset = 20
+            }
+            return topInset + 10
+        case .center:
+            return (view.frame.height - height) / 2
+        case .bottom:
+            let bottomInset: CGFloat
+            if #available(iOS 11.0, *) {
+                bottomInset = view.safeAreaInsets.bottom
+            } else {
+                bottomInset = 0
+            }
+            return view.frame.height - height - bottomInset - 30
+        }
+    }
+}
+
+// MARK: - ToastLabel
+
+/// A styled label used by the `Toast` system.
+class ToastLabel: UILabel {
+
+    /// Designated initialiser.
+    /// - Parameter text: The message to display.
+    init(text: String) {
+        super.init(frame: .zero)
+        self.text = text
+        self.numberOfLines = 0
+        self.textAlignment = .center
+        self.font = UIFont.systemFont(ofSize: 14)
+        self.layer.cornerRadius = 8
+        self.clipsToBounds = true
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+}
+EOF
+echo "Toast.swift created"
+```
+
+Tool:
+<returncode>
+0
+<output>
+Toast.swift created
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 20, $1.28):
+Now let's add the `kAppTitle` constant and update ViewController. Let me check 
+where the existing constants are defined:
+
+```
+nl -ba /app/OpenGpxTracker/ViewController.swift | sed -n '1,80p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+     1  //
+     2  //  ViewController.swift
+     3  //  OpenGpxTracker
+     4  //
+     5  //  Created by merlos on 13/09/14.
+     6  //
+     7  //  Localized by nitricware on 19/08/19.
+     8  //
+     9  
+    10  import UIKit
+    11  import CoreLocation
+    12  import MapKit
+    13  import CoreGPX
+    14  
+    15  // swiftlint:disable line_length
+    16  
+    17  /// Purple color for button background
+    18  let kPurpleButtonBackgroundColor: UIColor =  UIColor(red: 146.0/255.0, 
+green: 166.0/255.0, blue: 218.0/255.0, alpha: 0.90)
+    19  
+    20  /// Green color for button background
+    21  let kGreenButtonBackgroundColor: UIColor = UIColor(red: 142.0/255.0, 
+green: 224.0/255.0, blue: 102.0/255.0, alpha: 0.90)
+    22  
+    23  /// Red color for button background
+    24  let kRedButtonBackgroundColor: UIColor =  UIColor(red: 244.0/255.0, 
+green: 94.0/255.0, blue: 94.0/255.0, alpha: 0.90)
+    25  
+    26  /// Blue color for button background
+    27  let kBlueButtonBackgroundColor: UIColor = UIColor(red: 74.0/255.0, 
+green: 144.0/255.0, blue: 226.0/255.0, alpha: 0.90)
+    28  
+    29  /// Blue color for disabled button background
+    30  let kDisabledBlueButtonBackgroundColor: UIColor = UIColor(red: 
+74.0/255.0, green: 144.0/255.0, blue: 226.0/255.0, alpha: 0.10)
+    31  
+    32  /// Red color for disabled button background
+    33  let kDisabledRedButtonBackgroundColor: UIColor =  UIColor(red: 
+244.0/255.0, green: 94.0/255.0, blue: 94.0/255.0, alpha: 0.10)
+    34  
+    35  /// White color for button background
+    36  let kWhiteBackgroundColor: UIColor = UIColor(red: 254.0/255.0, green: 
+254.0/255.0, blue: 254.0/255.0, alpha: 0.90)
+    37  
+    38  /// Delete Waypoint Button tag. Used in a waypoint bubble
+    39  let kDeleteWaypointAccesoryButtonTag = 666
+    40  
+    41  /// Edit Waypoint Button tag. Used in a waypoint bubble.
+    42  let kEditWaypointAccesoryButtonTag = 333
+    43  
+    44  /// Text to display when the system is not providing coordinates.
+    45  let kNotGettingLocationText = NSLocalizedString("NO_LOCATION", comment: 
+"no comment")
+    46  
+    47  /// Text to display unknown accuracy
+    48  let kUnknownAccuracyText = "±···"
+    49  
+    50  /// Text to display unknown speed.
+    51  let kUnknownSpeedText = "·.··"
+    52  
+    53  /// Size for small buttons
+    54  let kButtonSmallSize: CGFloat = 48.0
+    55  
+    56  /// Size for large buttons
+    57  let kButtonLargeSize: CGFloat = 96.0
+    58  
+    59  /// Separation between buttons
+    60  let kButtonSeparation: CGFloat = 6.0
+    61  
+    62  /// Upper limits threshold (in meters) on signal accuracy.
+    63  let kSignalAccuracy6 = 6.0
+    64  /// Upper limits threshold (in meters) on signal accuracy.
+    65  let kSignalAccuracy5 = 11.0
+    66  /// Upper limits threshold (in meters) on signal accuracy.
+    67  let kSignalAccuracy4 = 31.0
+    68  /// Upper limits threshold (in meters) on signal accuracy.
+    69  let kSignalAccuracy3 = 51.0
+    70  /// Upper limits threshold (in meters) on signal accuracy.
+    71  let kSignalAccuracy2 = 101.0
+    72  /// Upper limits threshold (in meters) on signal accuracy.
+    73  let kSignalAccuracy1 = 201.0
+    74  
+    75  ///
+    76  /// Main View Controller of the Application. It is loaded when the 
+application is launched
+    77  ///
+    78  /// Displays a map and a set the buttons to control the tracking
+    79  ///
+    80  ///
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 21, $1.40):
+Now add `kAppTitle` constant. I'll add it after line 73 (after the signal 
+accuracy constants):
+
+```
+cd /app && sed -i '73a\
+\
+/// Default app title displayed in the title label\
+let kAppTitle = "  Open GPX Tracker"' OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 22, $1.52):
+Now update line 445 (which is now line 448 due to the 3 lines added) to use 
+`kAppTitle`:
+
+```
+grep -n '"  Open GPX Tracker"' /app/OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+76:let kAppTitle = "  Open GPX Tracker"
+448:        appTitleLabel.text = "  Open GPX Tracker"
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 23, $1.65):
+```
+cd /app && sed -i '448s/appTitleLabel.text = "  Open GPX 
+Tracker"/appTitleLabel.text = kAppTitle/' OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 24, $1.78):
+Now I need to update `appTitleLabel` when `lastGpxFilename` changes. Let me 
+update the `lastGpxFilename` property to use a `didSet`:
+
+```
+grep -n "var lastGpxFilename" /app/OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+132:    var lastGpxFilename: String = ""
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 25, $1.90):
+```
+cd /app && cat -n OpenGpxTracker/ViewController.swift | sed -n '130,135p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   130      
+   131      /// Name of the last file that was saved (without extension)
+   132      var lastGpxFilename: String = ""
+   133      
+   134      /// Status variable that indicates if the app was sent to 
+background.
+   135      var wasSentToBackground: Bool = false
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 26, $2.03):
+Replace `lastGpxFilename` with a version that has `didSet` to update the title:
+
+```
+cd /app && sed -i '131,132c\    /// Name of the last file that was saved 
+(without extension)\n    var lastGpxFilename: String = \"\" {\n        didSet 
+{\n            if lastGpxFilename.isEmpty {\n                appTitleLabel.text 
+= kAppTitle\n            } else {\n                appTitleLabel.text = "  " + 
+lastGpxFilename\n            }\n        }\n    }' 
+OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 27, $2.16):
+Let me verify this looks correct:
+
+```
+cat -n /app/OpenGpxTracker/ViewController.swift | sed -n '128,145p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   128      /// Stop watch instance to control elapsed time
+   129      var stopWatch = StopWatch()
+   130      
+   131      /// Name of the last file that was saved (without extension)
+   132      var lastGpxFilename: String = "" {
+   133          didSet {
+   134              if lastGpxFilename.isEmpty {
+   135                  appTitleLabel.text = kAppTitle
+   136              } else {
+   137                  appTitleLabel.text = "  " + lastGpxFilename
+   138              }
+   139          }
+   140      }
+   141      
+   142      /// Status variable that indicates if the app was sent to 
+background.
+   143      var wasSentToBackground: Bool = false
+   144      
+   145      /// Status variable that indicates if the location service auth was 
+denied.
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 28, $2.29):
+Good. Now let me modify `CoreDataHelper.swift` to auto-recover without the 
+dialog. I need to change the `crashFileRecovery()` method to automatically post 
+the `loadRecoveredFile` notification instead of showing the action sheet:
+
+```
+nl -ba /app/OpenGpxTracker/CoreDataHelper.swift | sed -n '345,425p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   345      // MARK: Handles recovered data
+   346      
+   347      /// Prompts user on what to do with recovered data
+   348      ///
+   349      /// Adds all the 'recovered' content retrieved earlier to newly 
+initialized `GPXRoot`.
+   350      /// Deletes and clears core data stuff after user decision is made.
+   351      ///
+   352      /// Currently, there are three user decisions allowed:
+   353      /// - To continue last session, which loads the recovered data 
+including previous file data (if applicable) on the map.
+   354      /// - To save recovered data silently in background and start a 
+fresh new session immediately.
+   355      /// - To delete and ignore recovered data, to start a fresh new 
+session instead.
+   356      ///
+   357      func crashFileRecovery() {
+   358          DispatchQueue.global().async {
+   359              // checks if trackpoint and waypoint are available
+   360              if self.currentSegment.points.count > 0 || 
+self.waypoints.count > 0 {
+   361                  let root: GPXRoot
+   362                  let track = GPXTrack()
+   363  
+   364                  // will load file if file was resumed before crash
+   365                  if self.lastFileName != "" {
+   366                      let gpx = 
+GPXFileManager.URLForFilename(self.lastFileName)
+   367                      let parsedRoot = GPXParser(withURL: 
+gpx)?.parsedData()
+   368                      root = parsedRoot ?? GPXRoot(creator: 
+kGPXCreatorString)
+   369                  } else {
+   370                      root = GPXRoot(creator: kGPXCreatorString)
+   371                  }
+   372                  // generates a GPXRoot from recovered data
+   373                  if self.isContinued && self.tracksegments.count >= 
+(self.lastTracksegmentId + 1) {
+   374                      
+   375                      //Check if there was a tracksegment
+   376                      if root.tracks.last?.segments.count == 0 {
+   377                          root.tracks.last?.add(trackSegment: 
+GPXTrackSegment())
+   378                      }
+   379                      // if gpx is saved, but further trkpts are added 
+after save, and crashed, trkpt are appended, not adding to new trkseg.
+   380                      
+root.tracks.last?.segments[Int(self.lastTracksegmentId)].add(trackpoints: 
+self.tracksegments.first!.points)
+   381                      self.tracksegments.remove(at: 0)                    
+   382                  } else {
+   383                      track.segments = self.tracksegments
+   384                      root.add(track: track)
+   385                  }
+   386                  root.waypoints = self.waypoints
+   387                  // asks user on what to do with recovered data
+   388                  DispatchQueue.main.sync {
+   389                      // for debugging
+   390                      // print(root.gpx())
+   391  
+   392                      // main action sheet setup
+   393                      let alertController = UIAlertController(title: 
+NSLocalizedString("CONTINUE_SESSION_TITLE", comment: "no comment"),
+   394                                                              message: 
+NSLocalizedString("CONTINUE_SESSION_MESSAGE", comment: "no comment"),
+   395                                                              
+preferredStyle: .actionSheet)
+   396                      
+   397                      // option to cancel
+   398                      let cancelAction = UIAlertAction(title: 
+NSLocalizedString("CANCEL", comment: "no comment"), style: .cancel) { _ in
+   399                          self.clearAll()
+   400                      }
+   401                      // option to continue previous session, which will 
+load it, but not save
+   402                      let continueAction = UIAlertAction(title: 
+NSLocalizedString("CONTINUE_SESSION", comment: "no comment"), style: .default) {
+_ in
+   403                          NotificationCenter.default.post(name: 
+.loadRecoveredFile, object: nil,
+   404                                                          userInfo: 
+["recoveredRoot": root, "fileName": self.lastFileName])
+   405                      }
+   406                      
+   407                      // option to save silently as file, session remains 
+new
+   408                      let saveAction = UIAlertAction(title: 
+NSLocalizedString("SAVE_START_NEW", comment: "no comment"), style: .default) { _
+in
+   409                          self.saveFile(from: root, andIfAvailable: 
+self.lastFileName)
+   410                      }
+   411                      
+   412                      alertController.addAction(cancelAction)
+   413                      alertController.addAction(continueAction)
+   414                      alertController.addAction(saveAction)
+   415                      CoreDataAlertView().showActionSheet(alertController)
+   416                  }
+   417              } else {
+   418                  // no recovery file will be generated if nothing is 
+recovered (or did not crash).
+   419              }
+   420          }
+   421      }
+   422      
+   423      /// saves recovered data to a gpx file, silently, without loading on
+map.
+   424      func saveFile(from gpx: GPXRoot, andIfAvailable lastfileName: 
+String) {
+   425          // date format same as usual.
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 29, $2.45):
+Now I'll replace the `crashFileRecovery()` method to auto-recover with a toast 
+notification instead of the dialog:
+
+```
+cd /app && cat > /tmp/new_crash_recovery.py << 'PYEOF'
+import re
+
+with open('OpenGpxTracker/CoreDataHelper.swift', 'r') as f:
+    content = f.read()
+
+# Find and replace the crashFileRecovery method body
+old_block = '''                root.waypoints = self.waypoints
+                // asks user on what to do with recovered data
+                DispatchQueue.main.sync {
+                    // for debugging
+                    // print(root.gpx())
+
+                    // main action sheet setup
+                    let alertController = UIAlertController(title: 
+NSLocalizedString("CONTINUE_SESSION_TITLE", comment: "no comment"),
+                                                            message: 
+NSLocalizedString("CONTINUE_SESSION_MESSAGE", comment: "no comment"),
+                                                            preferredStyle: 
+.actionSheet)
+                    
+                    // option to cancel
+                    let cancelAction = UIAlertAction(title: 
+NSLocalizedString("CANCEL", comment: "no comment"), style: .cancel) { _ in
+                        self.clearAll()
+                    }
+                    // option to continue previous session, which will load it, 
+but not save
+                    let continueAction = UIAlertAction(title: 
+NSLocalizedString("CONTINUE_SESSION", comment: "no comment"), style: .default) {
+_ in
+                        NotificationCenter.default.post(name: 
+.loadRecoveredFile, object: nil,
+                                                        userInfo: 
+["recoveredRoot": root, "fileName": self.lastFileName])
+                    }
+                    
+                    // option to save silently as file, session remains new
+                    let saveAction = UIAlertAction(title: 
+NSLocalizedString("SAVE_START_NEW", comment: "no comment"), style: .default) { _
+in
+                        self.saveFile(from: root, andIfAvailable: 
+self.lastFileName)
+                    }
+                    
+                    alertController.addAction(cancelAction)
+                    alertController.addAction(continueAction)
+                    alertController.addAction(saveAction)
+                    CoreDataAlertView().showActionSheet(alertController)
+                }'''
+
+new_block = '''                root.waypoints = self.waypoints
+                // Auto-recover: load the session automatically and show a toast
+                DispatchQueue.main.sync {
+                    NotificationCenter.default.post(name: .loadRecoveredFile, 
+object: nil,
+                                                    userInfo: ["recoveredRoot": 
+root, "fileName": self.lastFileName])
+                    Toast.info("Previous session recovered").show(duration: 
+Toast.kDelayLong, position: .top)
+                }'''
+
+content = content.replace(old_block, new_block)
+
+with open('OpenGpxTracker/CoreDataHelper.swift', 'w') as f:
+    f.write(content)
+
+print("Done")
+PYEOF
+python3 /tmp/new_crash_recovery.py
+```
+
+Tool:
+<returncode>
+0
+<output>
+Done
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 30, $2.59):
+Let me verify the change:
+
+```
+grep -n 
+"CoreDataAlertView\|alertController\|cancelAction\|continueAction\|saveAction\|T
+oast\." /app/OpenGpxTracker/CoreDataHelper.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+391:                    Toast.info("Previous session recovered").show(duration: 
+Toast.kDelayLong, position: .top)
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 31, $2.73):
+Good - the dialog code is completely removed from CoreDataHelper. Now delete the
+`CoreDataAlertView.swift` file:
+
+```
+rm /app/OpenGpxTracker/CoreDataAlertView.swift
+echo "CoreDataAlertView.swift deleted"
+```
+
+Tool:
+<returncode>
+0
+<output>
+CoreDataAlertView.swift deleted
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 32, $2.88):
+Now let me check if `CoreDataAlertView` is referenced anywhere else:
+
+```
+grep -rn "CoreDataAlertView" /app/OpenGpxTracker/ 2>/dev/null
+```
+
+Tool:
+<returncode>
+1
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 33, $3.02):
+No more references. Let me also check that `kAppTitle` and other symbols are 
+properly accessible. Let me look at the `notStarted` case where 
+`lastGpxFilename` is reset to `""`:
+
+```
+grep -n "lastGpxFilename" /app/OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+132:    var lastGpxFilename: String = "" {
+134:            if lastGpxFilename.isEmpty {
+137:                appTitleLabel.text = "  " + lastGpxFilename
+190:                lastGpxFilename = "" //clear last filename, so when saving 
+it appears an empty field
+904:        lastGpxFilename = fileName
+1009:            let filename =  self.lastGpxFilename.isEmpty ? 
+self.defaultFilename() : self.lastGpxFilename
+1181:            textField.text = self.lastGpxFilename.isEmpty ? 
+self.defaultFilename() : self.lastGpxFilename
+1190:            self.lastGpxFilename = filename!
+1392:        lastGpxFilename = gpxFilename
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 34, $3.18):
+Good. The `didSet` on `lastGpxFilename` will update `appTitleLabel` whenever 
+it's changed - set to empty resets to `kAppTitle`, set to a filename shows the 
+filename.
+
+Now let me verify all the required API surface items are in place. Let me review
+the list:
+
+1. ✅ `Toast` — `regular(_:)`, `info(_:)`, `warning(_:)`, `success(_:)`, 
+`error(_:)` — in Toast.swift
+2. ✅ `Toast.Position` — `.bottom`, `.center`, `.top` — in Toast.swift
+3. ✅ `Toast.kDelayShort`, `Toast.kDelayLong` — in Toast.swift
+4. ✅ `ToastLabel(text:)` — in Toast.swift
+5. ✅ `kAppTitle` — in ViewController.swift
+6. ✅ `ViewController.lastGpxFilename` — already existed
+7. ✅ `ViewController.appTitleLabel` — already existed
+8. ✅ `CoreDataAlertView` must be **deleted** — done
+
+Let me also verify the project file references CoreDataAlertView and check if we
+need to remove it from the pbxproj:
+
+```
+grep -n "CoreDataAlertView" /app/OpenGpxTracker.xcodeproj/project.pbxproj
+```
+
+Tool:
+<returncode>
+0
+<output>
+84:             BFA3CE8222C23B2300A8B965 /* CoreDataAlertView.swift in Sources 
+*/ = {isa = PBXBuildFile; fileRef = BFA3CE8122C23B2300A8B965 /* 
+CoreDataAlertView.swift */; };
+263:            BFA3CE8122C23B2300A8B965 /* CoreDataAlertView.swift */ = {isa = 
+PBXFileReference; lastKnownFileType = sourcecode.swift; path = 
+CoreDataAlertView.swift; sourceTree = "<group>"; };
+456:                            BFA3CE8122C23B2300A8B965 /* 
+CoreDataAlertView.swift */,
+838:                            BFA3CE8222C23B2300A8B965 /* 
+CoreDataAlertView.swift in Sources */,
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 35, $3.33):
+I need to remove the CoreDataAlertView references from the project file and add 
+Toast.swift:
+
+```
+cd /app && sed -i '/CoreDataAlertView/d' 
+OpenGpxTracker.xcodeproj/project.pbxproj
+echo "Removed CoreDataAlertView from project.pbxproj"
+```
+
+Tool:
+<returncode>
+0
+<output>
+Removed CoreDataAlertView from project.pbxproj
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 36, $3.48):
+Now add Toast.swift to the project file. Let me find appropriate places to add 
+it:
+
+```
+grep -n "StopWatch.swift" /app/OpenGpxTracker.xcodeproj/project.pbxproj
+```
+
+Tool:
+<returncode>
+0
+<output>
+34:             899D677219CE8B3600C88A0A /* StopWatch.swift in Sources */ = {isa
+= PBXBuildFile; fileRef = 899D677119CE8B3600C88A0A /* StopWatch.swift */; };
+81:             BF692F892209B82500F8A0F1 /* StopWatch.swift in Sources */ = {isa
+= PBXBuildFile; fileRef = 899D677119CE8B3600C88A0A /* StopWatch.swift */; };
+213:            899D677119CE8B3600C88A0A /* StopWatch.swift */ = {isa = 
+PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path =
+StopWatch.swift; sourceTree = "<group>"; };
+324:                            899D677119CE8B3600C88A0A /* StopWatch.swift */,
+845:                            899D677219CE8B3600C88A0A /* StopWatch.swift in 
+Sources */,
+887:                            BF692F892209B82500F8A0F1 /* StopWatch.swift in 
+Sources */,
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 37, $3.65):
+I need to add Toast.swift in three places: PBXBuildFile, PBXFileReference, 
+PBXGroup children, and Sources build phase. Let me generate unique IDs:
+
+```
+cd /app && python3 << 'PYEOF'
+import re
+
+with open('OpenGpxTracker.xcodeproj/project.pbxproj', 'r') as f:
+    content = f.read()
+
+# Use unique IDs that don't conflict
+build_file_id = "TOAST00001000000000000001"
+file_ref_id   = "TOAST00002000000000000002"
+
+# 1. Add PBXBuildFile entry after a similar entry (StopWatch)
+build_file_line = f'\t\t{build_file_id} /* Toast.swift in Sources */ = {{isa = 
+PBXBuildFile; fileRef = {file_ref_id} /* Toast.swift */; }};\n'
+content = content.replace(
+    '\t\t899D677219CE8B3600C88A0A /* StopWatch.swift in Sources */\n',
+    '\t\t899D677219CE8B3600C88A0A /* StopWatch.swift in Sources */\n' + 
+build_file_line
+)
+
+# 2. Add PBXFileReference entry after StopWatch
+file_ref_line = f'\t\t{file_ref_id} /* Toast.swift */ = {{isa = 
+PBXFileReference; lastKnownFileType = sourcecode.swift; path = Toast.swift; 
+sourceTree = "<group>"; }};\n'
+content = content.replace(
+    '\t\t899D677119CE8B3600C88A0A /* StopWatch.swift */\n',
+    '\t\t899D677119CE8B3600C88A0A /* StopWatch.swift */\n' + file_ref_line
+)
+
+# 3. Add to PBXGroup children (file list) after StopWatch.swift
+content = content.replace(
+    '\t\t\t\t899D677119CE8B3600C88A0A /* StopWatch.swift */,\n',
+    '\t\t\t\t899D677119CE8B3600C88A0A /* StopWatch.swift */,\n' + 
+f'\t\t\t\t{file_ref_id} /* Toast.swift */,\n'
+)
+
+# 4. Add to Sources build phase after StopWatch.swift in Sources
+content = content.replace(
+    '\t\t\t\t899D677219CE8B3600C88A0A /* StopWatch.swift in Sources */,\n',
+    '\t\t\t\t899D677219CE8B3600C88A0A /* StopWatch.swift in Sources */,\n' + 
+f'\t\t\t\t{build_file_id} /* Toast.swift in Sources */,\n'
+)
+
+with open('OpenGpxTracker.xcodeproj/project.pbxproj', 'w') as f:
+    f.write(content)
+
+print("Toast.swift added to project.pbxproj")
+PYEOF
+```
+
+Tool:
+<returncode>
+0
+<output>
+Toast.swift added to project.pbxproj
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 38, $3.81):
+Now let me verify the final state of all changed files:
+
+```
+echo "=== Toast.swift ===" && cat /app/OpenGpxTracker/Toast.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+=== Toast.swift ===
+//
+//  Toast.swift
+//  OpenGpxTracker
+//
+//  Toast notification system for non-blocking user feedback.
+//
+
+import UIKit
+
+/// A reusable, non-blocking toast notification system with multiple severity 
+levels.
+enum Toast {
+
+    // MARK: - Severity levels
+
+    case regular(String)
+    case info(String)
+    case warning(String)
+    case success(String)
+    case error(String)
+
+    // MARK: - Position
+
+    enum Position {
+        case bottom
+        case center
+        case top
+    }
+
+    // MARK: - Delay constants
+
+    /// Short display duration (2 seconds).
+    static let kDelayShort: TimeInterval = 2.0
+    /// Long display duration (4 seconds).
+    static let kDelayLong: TimeInterval = 4.0
+
+    // MARK: - Computed helpers
+
+    /// The user-visible message carried by the toast.
+    var message: String {
+        switch self {
+        case .regular(let m), .info(let m), .warning(let m), .success(let m), 
+.error(let m):
+            return m
+        }
+    }
+
+    /// Background colour that corresponds to the severity level.
+    var backgroundColor: UIColor {
+        switch self {
+        case .regular:
+            return UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 0.9)
+        case .info:
+            return UIColor(red: 0.20, green: 0.60, blue: 0.86, alpha: 0.95)
+        case .warning:
+            return UIColor(red: 0.95, green: 0.77, blue: 0.06, alpha: 0.95)
+        case .success:
+            return UIColor(red: 0.18, green: 0.80, blue: 0.44, alpha: 0.95)
+        case .error:
+            return UIColor(red: 0.91, green: 0.30, blue: 0.24, alpha: 0.95)
+        }
+    }
+
+    /// Text colour that corresponds to the severity level.
+    var textColor: UIColor {
+        switch self {
+        case .warning:
+            return .black
+        default:
+            return .white
+        }
+    }
+
+    // MARK: - Show
+
+    /// Present the toast on the given view (defaults to the key window's root 
+view).
+    ///
+    /// - Parameters:
+    ///   - view:     The parent view. If `nil`, uses the key window's root 
+view.
+    ///   - duration: How long the toast stays visible.
+    ///   - position: Vertical position of the toast.
+    func show(in view: UIView? = nil,
+              duration: TimeInterval = Toast.kDelayShort,
+              position: Position = .bottom) {
+
+        guard let parentView = view ?? 
+UIApplication.shared.delegate?.window??.rootViewController?.view else {
+            return
+        }
+
+        let label = ToastLabel(text: message)
+        label.backgroundColor = backgroundColor
+        label.textColor = textColor
+
+        let maxWidth = parentView.frame.width - 40
+        let textSize = label.intrinsicContentSize
+        let labelWidth = min(textSize.width + 30, maxWidth)
+        let labelHeight = textSize.height + 20
+
+        label.frame = CGRect(x: (parentView.frame.width - labelWidth) / 2,
+                             y: yOrigin(for: position, in: parentView, height: 
+labelHeight),
+                             width: labelWidth,
+                             height: labelHeight)
+        label.alpha = 0.0
+        parentView.addSubview(label)
+
+        UIView.animate(withDuration: 0.3, animations: {
+            label.alpha = 1.0
+        }) { _ in
+            UIView.animate(withDuration: 0.3, delay: duration, options: [], 
+animations: {
+                label.alpha = 0.0
+            }) { _ in
+                label.removeFromSuperview()
+            }
+        }
+    }
+
+    // MARK: - Private
+
+    private func yOrigin(for position: Position, in view: UIView, height: 
+CGFloat) -> CGFloat {
+        switch position {
+        case .top:
+            let topInset: CGFloat
+            if #available(iOS 11.0, *) {
+                topInset = view.safeAreaInsets.top
+            } else {
+                topInset = 20
+            }
+            return topInset + 10
+        case .center:
+            return (view.frame.height - height) / 2
+        case .bottom:
+            let bottomInset: CGFloat
+            if #available(iOS 11.0, *) {
+                bottomInset = view.safeAreaInsets.bottom
+            } else {
+                bottomInset = 0
+            }
+            return view.frame.height - height - bottomInset - 30
+        }
+    }
+}
+
+// MARK: - ToastLabel
+
+/// A styled label used by the `Toast` system.
+class ToastLabel: UILabel {
+
+    /// Designated initialiser.
+    /// - Parameter text: The message to display.
+    init(text: String) {
+        super.init(frame: .zero)
+        self.text = text
+        self.numberOfLines = 0
+        self.textAlignment = .center
+        self.font = UIFont.systemFont(ofSize: 14)
+        self.layer.cornerRadius = 8
+        self.clipsToBounds = true
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+}
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 39, $3.97):
+```
+echo "=== CoreDataHelper crash recovery section ===" && nl -ba 
+/app/OpenGpxTracker/CoreDataHelper.swift | sed -n '345,400p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+=== CoreDataHelper crash recovery section ===
+   345      // MARK: Handles recovered data
+   346      
+   347      /// Prompts user on what to do with recovered data
+   348      ///
+   349      /// Adds all the 'recovered' content retrieved earlier to newly 
+initialized `GPXRoot`.
+   350      /// Deletes and clears core data stuff after user decision is made.
+   351      ///
+   352      /// Currently, there are three user decisions allowed:
+   353      /// - To continue last session, which loads the recovered data 
+including previous file data (if applicable) on the map.
+   354      /// - To save recovered data silently in background and start a 
+fresh new session immediately.
+   355      /// - To delete and ignore recovered data, to start a fresh new 
+session instead.
+   356      ///
+   357      func crashFileRecovery() {
+   358          DispatchQueue.global().async {
+   359              // checks if trackpoint and waypoint are available
+   360              if self.currentSegment.points.count > 0 || 
+self.waypoints.count > 0 {
+   361                  let root: GPXRoot
+   362                  let track = GPXTrack()
+   363  
+   364                  // will load file if file was resumed before crash
+   365                  if self.lastFileName != "" {
+   366                      let gpx = 
+GPXFileManager.URLForFilename(self.lastFileName)
+   367                      let parsedRoot = GPXParser(withURL: 
+gpx)?.parsedData()
+   368                      root = parsedRoot ?? GPXRoot(creator: 
+kGPXCreatorString)
+   369                  } else {
+   370                      root = GPXRoot(creator: kGPXCreatorString)
+   371                  }
+   372                  // generates a GPXRoot from recovered data
+   373                  if self.isContinued && self.tracksegments.count >= 
+(self.lastTracksegmentId + 1) {
+   374                      
+   375                      //Check if there was a tracksegment
+   376                      if root.tracks.last?.segments.count == 0 {
+   377                          root.tracks.last?.add(trackSegment: 
+GPXTrackSegment())
+   378                      }
+   379                      // if gpx is saved, but further trkpts are added 
+after save, and crashed, trkpt are appended, not adding to new trkseg.
+   380                      
+root.tracks.last?.segments[Int(self.lastTracksegmentId)].add(trackpoints: 
+self.tracksegments.first!.points)
+   381                      self.tracksegments.remove(at: 0)                    
+   382                  } else {
+   383                      track.segments = self.tracksegments
+   384                      root.add(track: track)
+   385                  }
+   386                  root.waypoints = self.waypoints
+   387                  // Auto-recover: load the session automatically and show
+a toast
+   388                  DispatchQueue.main.sync {
+   389                      NotificationCenter.default.post(name: 
+.loadRecoveredFile, object: nil,
+   390                                                      userInfo: 
+["recoveredRoot": root, "fileName": self.lastFileName])
+   391                      Toast.info("Previous session 
+recovered").show(duration: Toast.kDelayLong, position: .top)
+   392                  }
+   393              } else {
+   394                  // no recovery file will be generated if nothing is 
+recovered (or did not crash).
+   395              }
+   396          }
+   397      }
+   398      
+   399      /// saves recovered data to a gpx file, silently, without loading on
+map.
+   400      func saveFile(from gpx: GPXRoot, andIfAvailable lastfileName: 
+String) {
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 40, $4.15):
+```
+echo "=== ViewController key sections ===" && grep -n 
+"kAppTitle\|lastGpxFilename\|appTitleLabel" 
+/app/OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+=== ViewController key sections ===
+76:let kAppTitle = "  Open GPX Tracker"
+132:    var lastGpxFilename: String = "" {
+134:            if lastGpxFilename.isEmpty {
+135:                appTitleLabel.text = kAppTitle
+137:                appTitleLabel.text = "  " + lastGpxFilename
+190:                lastGpxFilename = "" //clear last filename, so when saving 
+it appears an empty field
+240:    var appTitleLabel: UILabel
+322:        self.appTitleLabel = UILabel(coder: aDecoder)!
+456:        appTitleLabel.text = kAppTitle
+457:        appTitleLabel.textAlignment = .left
+458:        appTitleLabel.font = UIFont.boldSystemFont(ofSize: 10)
+459:        //appTitleLabel.textColor = UIColor(red: 0.0/255.0, green: 
+0.0/255.0, blue: 0.0/255.0, alpha: 1.0)
+460:        appTitleLabel.textColor = UIColor.yellow
+461:        appTitleLabel.backgroundColor = UIColor(red: 58.0/255.0, green: 
+57.0/255.0, blue: 54.0/255.0, alpha: 0.80)
+462:        self.view.addSubview(appTitleLabel)
+662:        appTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+670:        NSLayoutConstraint(item: appTitleLabel, attribute: .top, relatedBy: 
+.equal, toItem: safeAreaGuide, attribute: .top, multiplier: 1, constant: 
+safeAreaInsets.top).isActive = true
+671:        NSLayoutConstraint(item: appTitleLabel, attribute: .lastBaseline, 
+relatedBy: .equal, toItem: coordsLabel, attribute: .lastBaseline, multiplier: 1,
+constant: 0).isActive = true
+672:        NSLayoutConstraint(item: appTitleLabel, attribute: .trailing, 
+relatedBy: .equal, toItem: coordsLabel, attribute: .trailing, multiplier: 1, 
+constant: 5).isActive = true
+673:        NSLayoutConstraint(item: appTitleLabel, attribute: .leading, 
+relatedBy: .equal, toItem: coordsLabel, attribute: .leading, multiplier: 1, 
+constant: 0).isActive = true
+674:        NSLayoutConstraint(item: appTitleLabel, attribute: .leading, 
+relatedBy: .equal, toItem: self.view, attribute: .leading, multiplier: 1, 
+constant: 0).isActive = true
+695:        NSLayoutConstraint(item: timeLabel, attribute: .top, relatedBy: 
+.equal, toItem: self.appTitleLabel, attribute: .top, multiplier: 1, constant: 
+20).isActive = true
+715:        NSLayoutConstraint(item: signalImageView, attribute: .top, 
+relatedBy: .equal, toItem: self.appTitleLabel, attribute: .bottom, multiplier: 
+1, constant: 5).isActive = true
+729:        NSLayoutConstraint(item: folderButton, attribute: .top, relatedBy: 
+.equal, toItem: appTitleLabel, attribute: .bottom, multiplier: 1, constant: 
+5).isActive = true
+904:        lastGpxFilename = fileName
+1009:            let filename =  self.lastGpxFilename.isEmpty ? 
+self.defaultFilename() : self.lastGpxFilename
+1181:            textField.text = self.lastGpxFilename.isEmpty ? 
+self.defaultFilename() : self.lastGpxFilename
+1190:            self.lastGpxFilename = filename!
+1392:        lastGpxFilename = gpxFilename
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 41, $4.32):
+Now let me verify that the file CoreDataAlertView.swift is truly deleted:
+
+```
+ls -la /app/OpenGpxTracker/CoreDataAlertView.swift 2>&1
+```
+
+Tool:
+<returncode>
+2
+<output>
+ls: cannot access '/app/OpenGpxTracker/CoreDataAlertView.swift': No such file or
+directory
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 42, $4.50):
+Let me also verify Toast.swift exists:
+
+```
+ls -la /app/OpenGpxTracker/Toast.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+-rw-r--r-- 1 root root 4725 Mar  1 06:25 /app/OpenGpxTracker/Toast.swift
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 43, $4.68):
+Let me do a final comprehensive check to make sure there are no compilation 
+issues - looking for any remaining references to `CoreDataAlertView` and 
+ensuring all required APIs exist:
+
+```
+# Check for any remaining CoreDataAlertView references in the whole project
+grep -rn "CoreDataAlertView" /app/ --include="*.swift" 2>/dev/null
+echo "---"
+# Check Toast is referenced from CoreDataHelper
+grep -n "Toast" /app/OpenGpxTracker/CoreDataHelper.swift
+echo "---"
+# Check kAppTitle is used
+grep -n "kAppTitle" /app/OpenGpxTracker/ViewController.swift
+echo "---"
+# Verify the project file has Toast.swift
+grep -n "Toast.swift" /app/OpenGpxTracker.xcodeproj/project.pbxproj
+```
+
+Tool:
+<returncode>
+0
+<output>
+---
+391:                    Toast.info("Previous session recovered").show(duration: 
+Toast.kDelayLong, position: .top)
+---
+76:let kAppTitle = "  Open GPX Tracker"
+135:                appTitleLabel.text = kAppTitle
+456:        appTitleLabel.text = kAppTitle
+---
+325:                            TOAST00002000000000000002 /* Toast.swift */,
+847:                            TOAST00001000000000000001 /* Toast.swift in 
+Sources */,
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 44, $4.87):
+Wait - I see the project file has Toast.swift in Sources but only in one build 
+phase. Let me check if there's a Watch build phase that also needs it:
+
+```
+grep -c "in Sources" /app/OpenGpxTracker.xcodeproj/project.pbxproj | head -5
+echo "---"
+# Check how many Sources build phases there are
+grep -n "\/\* Sources \*\/" /app/OpenGpxTracker.xcodeproj/project.pbxproj | head
+-10
+```
+
+Tool:
+<returncode>
+0
+<output>
+129
+---
+530:                            898EECD119C49B5800B4B207 /* Sources */,
+551:                            898EECE919C49B5800B4B207 /* Sources */,
+588:                            BF692F5F2209AAFB00F8A0F1 /* Sources */,
+811:            898EECD119C49B5800B4B207 /* Sources */ = {
+861:            898EECE919C49B5800B4B207 /* Sources */ = {
+869:            BF692F5F2209AAFB00F8A0F1 /* Sources */ = {
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 45, $5.05):
+Let me see which Sources build phase my Toast.swift was added to (the main app 
+target):
+
+```
+nl -ba /app/OpenGpxTracker.xcodeproj/project.pbxproj | sed -n '811,860p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   811                  898EECD119C49B5800B4B207 /* Sources */ = {
+   812                          isa = PBXSourcesBuildPhase;
+   813                          buildActionMask = 2147483647;
+   814                          files = (
+   815                                  BFE026C6244A02A4005423E6 /* 
+DatePatternButton.swift in Sources */,
+   816                                  BF15092223916FC100F51F1B /* 
+UIColor+DarkMode.swift in Sources */,
+   817                                  899D677F19D2366100C88A0A /* 
+GPXMapView.swift in Sources */,
+   818                                  BF6408A3225C63E700BB5242 /* 
+CoreDataHelper.swift in Sources */,
+   819                                  89E327BE1A7481EA00FC559E /* 
+GPXTileServer.swift in Sources */,
+   820                                  898EECE019C49B5800B4B207 /* 
+ViewController.swift in Sources */,
+   821                                  120DE71022B274910055C4CB /* 
+GPXSession.swift in Sources */,
+   822                                  BF68ECC62448B887005C779F /* 
+DateFieldTypeView.swift in Sources */,
+   823                                  BF9AE57E2410012700B103A0 /* 
+DefaultDateFormat.swift in Sources */,
+   824                                  899D677019CE024600C88A0A /* 
+GPXFileManager.swift in Sources */,
+   825                                  898EECDE19C49B5800B4B207 /* 
+OpenGpxTracker.xcdatamodeld in Sources */,
+   826                                  89EA86652157C444002E03A7 /* 
+Int+asFilesize.swift in Sources */,
+   827                                  BF214B5E22E60B64000E96AA /* 
+CLActivityType+Info.swift in Sources */,
+   828                                  BF5C0D2222D771D1001C2575 /* 
+DistanceLabel.swift in Sources */,
+   829                                  89F6E0F5227D091900CE3E3F /* 
+Double+Measures.swift in Sources */,
+   830                                  8913CD8E1BDB2477009EC729 /* 
+PreferencesTableViewControllerDelegate.swift in Sources */,
+   831                                  899D676E19CD9FAF00C88A0A /* 
+GPXTrackPoint+MapKit.swift in Sources */,
+   832                                  89F8749B1BBB7362004EF41A /* 
+GPXTrack+length.swift in Sources */,
+   833                                  BF177EEA24D54F9200D5E021 /* 
+CoreDataHelper+BatchDelete.swift in Sources */,
+   834                                  BFB06F02244A037300AC0CDC /* 
+UIColor+Keyboard.swift in Sources */,
+   835                                  12491EA328D7057D009F6BE1 /* 
+MKMapView+ConvenientOverlayInserts.swift in Sources */,
+   836                                  899D678219D351DA00C88A0A /* 
+AboutViewController.swift in Sources */,
+   837                                  89EA86612157A08E002E03A7 /* 
+Date+timeAgo.swift in Sources */,
+   838                                  895F04B41A7143CE004BEE8A /* 
+GPXExtentCoordinates.swift in Sources */,
+   839                                  899D677B19D10F7C00C88A0A /* 
+GPXFilesTableViewControlllerDelegate.swift in Sources */,
+   840                                  12A1A44424D561AC0057ED7A /* 
+CoreDataHelper+FetchRequests.swift in Sources */,
+   841                                  8913CD8C1BDB0A9A009EC729 /* 
+PreferencesTableViewController.swift in Sources */,
+   842                                  899D677D19D22E1B00C88A0A /* 
+StopWatchDelegate.swift in Sources */,
+   843                                  898EECDB19C49B5800B4B207 /* 
+AppDelegate.swift in Sources */,
+   844                                  89EA86632157B42C002E03A7 /* 
+GPXFileInfo.swift in Sources */,
+   845                                  899D676C19CD9E9E00C88A0A /* 
+GPXTrackSegment+MapKit.swift in Sources */,
+   846                                  899D677219CE8B3600C88A0A /* 
+StopWatch.swift in Sources */,
+   847                                  TOAST00001000000000000001 /* Toast.swift
+in Sources */,
+   848                                  89F6E0F7227E107C00CE3E3F /* 
+Preferences.swift in Sources */,
+   849                                  BFE026C0244A0160005423E6 /* 
+String+CountInstances.swift in Sources */,
+   850                                  BFE026C4244A0281005423E6 /* 
+DateField.swift in Sources */,
+   851                                  BFE026C2244A01DB005423E6 /* 
+UIInsetLabel.swift in Sources */,
+   852                                  BF9AE57C2410011D00B103A0 /* 
+DefaultNameSetupViewController.swift in Sources */,
+   853                                  893BEC8619C7E62200C77354 /* 
+GPXWaypoint+MKAnnotation.swift in Sources */,
+   854                                  DC4908A31C4A332E009484AE /* 
+MapViewDelegate.swift in Sources */,
+   855                                  898EED3619C6402900B4B207 /* 
+GPXFilesTableViewController.swift in Sources */,
+   856                                  DC4908A11C4A136F009484AE /* 
+TrackerButton.swift in Sources */,
+   857                                  89F8749F1BBCB97F004EF41A /* 
+GPXRoot+length.swift in Sources */,
+   858                          );
+   859                          runOnlyForDeploymentPostprocessing = 0;
+   860                  };
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 46, $5.24):
+The Toast.swift is added to the main app target's Sources build phase. Now I 
+also need to add the PBXBuildFile and PBXFileReference entries. Let me check if 
+they're there:
+
+```
+grep "TOAST" /app/OpenGpxTracker.xcodeproj/project.pbxproj
+```
+
+Tool:
+<returncode>
+0
+<output>
+                                TOAST00002000000000000002 /* Toast.swift */,
+                                TOAST00001000000000000001 /* Toast.swift in 
+Sources */,
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 47, $5.44):
+Hmm, the PBXBuildFile and PBXFileReference sections weren't added. Let me check 
+why:
+
+```
+grep -n "899D677219CE8B3600C88A0A /\* StopWatch.swift in Sources \*/" 
+/app/OpenGpxTracker.xcodeproj/project.pbxproj
+```
+
+Tool:
+<returncode>
+0
+<output>
+34:             899D677219CE8B3600C88A0A /* StopWatch.swift in Sources */ = {isa
+= PBXBuildFile; fileRef = 899D677119CE8B3600C88A0A /* StopWatch.swift */; };
+846:                            899D677219CE8B3600C88A0A /* StopWatch.swift in 
+Sources */,
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 48, $5.64):
+The issue is the PBXBuildFile entries have the full syntax including `= {isa = 
+...}` which makes the replace tricky. Let me fix this properly:
+
+```
+cd /app && python3 << 'PYEOF'
+with open('OpenGpxTracker.xcodeproj/project.pbxproj', 'r') as f:
+    content = f.read()
+
+build_file_id = "TOAST00001000000000000001"
+file_ref_id   = "TOAST00002000000000000002"
+
+# 1. Add PBXBuildFile entry - insert after the line with StopWatch PBXBuildFile
+old_build = '\t\t899D677219CE8B3600C88A0A /* StopWatch.swift in Sources */ = 
+{isa = PBXBuildFile; fileRef = 899D677119CE8B3600C88A0A /* StopWatch.swift */; 
+};\n'
+new_build = old_build + f'\t\t{build_file_id} /* Toast.swift in Sources */ = 
+{{isa = PBXBuildFile; fileRef = {file_ref_id} /* Toast.swift */; }};\n'
+content = content.replace(old_build, new_build)
+
+# 2. Add PBXFileReference entry - insert after StopWatch PBXFileReference
+old_ref = '\t\t899D677119CE8B3600C88A0A /* StopWatch.swift */ = {isa = 
+PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path =
+StopWatch.swift; sourceTree = "<group>"; };\n'
+new_ref = old_ref + f'\t\t{file_ref_id} /* Toast.swift */ = {{isa = 
+PBXFileReference; lastKnownFileType = sourcecode.swift; path = Toast.swift; 
+sourceTree = "<group>"; }};\n'
+content = content.replace(old_ref, new_ref)
+
+with open('OpenGpxTracker.xcodeproj/project.pbxproj', 'w') as f:
+    f.write(content)
+
+print("Done adding PBXBuildFile and PBXFileReference entries")
+PYEOF
+```
+
+Tool:
+<returncode>
+0
+<output>
+Done adding PBXBuildFile and PBXFileReference entries
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 49, $5.84):
+```
+grep "TOAST\|Toast" /app/OpenGpxTracker.xcodeproj/project.pbxproj
+```
+
+Tool:
+<returncode>
+0
+<output>
+                TOAST00001000000000000001 /* Toast.swift in Sources */ = {isa = 
+PBXBuildFile; fileRef = TOAST00002000000000000002 /* Toast.swift */; };
+                TOAST00002000000000000002 /* Toast.swift */ = {isa = 
+PBXFileReference; lastKnownFileType = sourcecode.swift; path = Toast.swift; 
+sourceTree = "<group>"; };
+                                TOAST00002000000000000002 /* Toast.swift */,
+                                TOAST00001000000000000001 /* Toast.swift in 
+Sources */,
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 50, $6.04):
+All 4 entries are in place. Let me also check if there's a MailerManager or 
+anything that uses CoreDataAlertView:
+
+```
+grep -rn "CoreDataAlertView" /app/ --include="*.swift" --include="*.pbxproj" 
+2>/dev/null
+```
+
+Tool:
+<returncode>
+1
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 51, $6.25):
+All references to `CoreDataAlertView` have been cleaned up. Let me now do a 
+final review of all my changes:
+
+```
+echo "=== Summary of changes ==="
+echo ""
+echo "1. CREATED: /app/OpenGpxTracker/Toast.swift"
+echo "   - Toast enum with .regular, .info, .warning, .success, .error cases"
+echo "   - Toast.Position enum with .bottom, .center, .top"
+echo "   - Toast.kDelayShort (2.0s), Toast.kDelayLong (4.0s)"
+echo "   - ToastLabel(text:) class"
+echo ""
+echo "2. DELETED: /app/OpenGpxTracker/CoreDataAlertView.swift"
+ls /app/OpenGpxTracker/CoreDataAlertView.swift 2>&1
+echo ""
+echo "3. MODIFIED: /app/OpenGpxTracker/ViewController.swift"
+echo "   - Added kAppTitle constant"
+echo "   - appTitleLabel.text uses kAppTitle"
+echo "   - lastGpxFilename has didSet to update appTitleLabel"
+echo ""
+echo "4. MODIFIED: /app/OpenGpxTracker/CoreDataHelper.swift"
+echo "   - crashFileRecovery() auto-recovers with NotificationCenter post + 
+Toast"
+echo "   - Removed blocking UIAlertController dialog"
+echo ""
+echo "5. MODIFIED: project.pbxproj"
+echo "   - Removed CoreDataAlertView.swift references"
+echo "   - Added Toast.swift references"
+```
+
+Tool:
+<returncode>
+0
+<output>
+=== Summary of changes ===
+
+1. CREATED: /app/OpenGpxTracker/Toast.swift
+   - Toast enum with .regular, .info, .warning, .success, .error cases
+   - Toast.Position enum with .bottom, .center, .top
+   - Toast.kDelayShort (2.0s), Toast.kDelayLong (4.0s)
+   - ToastLabel(text:) class
+
+2. DELETED: /app/OpenGpxTracker/CoreDataAlertView.swift
+ls: cannot access '/app/OpenGpxTracker/CoreDataAlertView.swift': No such file or
+directory
+
+3. MODIFIED: /app/OpenGpxTracker/ViewController.swift
+   - Added kAppTitle constant
+   - appTitleLabel.text uses kAppTitle
+   - lastGpxFilename has didSet to update appTitleLabel
+
+4. MODIFIED: /app/OpenGpxTracker/CoreDataHelper.swift
+   - crashFileRecovery() auto-recovers with NotificationCenter post + Toast
+   - Removed blocking UIAlertController dialog
+
+5. MODIFIED: project.pbxproj
+   - Removed CoreDataAlertView.swift references
+   - Added Toast.swift references
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 52, $6.46):
+Let me also verify the test file hasn't been modified (as per the constraints):
+
+```
+cat /app/OpenGpxTrackerTests/OpenGpxTrackerTests.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+//
+//  OpenGpxTrackerTests.swift
+//  OpenGpxTrackerTests
+//
+//  Created by merlos on 13/09/14.
+//  Copyright (c) 2014 TransitBox. All rights reserved.
+//
+
+import UIKit
+import XCTest
+
+class OpenGpxTrackerTests: XCTestCase {
+    
+    override func setUp() {
+        super.setUp()
+        // Put setup code here. This method is called before the invocation of 
+each test method in the class.
+    }
+    
+    override func tearDown() {
+        // Put teardown code here. This method is called after the invocation of
+each test method in the class.
+        super.tearDown()
+    }
+    
+    func testExample() {
+        // This is an example of a functional test case.
+        XCTAssert(true, "Pass")
+    }
+    
+    func testPerformanceExample() {
+        // This is an example of a performance test case.
+        self.measure {
+            // Put the code you want to measure the time of here.
+        }
+    }
+    
+}
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 53, $6.67):
+Test file is untouched. Let me do a quick syntax check by looking for any 
+obvious Swift compilation issues in my Toast.swift file:
+
+```
+# Check for balanced braces in Toast.swift
+python3 -c "
+content = open('/app/OpenGpxTracker/Toast.swift').read()
+opens = content.count('{')
+closes = content.count('}')
+print(f'Open braces: {opens}, Close braces: {closes}')
+if opens == closes:
+    print('Balanced!')
+else:
+    print('UNBALANCED!')
+"
+```
+
+Tool:
+<returncode>
+0
+<output>
+Open braces: 23, Close braces: 23
+Balanced!
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 54, $6.88):
+```
+# Check braces in modified files too
+for f in /app/OpenGpxTracker/ViewController.swift 
+/app/OpenGpxTracker/CoreDataHelper.swift; do
+    python3 -c "
+content = open('$f').read()
+opens = content.count('{')
+closes = content.count('}')
+print(f'$f - Open: {opens}, Close: {closes}, Balanced: {opens == closes}')
+"
+done
+```
+
+Tool:
+<returncode>
+0
+<output>
+/app/OpenGpxTracker/ViewController.swift - Open: 141, Close: 141, Balanced: True
+/app/OpenGpxTracker/CoreDataHelper.swift - Open: 83, Close: 83, Balanced: True
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 55, $7.09):
+All files have balanced braces. Let me also check that the `MailerManager.swift`
+or any other file doesn't reference `CoreDataAlertView`:
+
+```
+grep -rn "CoreDataAlertView" /app/ 2>/dev/null | grep -v ".git" | grep -v 
+"project.pbxproj"
+```
+
+Tool:
+<returncode>
+1
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 56, $7.29):
+Everything looks clean. Let me submit my work.
+
+```
+echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT
+```
+
+Tool:
+<returncode>
+-1
+<output>
+
+<exception_info>
+action was not executed
+
+Exit:
+
+Saved trajectory to '/workspace/output/trajectory.traj.json'
+
+=== Files in /workspace/output:
+total 479
+drwxr-xr-x 2 root root      6 Mar  1 06:24 .
+drwxr-xr-x 3 root root     20 Mar  1 06:23 ..
+-rw-r--r-- 1 root root 488513 Mar  1 06:27 trajectory.traj.json

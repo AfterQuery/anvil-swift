@@ -1,0 +1,249 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/UI/Sources/UI/GridStack.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/UI/Sources/UI/GridStack.swift
+new file mode 100644
+index 0000000..ac1653c
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/UI/Sources/UI/GridStack.swift
+@@ -0,0 +1,35 @@
++//
++//  GridStack.swift
++//  UI
++//
++//  A grid layout view that ensures consistent column alignment across all rows.
++//
++
++import SwiftUI
++
++public struct GridStack<Content: View>: View {
++    public let rows: Int
++    public let columns: Int
++    public let spacing: CGFloat
++    public let content: (Int, Int) -> Content
++
++    public init(rows: Int, columns: Int, spacing: CGFloat = 8, @ViewBuilder content: @escaping (_ row: Int, _ col: Int) -> Content) {
++        self.rows = rows
++        self.columns = columns
++        self.spacing = spacing
++        self.content = content
++    }
++
++    public var body: some View {
++        VStack(spacing: spacing) {
++            ForEach(0..<rows, id: \.self) { row in
++                HStack(spacing: self.spacing) {
++                    ForEach(0..<self.columns, id: \.self) { col in
++                        self.content(row, col)
++                            .frame(maxWidth: .infinity)
++                    }
++                }
++            }
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+index 6fbd2c8..5fa6aaf 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+@@ -9,6 +9,7 @@
+ import SwiftUI
+ import SwiftUIKit
+ import Backend
++import UI
+ 
+ struct TurnipsView: View {
+     // MARK: - Vars
+@@ -156,27 +157,19 @@ extension TurnipsView {
+                         Text("Profits estimates are computed using the average of the current period")
+                             .foregroundColor(.acSecondaryText)
+                     }
+-                    HStack {
+-                        Text("Day").fontWeight(.bold)
+-                        Spacer()
+-                        Text("AM").fontWeight(.bold)
+-                        Spacer()
+-                        Text("PM").fontWeight(.bold)
+-                    }
+-                }
+-                if turnipsDisplay == .average {
+-                    ForEach(uniqueLabels(for: "average"), id: \.1, content: averagePriceRow(day:identifier:))
+-                }
+-                else if turnipsDisplay == .minMax {
+-                    ForEach(uniqueLabels(for: "min max"), id: \.1, content: minMaxPriceRow(day:identifier:))
+-                } else if turnipsDisplay == .profits {
+-                    if viewModel.averagesProfits != nil {
+-                        ForEach(uniqueLabels(for: "profits"), id: \.1, content: averageProfitRow(day:identifier:))
+-                    } else {
+-                        Text("Please add the amount of turnips you bought and for how much")
+-                            .foregroundColor(.acHeaderBackground)
+-                            .onTapGesture {
+-                                self.presentedSheet = .turnipsForm(subManager: self.subManager)
++                    if turnipsDisplay == .average {
++                        averagePriceGrid
++                    } else if turnipsDisplay == .minMax {
++                        minMaxPriceGrid
++                    } else if turnipsDisplay == .profits {
++                        if viewModel.averagesProfits != nil {
++                            averageProfitGrid
++                        } else {
++                            Text("Please add the amount of turnips you bought and for how much")
++                                .foregroundColor(.acHeaderBackground)
++                                .onTapGesture {
++                                    self.presentedSheet = .turnipsForm(subManager: self.subManager)
++                            }
+                         }
+                     }
+                 } else if turnipsDisplay == .chart {
+@@ -272,6 +265,154 @@ extension TurnipsView {
+             .eraseToAnyViewForRow()
+     }
+ 
++
++    // MARK: - Grid views for aligned columns
++
++    private var averagePriceGrid: some View {
++        GridStack(rows: labels.count + 1, columns: 3, spacing: 8) { row, col in
++            self.averagePriceCell(row: row, col: col)
++        }
++    }
++
++    private func averagePriceCell(row: Int, col: Int) -> AnyView {
++        if row == 0 {
++            return AnyView(self.headerCell(col: col))
++        } else {
++            return self.averageDataCell(dayIndex: row - 1, col: col)
++        }
++    }
++
++    private func averageDataCell(dayIndex: Int, col: Int) -> AnyView {
++        guard let prices = viewModel.averagesPrices?[dayIndex],
++              let minMax = viewModel.minMaxPrices?[dayIndex] else {
++            return AnyView(Text(""))
++        }
++        if col == 0 {
++            return AnyView(
++                Text(LocalizedStringKey(labels[dayIndex]))
++                    .font(.body)
++                    .foregroundColor(.acText)
++            )
++        } else {
++            return AnyView(
++                self.averagePriceText(
++                    prices: prices,
++                    minMaxPrices: minMax,
++                    meridian: col == 1 ? .am : .pm
++                )
++            )
++        }
++    }
++
++    private func averagePriceText(prices: [Int], minMaxPrices: [[Int]], meridian: TurnipsAveragePriceRow.Meridian) -> some View {
++        let price = meridian == .am ? prices.first! : prices.last!
++        let row = TurnipsAveragePriceRow(label: "", prices: prices, minMaxPrices: minMaxPrices)
++        return Text("\(price)")
++            .font(.headline)
++            .fontWeight(.bold)
++            .foregroundColor(row.color(meridian: meridian))
++    }
++
++    private var minMaxPriceGrid: some View {
++        GridStack(rows: labels.count + 1, columns: 3, spacing: 8) { row, col in
++            self.minMaxPriceCell(row: row, col: col)
++        }
++    }
++
++    private func minMaxPriceCell(row: Int, col: Int) -> AnyView {
++        if row == 0 {
++            return AnyView(self.headerCell(col: col))
++        } else {
++            return self.minMaxDataCell(dayIndex: row - 1, col: col)
++        }
++    }
++
++    private func minMaxDataCell(dayIndex: Int, col: Int) -> AnyView {
++        guard let prices = viewModel.minMaxPrices?[dayIndex],
++              let avgPrices = viewModel.averagesPrices?[dayIndex] else {
++            return AnyView(Text(""))
++        }
++        if col == 0 {
++            return AnyView(
++                Text(LocalizedStringKey(labels[dayIndex]))
++                    .font(.body)
++                    .foregroundColor(.acText)
++            )
++        } else {
++            return AnyView(
++                self.minMaxPriceText(
++                    prices: prices,
++                    averagePrices: avgPrices,
++                    meridian: col == 1 ? .am : .pm
++                )
++            )
++        }
++    }
++
++    private func minMaxPriceText(prices: [[Int]], averagePrices: [Int], meridian: TurnipsAveragePriceRow.Meridian) -> some View {
++        let row = TurnipsMinMaxPriceRow(label: "", prices: prices, averagePrices: averagePrices)
++        let text: String
++        let priceArr = meridian == .am ? prices.first : prices.last
++        if row.isEntered(meridian: meridian) {
++            text = "\(priceArr?.first ?? 0)"
++        } else {
++            text = "\(priceArr?.first ?? 0) - \(priceArr?.last ?? 0)"
++        }
++        let amAveragedPrices = prices.first?.average
++        let pmAveragedPrices = prices.last?.average
++        let averagedPrice = meridian == .am ? amAveragedPrices : pmAveragedPrices
++        let textColor: Color
++        if let avg = averagedPrice {
++            textColor = row.isEntered(meridian: meridian) ? .acText : row.color(price: Int(avg))
++        } else {
++            textColor = .clear
++        }
++        return Text(text)
++            .font(.headline)
++            .fontWeight(.bold)
++            .foregroundColor(textColor)
++    }
++
++    private var averageProfitGrid: some View {
++        GridStack(rows: labels.count + 1, columns: 3, spacing: 8) { row, col in
++            self.averageProfitCell(row: row, col: col)
++        }
++    }
++
++    private func averageProfitCell(row: Int, col: Int) -> AnyView {
++        if row == 0 {
++            return AnyView(self.headerCell(col: col))
++        } else {
++            return self.profitDataCell(dayIndex: row - 1, col: col)
++        }
++    }
++
++    private func profitDataCell(dayIndex: Int, col: Int) -> AnyView {
++        guard let prices = viewModel.averagesProfits?[dayIndex] else {
++            return AnyView(Text(""))
++        }
++        if col == 0 {
++            return AnyView(
++                Text(LocalizedStringKey(labels[dayIndex]))
++                    .font(.body)
++                    .foregroundColor(.acText)
++            )
++        } else {
++            return AnyView(
++                self.averagePriceText(
++                    prices: prices,
++                    minMaxPrices: [],
++                    meridian: col == 1 ? .am : .pm
++                )
++            )
++        }
++    }
++
++    private func headerCell(col: Int) -> Text {
++        let title = col == 0 ? "Day" : (col == 1 ? "AM" : "PM")
++        return Text(title).fontWeight(.bold)
++    }
++
+     private func uniqueLabels(for uniqueIdentifier: String) -> [(String, String)] {
+         labels.map { ($0, uniqueIdentifier + $0) }
+     }

@@ -1,0 +1,473 @@
+diff --git a/OpenGpxTracker/CoreDataHelper.swift b/OpenGpxTracker/CoreDataHelper.swift
+index 8d59583..aa01a0d 100644
+--- a/OpenGpxTracker/CoreDataHelper.swift
++++ b/OpenGpxTracker/CoreDataHelper.swift
+@@ -700,9 +700,10 @@ class CoreDataHelper {
+     
+     /// saves recovered data to a gpx file, silently, without loading on map.
+     func saveFile(from gpx: GPXRoot, andIfAvailable lastfileName: String) {
+-        // date format same as usual.
++        // date format same as usual, using user preferences.
+         let dateFormatter = DateFormatter()
+-        dateFormatter.dateFormat = "dd-MMM-yyyy-HHmm"
++        let format = DefaultDateFormat.getDateFormat(unprocessed: Preferences.shared.dateFormat)
++        dateFormatter.dateFormat = format
+         var fileName = String()
+         
+         if lastfileName != "" {
+diff --git a/OpenGpxTracker/DateField.swift b/OpenGpxTracker/DateField.swift
+new file mode 100644
+index 0000000..b1c0b97
+--- /dev/null
++++ b/OpenGpxTracker/DateField.swift
+@@ -0,0 +1,68 @@
++//
++//  DateField.swift
++//  OpenGpxTracker
++//
++//  Created for custom default file name format feature.
++//
++
++import Foundation
++
++/// Represents the various date/time field categories that users can customize
++/// when building a default file name format.
++enum DateField: Int, CaseIterable {
++    case year = 0
++    case month
++    case day
++    case hour
++    case minute
++    case second
++    
++    /// A human-readable name for this date field type.
++    var type: String {
++        switch self {
++        case .year:   return "Year"
++        case .month:  return "Month"
++        case .day:    return "Day"
++        case .hour:   return "Hour"
++        case .minute: return "Minute"
++        case .second: return "Second"
++        }
++    }
++    
++    /// The available date format patterns for this field.
++    /// Users can choose among these when constructing a custom date format string.
++    var patterns: [String] {
++        switch self {
++        case .year:
++            return ["yyyy", "yy"]
++        case .month:
++            return ["MMMM", "MMM", "MM", "M"]
++        case .day:
++            return ["dd", "d"]
++        case .hour:
++            return ["HH", "H", "hh", "h"]
++        case .minute:
++            return ["mm", "m"]
++        case .second:
++            return ["ss", "s"]
++        }
++    }
++    
++    /// Descriptions/subtitles for each pattern, shown to the user.
++    var subtitles: [String] {
++        switch self {
++        case .year:
++            return ["4 digits (e.g. 2023)", "2 digits (e.g. 23)"]
++        case .month:
++            return ["Full name (e.g. January)", "Abbreviated (e.g. Jan)", "2 digits (e.g. 01)", "1-2 digits (e.g. 1)"]
++        case .day:
++            return ["2 digits (e.g. 09)", "1-2 digits (e.g. 9)"]
++        case .hour:
++            return ["24h 2 digits (e.g. 08)", "24h 1-2 digits (e.g. 8)", "12h 2 digits (e.g. 08)", "12h 1-2 digits (e.g. 8)"]
++        case .minute:
++            return ["2 digits (e.g. 05)", "1-2 digits (e.g. 5)"]
++        case .second:
++            return ["2 digits (e.g. 09)", "1-2 digits (e.g. 9)"]
++        }
++    }
++}
+diff --git a/OpenGpxTracker/DefaultDateFormat.swift b/OpenGpxTracker/DefaultDateFormat.swift
+new file mode 100644
+index 0000000..7b82cee
+--- /dev/null
++++ b/OpenGpxTracker/DefaultDateFormat.swift
+@@ -0,0 +1,63 @@
++//
++//  DefaultDateFormat.swift
++//  OpenGpxTracker
++//
++//  Created for custom default file name format feature.
++//
++
++import Foundation
++
++/// Key on UserDefaults for the saved date format string.
++let kDefaultsKeyDateFormat: String = "DateFormat"
++
++/// The default (legacy) date format string used for file names.
++let kDefaultDateFormatString: String = "dd-MMM-yyyy-HHmm"
++
++/// Preset date format options presented in the Default Name setup screen.
++let kPresetDateFormats: [String] = [
++    "dd-MMM-yyyy-HHmm",
++    "yyyy-MM-dd'T'HHmmss",
++    "yyyy-MM-dd-HHmm",
++    "yyyyMMdd-HHmmss",
++    "MMM-dd-yyyy-HHmm",
++    "dd-MM-yyyy-HHmmss"
++]
++
++/// Handles the processing and generation of date format strings
++/// used to create default file names for GPX sessions.
++///
++/// The class supports an "unprocessed" format string that may contain
++/// user-facing tokens and translates them into `DateFormatter`-compatible
++/// format patterns.
++class DefaultDateFormat {
++    
++    /// Processes a raw / unprocessed date format string and returns
++    /// a `DateFormatter`-compatible format string.
++    ///
++    /// Currently the unprocessed format is identical to the processed one,
++    /// but this method provides a hook for future token translation
++    /// (e.g. replacing `{YEAR}` → `yyyy`).
++    ///
++    /// - Parameter unprocessed: The raw format string, potentially
++    ///   containing custom tokens.
++    /// - Returns: A `DateFormatter`-compatible format string.
++    static func getDateFormat(unprocessed: String) -> String {
++        // Validate by attempting to use the format.
++        // If the string is empty, fall back to the default.
++        let trimmed = unprocessed.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !trimmed.isEmpty else {
++            return kDefaultDateFormatString
++        }
++        return trimmed
++    }
++    
++    /// Returns a formatted date string for the given processed format pattern.
++    ///
++    /// - Parameter processedFormat: A `DateFormatter`-compatible format string.
++    /// - Returns: The current date/time rendered with the given format.
++    static func getDate(processedFormat: String) -> String {
++        let formatter = DateFormatter()
++        formatter.dateFormat = processedFormat
++        return formatter.string(from: Date())
++    }
++}
+diff --git a/OpenGpxTracker/DefaultNameSetupViewController.swift b/OpenGpxTracker/DefaultNameSetupViewController.swift
+new file mode 100644
+index 0000000..ee967dc
+--- /dev/null
++++ b/OpenGpxTracker/DefaultNameSetupViewController.swift
+@@ -0,0 +1,140 @@
++//
++//  DefaultNameSetupViewController.swift
++//  OpenGpxTracker
++//
++//  Created for custom default file name format feature.
++//
++
++import Foundation
++import UIKit
++
++///
++/// View controller that allows users to select or enter a custom date/time
++/// format for the default GPX file name.
++///
++/// Displays:
++/// - A list of preset format patterns with a live preview of each.
++/// - A "Custom" row allowing the user to type an arbitrary format string.
++///
++class DefaultNameSetupViewController: UITableViewController {
++    
++    /// Section index for preset formats
++    private let kPresetsSection = 0
++    /// Section index for custom format input
++    private let kCustomSection = 1
++    
++    /// The currently-selected format string (persisted in UserDefaults).
++    private var selectedFormat: String = kDefaultDateFormatString
++    
++    /// Reference to shared preferences
++    private var preferences = Preferences.shared
++    
++    // MARK: - Lifecycle
++    
++    override func viewDidLoad() {
++        super.viewDidLoad()
++        self.title = NSLocalizedString("DEFAULT_NAME", comment: "no comment")
++        
++        // Load the persisted format
++        selectedFormat = preferences.dateFormat
++        
++        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "PresetCell")
++        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "CustomCell")
++    }
++    
++    override func viewWillAppear(_ animated: Bool) {
++        super.viewWillAppear(animated)
++        tableView.reloadData()
++    }
++    
++    // MARK: - UITableViewDataSource
++    
++    override func numberOfSections(in tableView: UITableView) -> Int {
++        return 2
++    }
++    
++    override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
++        switch section {
++        case kPresetsSection:
++            return NSLocalizedString("PRESET_FORMATS", comment: "no comment")
++        case kCustomSection:
++            return NSLocalizedString("CUSTOM_FORMAT", comment: "no comment")
++        default:
++            return nil
++        }
++    }
++    
++    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
++        switch section {
++        case kPresetsSection:
++            return kPresetDateFormats.count
++        case kCustomSection:
++            return 1
++        default:
++            return 0
++        }
++    }
++    
++    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
++        if indexPath.section == kPresetsSection {
++            let cell = tableView.dequeueReusableCell(withIdentifier: "PresetCell", for: indexPath)
++            let format = kPresetDateFormats[indexPath.row]
++            cell.textLabel?.text = format
++            
++            // Show live preview in detail
++            let processedFormat = DefaultDateFormat.getDateFormat(unprocessed: format)
++            cell.detailTextLabel?.text = DefaultDateFormat.getDate(processedFormat: processedFormat)
++            
++            // Checkmark the currently-selected format
++            cell.accessoryType = (format == selectedFormat) ? .checkmark : .none
++            return cell
++        } else {
++            // Custom format row
++            let cell = tableView.dequeueReusableCell(withIdentifier: "CustomCell", for: indexPath)
++            let isCustom = !kPresetDateFormats.contains(selectedFormat)
++            cell.textLabel?.text = isCustom ? selectedFormat : NSLocalizedString("ENTER_CUSTOM", comment: "no comment")
++            if isCustom {
++                let processedFormat = DefaultDateFormat.getDateFormat(unprocessed: selectedFormat)
++                cell.detailTextLabel?.text = DefaultDateFormat.getDate(processedFormat: processedFormat)
++            } else {
++                cell.detailTextLabel?.text = nil
++            }
++            cell.accessoryType = isCustom ? .checkmark : .none
++            return cell
++        }
++    }
++    
++    // MARK: - UITableViewDelegate
++    
++    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
++        tableView.deselectRow(at: indexPath, animated: true)
++        
++        if indexPath.section == kPresetsSection {
++            selectedFormat = kPresetDateFormats[indexPath.row]
++            preferences.dateFormat = selectedFormat
++            tableView.reloadData()
++        } else if indexPath.section == kCustomSection {
++            // Present an alert with a text field
++            let alert = UIAlertController(
++                title: NSLocalizedString("CUSTOM_FORMAT", comment: "no comment"),
++                message: NSLocalizedString("ENTER_DATE_FORMAT", comment: "no comment"),
++                preferredStyle: .alert
++            )
++            alert.addTextField { textField in
++                let isCustom = !kPresetDateFormats.contains(self.selectedFormat)
++                textField.text = isCustom ? self.selectedFormat : ""
++                textField.placeholder = kDefaultDateFormatString
++            }
++            alert.addAction(UIAlertAction(title: NSLocalizedString("CANCEL", comment: "no comment"), style: .cancel))
++            alert.addAction(UIAlertAction(title: NSLocalizedString("DONE", comment: "no comment"), style: .default) { [weak self] _ in
++                guard let self = self else { return }
++                let input = alert.textFields?.first?.text ?? ""
++                let processed = DefaultDateFormat.getDateFormat(unprocessed: input)
++                self.selectedFormat = processed
++                self.preferences.dateFormat = processed
++                self.tableView.reloadData()
++            })
++            present(alert, animated: true)
++        }
++    }
++}
+diff --git a/OpenGpxTracker/Preferences.swift b/OpenGpxTracker/Preferences.swift
+index ffeb75f..1af05b5 100644
+--- a/OpenGpxTracker/Preferences.swift
++++ b/OpenGpxTracker/Preferences.swift
+@@ -53,6 +53,9 @@ class Preferences: NSObject {
+     /// In memory value of the preference.
+     private var _activityType: CLActivityType = .other
+     
++    /// In memory value of the date format preference.
++    private var _dateFormat: String = kDefaultDateFormatString
++    
+     /// UserDefaults.standard shortcut
+     private let defaults = UserDefaults.standard
+     
+@@ -89,6 +92,12 @@ class Preferences: NSObject {
+             _activityType = CLActivityType(rawValue: activityTypeInt)!
+             print("** Preferences:: loaded preference from defaults activityTypeInt \(activityTypeInt)")
+         }
++        
++        // Date format for default file names
++        if let dateFormatFromDefaults = defaults.object(forKey: kDefaultsKeyDateFormat) as? String {
++            _dateFormat = dateFormatFromDefaults
++            print("** Preferences:: loaded preference from defaults dateFormat \(dateFormatFromDefaults)")
++        }
+     }
+     
+     /// If true, user prefers to display imperial units (miles, feets). Otherwise metric units
+@@ -158,4 +167,15 @@ class Preferences: NSObject {
+             defaults.set(newValue, forKey: kDefaultsKeyActivityType)
+         }
+     }
++    
++    /// Gets and sets the date format string used for default file names.
++    var dateFormat: String {
++        get {
++            return _dateFormat
++        }
++        set {
++            _dateFormat = newValue
++            defaults.set(newValue, forKey: kDefaultsKeyDateFormat)
++        }
++    }
+ }
+diff --git a/OpenGpxTracker/PreferencesTableViewController.swift b/OpenGpxTracker/PreferencesTableViewController.swift
+index 080c097..8b33a0e 100644
+--- a/OpenGpxTracker/PreferencesTableViewController.swift
++++ b/OpenGpxTracker/PreferencesTableViewController.swift
+@@ -24,6 +24,9 @@ let kMapSourceSection = 2
+ /// Activity Type Section Id in PreferencesTableViewController
+ let kActivityTypeSection = 3
+ 
++/// Default Name Section Id in PreferencesTableViewController
++let kDefaultNameSection = 4
++
+ /// Cell Id of the Use Imperial units in UnitsSection
+ let kUseImperialUnitsCell = 0
+ 
+@@ -87,10 +90,10 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+     
+     // MARK: - Table view data source
+     
+-    /// Returns 4 sections: Units, Cache, Map Source, Activity Type
++    /// Returns 5 sections: Units, Cache, Map Source, Activity Type, Default Name
+     override func numberOfSections(in tableView: UITableView?) -> Int {
+         // Return the number of sections.
+-        return 4
++        return 5
+     }
+     
+     /// Returns the title of the existing sections.
+@@ -102,6 +105,7 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+         case kCacheSection: return NSLocalizedString("CACHE", comment: "no comment")
+         case kMapSourceSection: return NSLocalizedString("MAP_SOURCE", comment: "no comment")
+         case kActivityTypeSection: return NSLocalizedString("ACTIVITY_TYPE", comment: "no comment")
++        case kDefaultNameSection: return NSLocalizedString("DEFAULT_NAME", comment: "no comment")
+         default: fatalError("Unknown section")
+         }
+     }
+@@ -115,6 +119,7 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+         case kUnitsSection: return 1
+         case kMapSourceSection: return GPXTileServer.count
+         case kActivityTypeSection: return CLActivityType.count
++        case kDefaultNameSection: return 1
+         default: fatalError("Unknown section")
+         }
+     }
+@@ -177,7 +182,14 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+             }
+         }
+         
+-        // Activity type section
++        // Default Name section
++        if indexPath.section == kDefaultNameSection {
++            cell.textLabel?.text = NSLocalizedString("DEFAULT_NAME", comment: "no comment")
++            let processedFormat = DefaultDateFormat.getDateFormat(unprocessed: preferences.dateFormat)
++            cell.detailTextLabel?.text = DefaultDateFormat.getDate(processedFormat: processedFormat)
++            cell.accessoryType = .disclosureIndicator
++        }
++        
+         if indexPath.section == kActivityTypeSection {
+             cell = UITableViewCell(style: .subtitle, reuseIdentifier: "ActivityCell")
+             let activity = CLActivityType(rawValue: indexPath.row + 1)!
+@@ -280,6 +292,11 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+             self.delegate?.didUpdateActivityType((indexPath as NSIndexPath).row + 1)
+         }
+         
++        if indexPath.section == kDefaultNameSection {
++            let defaultNameSetupVC = DefaultNameSetupViewController(style: .grouped)
++            self.navigationController?.pushViewController(defaultNameSetupVC, animated: true)
++        }
++        
+         //unselect row
+         tableView.deselectRow(at: indexPath, animated: true)
+     }
+diff --git a/OpenGpxTracker/String+CountInstances.swift b/OpenGpxTracker/String+CountInstances.swift
+new file mode 100644
+index 0000000..d9ee97d
+--- /dev/null
++++ b/OpenGpxTracker/String+CountInstances.swift
+@@ -0,0 +1,27 @@
++//
++//  String+CountInstances.swift
++//  OpenGpxTracker
++//
++//  Created for custom default file name format feature.
++//
++
++import Foundation
++
++extension String {
++    
++    /// Counts the number of non-overlapping instances of the given substring.
++    ///
++    /// - Parameter substring: The substring to search for.
++    /// - Returns: The number of times the substring occurs in the string.
++    func countInstances(of substring: String) -> Int {
++        guard !substring.isEmpty else { return 0 }
++        var count = 0
++        var searchRange: Range<String.Index>?
++        searchRange = self.startIndex..<self.endIndex
++        while let foundRange = self.range(of: substring, range: searchRange) {
++            count += 1
++            searchRange = foundRange.upperBound..<self.endIndex
++        }
++        return count
++    }
++}
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index f815ad7..b365f5d 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -838,10 +838,11 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate  {
+     /// returns a string with the format of current date dd-MMM-yyyy-HHmm' (20-Jun-2018-1133)
+     ///
+     func defaultFilename() -> String {
+-        let dateFormatter = DateFormatter()
+-        dateFormatter.dateFormat = "dd-MMM-yyyy-HHmm"
+-        print("fileName:" + dateFormatter.string(from: Date()))
+-        return dateFormatter.string(from: Date())
++        let preferences = Preferences.shared
++        let format = DefaultDateFormat.getDateFormat(unprocessed: preferences.dateFormat)
++        let fileName = DefaultDateFormat.getDate(processedFormat: format)
++        print("fileName:" + fileName)
++        return fileName
+     }
+     
+     @objc func loadRecoveredFile(_ notification: Notification) {

@@ -1,0 +1,356 @@
+diff --git a/OpenGpxTracker/AppDelegate.swift b/OpenGpxTracker/AppDelegate.swift
+index 3e89b67..dbb6ad3 100644
+--- a/OpenGpxTracker/AppDelegate.swift
++++ b/OpenGpxTracker/AppDelegate.swift
+@@ -8,7 +8,13 @@
+ 
+ import UIKit
+ import CoreData
++import WatchConnectivity
+ 
++/// Notification name for when a file is received from a URL (e.g., AirDrop)
++extension Notification.Name {
++    static let didReceiveFileFromURL = Notification.Name("didReceiveFileFromURL")
++    static let didReceiveFileFromAppleWatch = Notification.Name("didReceiveFileFromAppleWatch")
++}
+ 
+ ///
+ @UIApplicationMain
+@@ -20,52 +26,51 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
+     /// Default placeholder function
+     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+         // Override point for customization after application launch.
++        
++        // Setup WatchConnectivity session
++        if #available(iOS 9.0, *) {
++            if WCSession.isSupported() {
++                print("AppDelegate:: WCSession is supported")
++                let session = WCSession.default
++                session.delegate = self
++                session.activate()
++                print("AppDelegate:: WCSession activated")
++            } else {
++                print("AppDelegate:: WCSession is not supported")
++            }
++        }
++        
+         return true
+     }
+ 
+     /// Default placeholder function
+     func applicationWillResignActive(_ application: UIApplication) {
+-        // Sent when the application is about to move from active to inactive state. 
+-        // This can occur for certain types of temporary interruptions 
+-        // (such as an incoming phone call or SMS message) 
+-        // or when the user quits the application and it begins the transition to the background state.
+-        // Use this method to pause ongoing tasks, disable timers, and throttle down OpenGL ES frame rates. 
+-        // Games should use this method to pause the game.
+     }
+ 
+     /// Default placeholder function
+     func applicationDidEnterBackground(_ application: UIApplication) {
+-        // Use this method to release shared resources, save user data, invalidate timers, 
+-        // and store enough application state information to restore your application to its current state in case it is terminated later.
+-        // If your application supports background execution, this method is called instead of 
+-        // applicationWillTerminate: when the user quits.
+     }
+ 
+     /// Default placeholder function
+     func applicationWillEnterForeground(_ application: UIApplication) {
+-        // Called as part of the transition from the background to the inactive state; 
+-        // here you can undo many of the changes made on entering the background.
+     }
+ 
+     /// Default placeholder function
+     func applicationDidBecomeActive(_ application: UIApplication) {
+-        // Restart any tasks that were paused (or not yet started) while the application was inactive. 
+-        // If the application was previously in the background, optionally refresh the user interface.
+     }
+ 
+     /// Default placeholder function
+     func applicationWillTerminate(_ application: UIApplication) {
+-        // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
+-        // Saves changes in the application's managed object context before the application terminates.
+-        //self.saveContext()
+     }
+     
+-    /// Default pandle load GPX file
++    /// Handle GPX file opened from external source (e.g., AirDrop)
+     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+         print("load gpx File: \(url.absoluteString)")
+         let fileManager = FileManager.default
+         do {
+-            try fileManager.moveItem(at: url, to: GPXFileManager.GPXFilesFolderURL.appendingPathComponent(url.lastPathComponent))
++            let destinationURL = GPXFileManager.GPXFilesFolderURL.appendingPathComponent(url.lastPathComponent)
++            try fileManager.moveItem(at: url, to: destinationURL)
++            NotificationCenter.default.post(name: .didReceiveFileFromURL, object: nil)
+         }
+         catch let error as NSError {
+             print("Ooops! Something went wrong: \(error)")
+@@ -78,42 +83,30 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
+ 
+     /// Default placeholder function
+     lazy var applicationDocumentsDirectory: URL = {
+-        // The directory the application uses to store the Core Data store file. 
+-        // This code uses a directory named "uk.co.plymouthsoftware.core_data" in the application's documents Application Support directory.
+         let urls = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+         return urls[urls.count-1]
+         }()
+     
+     /// Default placeholder function
+     lazy var managedObjectModel: NSManagedObjectModel = {
+-        // The managed object model for the application. This property is not optional. 
+-        // It is a fatal error for the application not to be able to find and load its model.
+         let modelURL = Bundle.main.url(forResource: "DATAMODELNAME", withExtension: "momd")!
+         return NSManagedObjectModel(contentsOf: modelURL)!
+         }()
+     
+     /// Default placeholder function
+     lazy var persistentStoreCoordinator: NSPersistentStoreCoordinator = {
+-        // The persistent store coordinator for the application. This implementation creates and 
+-        // return a coordinator, having added the store for the application to it. 
+-        // This property is optional since there are legitimate error conditions that could cause the creation of the store to fail.
+-        // Create the coordinator and store
+         let coordinator = NSPersistentStoreCoordinator(managedObjectModel: self.managedObjectModel)
+         let url = self.applicationDocumentsDirectory.appendingPathComponent("PROJECTNAME.sqlite")
+         var failureReason = "There was an error creating or loading the application's saved data."
+         do {
+             try coordinator.addPersistentStore(ofType: NSSQLiteStoreType, configurationName: nil, at: url, options: nil)
+         } catch {
+-            // Report any error we got.
+             var dict = [String: AnyObject]()
+             dict[NSLocalizedDescriptionKey] = "Failed to initialize the application's saved data" as AnyObject?
+             dict[NSLocalizedFailureReasonErrorKey] = failureReason as AnyObject?
+             
+             dict[NSUnderlyingErrorKey] = error as NSError
+             let wrappedError = NSError(domain: "YOUR_ERROR_DOMAIN", code: 9999, userInfo: dict)
+-            // Replace this with code to handle the error appropriately.
+-            // abort() causes the application to generate a crash log and terminate. 
+-            // You should not use this function in a shipping application, although it may be useful during development.
+             NSLog("Unresolved error \(wrappedError), \(wrappedError.userInfo)")
+             abort()
+         }
+@@ -123,9 +116,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
+     
+     /// Default placeholder function
+     lazy var managedObjectContext: NSManagedObjectContext = {
+-        // Returns the managed object context for the application 
+-        // (which is already bound to the persistent store coordinator for the application.) 
+-        // This property is optional since there are legitimate error conditions that could cause the creation of the context to fail.
+         let coordinator = self.persistentStoreCoordinator
+         var managedObjectContext = NSManagedObjectContext(concurrencyType: .mainQueueConcurrencyType)
+         managedObjectContext.persistentStoreCoordinator = coordinator
+@@ -140,9 +130,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
+             do {
+                 try managedObjectContext.save()
+             } catch {
+-                // Replace this implementation with code to handle the error appropriately.
+-                // abort() causes the application to generate a crash log and terminate. 
+-                // You should not use this function in a shipping application, although it may be useful during development.
+                 let nserror = error as NSError
+                 NSLog("Unresolved error \(nserror), \(nserror.userInfo)")
+                 abort()
+@@ -150,3 +137,73 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
+         }
+     }
+ }
++
++// MARK: WCSessionDelegate
++
++///
++/// Handles file transfers from Apple Watch companion app
++/// Should be non intrusive to UI, handling all in the background.
++/// File received are automatically moved to default location which stores all GPX files
++///
++/// Only available > iOS 9
++///
++@available(iOS 9.0, *)
++extension AppDelegate: WCSessionDelegate {
++    
++    /// called when `WCSession` goes inactive. Does nothing but display a debug message.
++    func sessionDidBecomeInactive(_ session: WCSession) {
++        print("AppDelegate:: WCSession has become inactive")
++    }
++    
++    /// called when `WCSession` goes inactive. Does nothing but display a debug message
++    func sessionDidDeactivate(_ session: WCSession) {
++        print("AppDelegate:: WCSession has deactivated")
++    }
++    
++    /// called when activation did complete. Does nothing but display a debug message.
++    @available(iOS 9.3, *)
++    func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
++        switch activationState {
++        case .activated:
++            print("AppDelegate:: activationDidCompleteWithActivationState: session activated")
++        case .inactive:
++            print("AppDelegate:: activationDidCompleteWithActivationState: session inactive")
++        case .notActivated:
++            print("AppDelegate:: activationDidCompleteWithActivationState: session not activated, error:\(String(describing: error))")
++            
++        default: break
++        }
++    }
++    
++    /// Called when a file is received from Apple Watch.
++    /// Moves the file to the GPX files directory, posts a notification, and displays an alert.
++    func session(_ session: WCSession, didReceive file: WCSessionFile) {
++        let fileName = file.metadata!["fileName"] as! String?
++        
++        DispatchQueue.global().sync {
++            GPXFileManager.moveFrom(file.fileURL, fileName: fileName)
++            print("AppDelegate:: Received file from WatchConnectivity Session")
++        }
++        
++        DispatchQueue.main.async {
++            NotificationCenter.default.post(name: .didReceiveFileFromAppleWatch, object: nil, userInfo: ["fileName": fileName ?? "unknown"])
++            
++            // alert to display to notify user that file has been received.
++            let controller = UIAlertController(title: "File Received from Apple Watch", message: "Received file: \"\(fileName!)\"", preferredStyle: .alert)
++            let action = UIAlertAction(title: "Done", style: .default) {
++                (action) in
++                print("AppDelegate:: Presented file received message from WatchConnectivity Session")
++            }
++            
++            controller.addAction(action)
++            
++            if let topController = self.window?.rootViewController {
++                var presentedVC = topController
++                while let next = presentedVC.presentedViewController {
++                    presentedVC = next
++                }
++                presentedVC.present(controller, animated: true, completion: nil)
++            }
++        }
++    }
++}
+diff --git a/OpenGpxTracker/GPXFilesTableViewController.swift b/OpenGpxTracker/GPXFilesTableViewController.swift
+index bbb4f4f..580f5c8 100644
+--- a/OpenGpxTracker/GPXFilesTableViewController.swift
++++ b/OpenGpxTracker/GPXFilesTableViewController.swift
+@@ -68,6 +68,10 @@ class GPXFilesTableViewController: UITableViewController, UINavigationBarDelegat
+             self.fileList.addObjects(from: list)
+             self.gpxFilesFound = true
+         }
++        
++        // Observe notifications for file reception
++        NotificationCenter.default.addObserver(self, selector: #selector(reloadTableData), name: .didReceiveFileFromURL, object: nil)
++        NotificationCenter.default.addObserver(self, selector: #selector(reloadTableData), name: .didReceiveFileFromAppleWatch, object: nil)
+     }
+     
+     
+@@ -78,6 +82,23 @@ class GPXFilesTableViewController: UITableViewController, UINavigationBarDelegat
+         })
+     }
+     
++    /// Reloads the file list from disk and refreshes the table view.
++    /// Called when a new GPX file is received externally (AirDrop, Apple Watch).
++    @objc func reloadTableData() {
++        let list: [GPXFileInfo] = GPXFileManager.fileList
++        self.fileList.removeAllObjects()
++        if list.count != 0 {
++            self.fileList.addObjects(from: list)
++            self.gpxFilesFound = true
++        } else {
++            self.fileList.add(kNoFiles)
++            self.gpxFilesFound = false
++        }
++        DispatchQueue.main.async {
++            self.tableView.reloadData()
++        }
++    }
++    
+    /// Reloads data whenver the table appears.
+     override func viewDidAppear(_ animated: Bool) {
+         self.tableView.reloadData()
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index ed0ed2d..a6a81fa 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -363,19 +363,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate  {
+             }
+         }
+         
+-        // Watch communication session activation (available >iOS 9)
+-        if #available(iOS 9.0, *) {
+-            if WCSession.isSupported() {
+-                print("ViewController:: WCSession is supported")
+-                let session = WCSession.default
+-                session.delegate = self
+-                session.activate()
+-                print("ViewController:: WCSession activated")
+-            }
+-            else {
+-                print("ViewController:: WCSession is not supported")
+-            }
+-        }
++        // WCSession is now managed by AppDelegate
+         
+         // Map autorotate configuration
+         map.autoresizesSubviews = true
+@@ -1175,65 +1163,3 @@ extension ViewController: CLLocationManagerDelegate {
+     }
+ }
+ 
+-
+-// MARK: WCSessionDelegate
+-
+-///
+-/// Handles file transfers from Apple Watch companion app
+-/// Should be non intrusive to UI, handling all in the background.
+-
+-/// File received are automatically moved to default location which stores all GPX files
+-///
+-/// Only available > iOS 9
+-///
+-@available(iOS 9.0, *)
+-extension ViewController: WCSessionDelegate {
+-    
+-    /// called when `WCSession` goes inactive. Does nothing but display a debug message.
+-    func sessionDidBecomeInactive(_ session: WCSession) {
+-        print("GPXFilesTableViewController:: WCSession has become inactive")
+-    }
+-    
+-    /// called when `WCSession` goes inactive. Does nothing but display a debug message
+-    func sessionDidDeactivate(_ session: WCSession) {
+-        print("GPXFilesTableViewController:: WCSession has deactivated")
+-    }
+-    
+-    /// called when activation did complete. Does nothing but display a debug message.
+-    @available(iOS 9.3, *)
+-    func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+-        switch activationState {
+-        case .activated:
+-            print("GPXFilesTableViewController:: activationDidCompleteWithActivationState: session activated")
+-        case .inactive:
+-            print("GPXFilesTableViewController:: activationDidCompleteWithActivationState: session inactive")
+-        case .notActivated:
+-            print("GPXFilesTableViewController:: activationDidCompleteWithActivationState: session not activated, error:\(String(describing: error))")
+-            
+-        default: break
+-        }
+-    }
+-    
+-    /// Called when a file is received from Apple Watch.
+-    /// Displays a popup informing about the reception of the file.
+-    func session(_ session: WCSession, didReceive file: WCSessionFile) {
+-        let fileName = file.metadata!["fileName"] as! String?
+-        
+-        // alert to display to notify user that file has been received.
+-        let controller = UIAlertController(title: "File Received from Apple Watch", message: "Received file: \"\(fileName!)\"", preferredStyle: .alert)
+-        let action = UIAlertAction(title: "Done", style: .default) {
+-            (action) in
+-            print("ViewController:: Presented file received message from WatchConnectivity Session")
+-        }
+-        
+-        controller.addAction(action)
+-        
+-        DispatchQueue.global().sync {
+-            GPXFileManager.moveFrom(file.fileURL, fileName: fileName)
+-            print("ViewController:: Received file from WatchConnectivity Session")
+-        }
+-        
+-        self.present(controller, animated: true, completion: nil)
+-    }
+-}
+-

@@ -1,0 +1,233 @@
+diff --git a/OpenGpxTracker/AppDelegate.swift b/OpenGpxTracker/AppDelegate.swift
+index 39aa9fa..986a9bd 100644
+--- a/OpenGpxTracker/AppDelegate.swift
++++ b/OpenGpxTracker/AppDelegate.swift
+@@ -19,6 +19,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
+     /// Default placeholder function
+     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+         // Override point for customization after application launch.
++        
++        // Apply keep screen always on preference
++        UIApplication.shared.isIdleTimerDisabled = Preferences.shared.keepScreenAlwaysOn
++        
+         return true
+     }
+ 
+diff --git a/OpenGpxTracker/Preferences.swift b/OpenGpxTracker/Preferences.swift
+index 8870695..2471186 100644
+--- a/OpenGpxTracker/Preferences.swift
++++ b/OpenGpxTracker/Preferences.swift
+@@ -40,6 +40,9 @@ let kDefaultsKeyDateFormatUseEN: String = "DateFormatPresetUseEN"
+ /// Key on Defaults for the folder where GPX files are store, `nil` means default folder
+ let kDefaultsKeyGPXFilesFolder: String = "GPXFilesFolder"
+ 
++/// Key on Defaults for the keep screen always on setting.
++let kDefaultsKeyKeepScreenAlwaysOn: String = "KeepScreenAlwaysOn"
++
+ /// A class to handle app preferences in one single place.
+ /// When the app starts for the first time the following preferences are set:
+ ///
+@@ -86,6 +89,9 @@ class Preferences: NSObject {
+     ///
+     private var _gpxFilesFolderBookmark: Data?
+     
++    /// In memory value of the preference.
++    private var _keepScreenAlwaysOn: Bool = false
++    
+     /// UserDefaults.standard shortcut
+     private let defaults = UserDefaults.standard
+     
+@@ -160,6 +166,12 @@ class Preferences: NSObject {
+             _gpxFilesFolderBookmark = gpxFilesFolderBookmark
+             print("** Preferences:: loaded preference from defaults gpxFilesFolderBookmark \(gpxFilesFolderBookmark)")
+         }
++        
++        // load keep screen always on
++        if let keepScreenAlwaysOnFromDefaults = defaults.object(forKey: kDefaultsKeyKeepScreenAlwaysOn) as? Bool {
++            _keepScreenAlwaysOn = keepScreenAlwaysOnFromDefaults
++            print("** Preferences:: loaded preference from defaults keepScreenAlwaysOn \(keepScreenAlwaysOnFromDefaults)")
++        }
+     }
+     
+     /// If true, user prefers to display imperial units (miles, feets). Otherwise metric units
+@@ -334,4 +346,15 @@ class Preferences: NSObject {
+             }
+         }
+     }
++    
++    /// Gets and sets user preference to keep screen always on.
++    var keepScreenAlwaysOn: Bool {
++        get {
++            return _keepScreenAlwaysOn
++        }
++        set {
++            _keepScreenAlwaysOn = newValue
++            defaults.set(newValue, forKey: kDefaultsKeyKeepScreenAlwaysOn)
++        }
++    }
+ }
+diff --git a/OpenGpxTracker/PreferencesTableViewController.swift b/OpenGpxTracker/PreferencesTableViewController.swift
+index ca6c1cd..0e208fb 100644
+--- a/OpenGpxTracker/PreferencesTableViewController.swift
++++ b/OpenGpxTracker/PreferencesTableViewController.swift
+@@ -31,6 +31,9 @@ let kDefaultNameSection = 4
+ /// GPX Files Location Section Id in PreferencesTableViewController
+ let kGPXFilesLocationSection = 5
+ 
++/// Screen Section Id in PreferencesTableViewController
++let kScreenSection = 6
++
+ /// Cell Id of the Use Imperial units in UnitsSection
+ let kUseImperialUnitsCell = 0
+ 
+@@ -105,7 +108,7 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+     /// Returns 4 sections: Units, Cache, Map Source, Activity Type
+     override func numberOfSections(in tableView: UITableView?) -> Int {
+         // Return the number of sections.
+-        return 6
++        return 7
+     }
+     
+     /// Returns the title of the existing sections.
+@@ -119,6 +122,7 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+         case kActivityTypeSection: return NSLocalizedString("ACTIVITY_TYPE", comment: "no comment")
+         case kDefaultNameSection: return NSLocalizedString("DEFAULT_NAME_SECTION", comment: "no comment")
+         case kGPXFilesLocationSection: return NSLocalizedString("GPX_FILES_FOLDER", comment: "no comment")
++        case kScreenSection: return NSLocalizedString("SCREEN", comment: "no comment")
+         default: fatalError("Unknown section")
+         }
+     }
+@@ -134,6 +138,7 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+         case kActivityTypeSection: return CLActivityType.count
+         case kDefaultNameSection: return 1
+         case kGPXFilesLocationSection: return 1
++        case kScreenSection: return 1
+         default: fatalError("Unknown section")
+         }
+     }
+@@ -227,6 +232,14 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+             cell.accessoryType = .disclosureIndicator
+         }
+         
++        if indexPath.section == kScreenSection {
++            cell = UITableViewCell(style: .value1, reuseIdentifier: "ScreenCell")
++            cell.textLabel?.text = NSLocalizedString("KEEP_SCREEN_ON", comment: "no comment")
++            if preferences.keepScreenAlwaysOn {
++                cell.accessoryType = .checkmark
++            }
++        }
++        
+         return cell
+     }
+     
+@@ -333,6 +346,14 @@ class PreferencesTableViewController: UITableViewController, UINavigationBarDele
+             self.present(documentVC, animated: true)
+         }
+         
++        if indexPath.section == kScreenSection {
++            let newKeepScreenOn = !preferences.keepScreenAlwaysOn
++            preferences.keepScreenAlwaysOn = newKeepScreenOn
++            print("PreferencesTableViewController: toggle keep screen always on to \(newKeepScreenOn)")
++            tableView.cellForRow(at: indexPath)?.accessoryType = newKeepScreenOn ? .checkmark : .none
++            UIApplication.shared.isIdleTimerDisabled = newKeepScreenOn
++        }
++        
+         // Unselect row
+         tableView.deselectRow(at: indexPath, animated: true)
+     }
+diff --git a/OpenGpxTracker/Toast.swift b/OpenGpxTracker/Toast.swift
+index 244d933..23c7136 100644
+--- a/OpenGpxTracker/Toast.swift
++++ b/OpenGpxTracker/Toast.swift
+@@ -75,6 +75,9 @@ class Toast {
+     /// Long delay
+     static let kDelayLong = 5.0
+     
++    /// Disabled delay (toast stays until manually dismissed)
++    static let kDisabledDelay = 0.0
++    
+     /// Background opacity
+     static let kBackgroundOpacity: Double = 0.9
+     
+@@ -248,4 +251,62 @@ class Toast {
+                   position: position,
+                   delay: delay)
+     }
++
++    /// Tag used to identify the loading view
++    private static let kLoadingTag = 9999
++    
++    /// Shows a loading indicator with a message.
++    /// - Parameter message: The text to display alongside the activity indicator.
++    static func showLoading(_ message: String) {
++        guard let window = UIApplication.shared.keyWindow else {
++            return
++        }
++        
++        // Remove any existing loading view
++        window.viewWithTag(kLoadingTag)?.removeFromSuperview()
++        
++        let containerView = UIView()
++        containerView.tag = kLoadingTag
++        containerView.backgroundColor = UIColor.black.withAlphaComponent(kBackgroundOpacity)
++        containerView.layer.cornerRadius = 10
++        containerView.translatesAutoresizingMaskIntoConstraints = false
++        
++        let activityIndicator = UIActivityIndicatorView(style: .white)
++        activityIndicator.startAnimating()
++        activityIndicator.translatesAutoresizingMaskIntoConstraints = false
++        
++        let label = UILabel()
++        label.text = message
++        label.textColor = .white
++        label.font = UIFont.systemFont(ofSize: CGFloat(ToastLabel.kFontSize))
++        label.textAlignment = .center
++        label.translatesAutoresizingMaskIntoConstraints = false
++        
++        containerView.addSubview(activityIndicator)
++        containerView.addSubview(label)
++        window.addSubview(containerView)
++        
++        NSLayoutConstraint.activate([
++            containerView.centerXAnchor.constraint(equalTo: window.centerXAnchor),
++            containerView.centerYAnchor.constraint(equalTo: window.centerYAnchor),
++            containerView.widthAnchor.constraint(greaterThanOrEqualToConstant: 150),
++            containerView.heightAnchor.constraint(greaterThanOrEqualToConstant: 100),
++            
++            activityIndicator.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
++            activityIndicator.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 20),
++            
++            label.topAnchor.constraint(equalTo: activityIndicator.bottomAnchor, constant: 10),
++            label.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
++            label.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
++            label.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -20)
++        ])
++    }
++    
++    /// Hides the loading indicator.
++    static func hideLoading() {
++        guard let window = UIApplication.shared.keyWindow else {
++            return
++        }
++        window.viewWithTag(kLoadingTag)?.removeFromSuperview()
++    }
+ }
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index 98d8728..fbfa9f7 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -974,10 +974,13 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate {
+     ///
+     @objc func openPreferencesTableViewController() {
+         print("openPreferencesTableViewController")
++        Toast.showLoading(NSLocalizedString("LOADING", comment: "no comment"))
+         let vc = PreferencesTableViewController(style: .grouped)
+         vc.delegate = self
+         let navController = UINavigationController(rootViewController: vc)
+-        self.present(navController, animated: true) { () -> Void in }
++        self.present(navController, animated: true) { () -> Void in
++            Toast.hideLoading()
++        }
+     }
+     
+     /// Opens an Activity View Controller to share the file

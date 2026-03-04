@@ -1,0 +1,81 @@
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+index f5642f1..6634a10 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+@@ -133,21 +133,27 @@ public class UserCollection: ObservableObject {
+     }
+     
+     public func toggleVariant(item: Item, variant: Variant) -> Bool {
+-        guard let filename = item.filename else {
+-            return false
+-        }
++        guard let filename = item.filename else { return false }
++        var variantAdded = false
+         if variants[filename]?.contains(variant) == true {
+             variants[filename]?.removeAll(where: { $0 == variant })
+-            save()
+-            return false
++            variantAdded = false
+         } else {
+             if variants[filename] == nil {
+                 variants[filename] = []
+             }
+             variants[filename]?.append(variant)
+-            save()
+-            return true
++            variantAdded = true
+         }
++
++        let collectedCount = variants[filename]?.count ?? 0
++        if collectedCount > 0 {
++            if !items.contains(item) { _ = items.toggle(item: item) }
++        } else {
++            if items.contains(item) { _ = items.toggle(item: item) }
++        }
++        save()
++        return variantAdded
+     }
+     
+     public func toggleCritters(critter: Item) -> Bool {
+@@ -506,3 +512,27 @@ public extension Dictionary where Key == String, Value == [Variant] {
+         return self[filename]?.contains(variant) == true
+     }
+ }
++
++public enum VariantsCompletionStatus {
++    case unstarted, partial, complete
++}
++
++public extension Dictionary where Key == String, Value == [Variant] {
++    func completionStatus(for item: Item) -> VariantsCompletionStatus {
++        guard let filename = item.filename, let variations = item.variations, !variations.isEmpty else {
++            return .unstarted
++        }
++        let collectedVariants = self[filename] ?? []
++        let collectedCount = collectedVariants.filter { variant in 
++            variations.contains(variant)
++        }.count
++
++        if collectedCount == 0 {
++            return .unstarted
++        } else if collectedCount == variations.count {
++            return .complete
++        } else {
++            return .partial
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+index 46b91a9..f61bcd7 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+@@ -81,6 +81,10 @@ public struct Item: Codable, Equatable, Identifiable, Hashable {
+     public let movementSpeed: String?
+     
+     public var variations: [Variant]?
++
++    public var hasSomeVariations: Bool {
++        (variations?.count ?? 0) > 1
++    }
+     
+     public let category: String

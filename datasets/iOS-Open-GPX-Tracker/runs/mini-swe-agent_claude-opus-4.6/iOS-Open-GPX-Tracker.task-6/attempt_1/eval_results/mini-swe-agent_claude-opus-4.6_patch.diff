@@ -1,0 +1,292 @@
+diff --git a/OpenGpxTracker/AppDelegate.swift b/OpenGpxTracker/AppDelegate.swift
+index 3e89b67..ec3a629 100644
+--- a/OpenGpxTracker/AppDelegate.swift
++++ b/OpenGpxTracker/AppDelegate.swift
+@@ -8,6 +8,7 @@
+ 
+ import UIKit
+ import CoreData
++import WatchConnectivity
+ 
+ 
+ ///
+@@ -20,6 +21,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
+     /// Default placeholder function
+     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+         // Override point for customization after application launch.
++        
++        // Activate WCSession for Apple Watch connectivity
++        if #available(iOS 9.0, *) {
++            if WCSession.isSupported() {
++                let session = WCSession.default
++                session.delegate = self
++                session.activate()
++            }
++        }
++        
+         return true
+     }
+ 
+@@ -60,12 +71,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
+         //self.saveContext()
+     }
+     
+-    /// Default pandle load GPX file
++    /// Handle GPX file opened from external source (e.g., AirDrop)
+     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+         print("load gpx File: \(url.absoluteString)")
+         let fileManager = FileManager.default
+         do {
+             try fileManager.moveItem(at: url, to: GPXFileManager.GPXFilesFolderURL.appendingPathComponent(url.lastPathComponent))
++            // Notify observers that a file was received from a URL
++            NotificationCenter.default.post(name: .didReceiveFileFromURL, object: nil)
+         }
+         catch let error as NSError {
+             print("Ooops! Something went wrong: \(error)")
+@@ -150,3 +163,74 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
+         }
+     }
+ }
++
++// MARK: WCSessionDelegate
++
++///
++/// Handles file transfers from Apple Watch companion app in the AppDelegate.
++/// This ensures file transfers work regardless of which view controller is active.
++///
++/// File received are automatically moved to default location which stores all GPX files.
++///
++@available(iOS 9.0, *)
++extension AppDelegate: WCSessionDelegate {
++    
++    /// called when `WCSession` goes inactive. Does nothing but display a debug message.
++    func sessionDidBecomeInactive(_ session: WCSession) {
++        print("AppDelegate:: WCSession has become inactive")
++    }
++    
++    /// called when `WCSession` is deactivated. Does nothing but display a debug message.
++    func sessionDidDeactivate(_ session: WCSession) {
++        print("AppDelegate:: WCSession has deactivated")
++    }
++    
++    /// called when activation did complete. Does nothing but display a debug message.
++    @available(iOS 9.3, *)
++    func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
++        switch activationState {
++        case .activated:
++            print("AppDelegate:: activationDidCompleteWithActivationState: session activated")
++        case .inactive:
++            print("AppDelegate:: activationDidCompleteWithActivationState: session inactive")
++        case .notActivated:
++            print("AppDelegate:: activationDidCompleteWithActivationState: session not activated, error:\(String(describing: error))")
++            
++        default: break
++        }
++    }
++    
++    /// Called when a file is received from Apple Watch.
++    /// Moves the file to the GPX files directory, posts a notification, and displays an alert.
++    func session(_ session: WCSession, didReceive file: WCSessionFile) {
++        let fileName = file.metadata!["fileName"] as! String?
++        
++        DispatchQueue.global().sync {
++            GPXFileManager.moveFrom(file.fileURL, fileName: fileName)
++            print("AppDelegate:: Received file from WatchConnectivity Session")
++        }
++        
++        // Post notification to update any open file list
++        DispatchQueue.main.async {
++            NotificationCenter.default.post(name: .didReceiveFileFromAppleWatch, object: nil)
++            
++            // alert to display to notify user that file has been received.
++            let controller = UIAlertController(title: "File Received from Apple Watch", message: "Received file: \"\(fileName ?? "unknown")\"", preferredStyle: .alert)
++            let action = UIAlertAction(title: "Done", style: .default) {
++                (action) in
++                print("AppDelegate:: Presented file received message from WatchConnectivity Session")
++            }
++            
++            controller.addAction(action)
++            
++            // Present on the topmost view controller
++            if let topController = self.window?.rootViewController {
++                var presentedVC = topController
++                while let next = presentedVC.presentedViewController {
++                    presentedVC = next
++                }
++                presentedVC.present(controller, animated: true, completion: nil)
++            }
++        }
++    }
++}
+diff --git a/OpenGpxTracker/GPXFilesTableViewController.swift b/OpenGpxTracker/GPXFilesTableViewController.swift
+index bbb4f4f..f78764a 100644
+--- a/OpenGpxTracker/GPXFilesTableViewController.swift
++++ b/OpenGpxTracker/GPXFilesTableViewController.swift
+@@ -14,6 +14,14 @@ import WatchConnectivity
+ /// Text displayed when there are no GPX files in the folder.
+ let kNoFiles = "No gpx files"
+ 
++/// Notification name extensions for file reception events
++extension Notification.Name {
++    /// Posted when a GPX file is received from a URL (e.g., AirDrop)
++    static let didReceiveFileFromURL = Notification.Name("didReceiveFileFromURL")
++    /// Posted when a GPX file is received from Apple Watch
++    static let didReceiveFileFromAppleWatch = Notification.Name("didReceiveFileFromAppleWatch")
++}
++
+ ///
+ /// TableViewController that displays the list of files that have been saved in previous sessions.
+ ///
+@@ -68,6 +76,10 @@ class GPXFilesTableViewController: UITableViewController, UINavigationBarDelegat
+             self.fileList.addObjects(from: list)
+             self.gpxFilesFound = true
+         }
++        
++        // Register for notifications when files are received externally
++        NotificationCenter.default.addObserver(self, selector: #selector(reloadTableData), name: .didReceiveFileFromURL, object: nil)
++        NotificationCenter.default.addObserver(self, selector: #selector(reloadTableData), name: .didReceiveFileFromAppleWatch, object: nil)
+     }
+     
+     
+@@ -89,6 +101,26 @@ class GPXFilesTableViewController: UITableViewController, UINavigationBarDelegat
+         // Dispose of any resources that can be recreated.
+     }
+     
++    /// Reloads the file list from disk and refreshes the table view.
++    /// Called when a file is received via AirDrop or Apple Watch.
++    @objc func reloadTableData() {
++        let list: [GPXFileInfo] = GPXFileManager.fileList
++        self.fileList.removeAllObjects()
++        if list.count != 0 {
++            self.fileList.addObjects(from: list)
++            self.gpxFilesFound = true
++        } else {
++            self.fileList.add(kNoFiles)
++            self.gpxFilesFound = false
++        }
++        DispatchQueue.main.async {
++            self.tableView.reloadData()
++        }
++    }
++    
++    deinit {
++        NotificationCenter.default.removeObserver(self)
++    }
+     
+     // MARK: Table view data source
+     
+@@ -137,13 +169,13 @@ class GPXFilesTableViewController: UITableViewController, UINavigationBarDelegat
+             return cell
+         } else {
+             let cell: UITableViewCell = UITableViewCell(style: UITableViewCell.CellStyle.subtitle, reuseIdentifier: "Cell")
+-            cell.textLabel?.text = fileList.object(at: (indexPath as NSIndexPath).row) as? NSString as String? ?? ""
++            cell.textLabel?.text = fileList.object(at: (indexPath as NSIndexPath).row) as? NSString as String?
+             return cell
+         }
+     }
+     
+     
+-    /// Displays an action sheet with the actions for that file (Send it by email, Load in map and Delete).
++    /// Displays options for that file (Send it by email, Load in map and Delete).
+     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+ 
+         let sheet = UIAlertController(title: nil, message: "Select option", preferredStyle: .actionSheet)
+diff --git a/OpenGpxTracker/ViewController.swift b/OpenGpxTracker/ViewController.swift
+index ed0ed2d..63e054a 100644
+--- a/OpenGpxTracker/ViewController.swift
++++ b/OpenGpxTracker/ViewController.swift
+@@ -9,7 +9,6 @@ import UIKit
+ import CoreLocation
+ import MapKit
+ import CoreGPX
+-import WatchConnectivity
+ 
+ 
+ /// Purple color for button background
+@@ -363,19 +362,6 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate  {
+             }
+         }
+         
+-        // Watch communication session activation (available >iOS 9)
+-        if #available(iOS 9.0, *) {
+-            if WCSession.isSupported() {
+-                print("ViewController:: WCSession is supported")
+-                let session = WCSession.default
+-                session.delegate = self
+-                session.activate()
+-                print("ViewController:: WCSession activated")
+-            }
+-            else {
+-                print("ViewController:: WCSession is not supported")
+-            }
+-        }
+         
+         // Map autorotate configuration
+         map.autoresizesSubviews = true
+@@ -1174,66 +1160,3 @@ extension ViewController: CLLocationManagerDelegate {
+         
+     }
+ }
+-
+-
+-// MARK: WCSessionDelegate
+-
+-///
+-/// Handles file transfers from Apple Watch companion app
+-/// Should be non intrusive to UI, handling all in the background.
+-
+-/// File received are automatically moved to default location which stores all GPX files
+-///
+-/// Only available > iOS 9
+-///
+-@available(iOS 9.0, *)
+-extension ViewController: WCSessionDelegate {
+-    
+-    /// called when `WCSession` goes inactive. Does nothing but display a debug message.
+-    func sessionDidBecomeInactive(_ session: WCSession) {
+-        print("GPXFilesTableViewController:: WCSession has become inactive")
+-    }
+-    
+-    /// called when `WCSession` goes inactive. Does nothing but display a debug message
+-    func sessionDidDeactivate(_ session: WCSession) {
+-        print("GPXFilesTableViewController:: WCSession has deactivated")
+-    }
+-    
+-    /// called when activation did complete. Does nothing but display a debug message.
+-    @available(iOS 9.3, *)
+-    func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+-        switch activationState {
+-        case .activated:
+-            print("GPXFilesTableViewController:: activationDidCompleteWithActivationState: session activated")
+-        case .inactive:
+-            print("GPXFilesTableViewController:: activationDidCompleteWithActivationState: session inactive")
+-        case .notActivated:
+-            print("GPXFilesTableViewController:: activationDidCompleteWithActivationState: session not activated, error:\(String(describing: error))")
+-            
+-        default: break
+-        }
+-    }
+-    
+-    /// Called when a file is received from Apple Watch.
+-    /// Displays a popup informing about the reception of the file.
+-    func session(_ session: WCSession, didReceive file: WCSessionFile) {
+-        let fileName = file.metadata!["fileName"] as! String?
+-        
+-        // alert to display to notify user that file has been received.
+-        let controller = UIAlertController(title: "File Received from Apple Watch", message: "Received file: \"\(fileName!)\"", preferredStyle: .alert)
+-        let action = UIAlertAction(title: "Done", style: .default) {
+-            (action) in
+-            print("ViewController:: Presented file received message from WatchConnectivity Session")
+-        }
+-        
+-        controller.addAction(action)
+-        
+-        DispatchQueue.global().sync {
+-            GPXFileManager.moveFrom(file.fileURL, fileName: fileName)
+-            print("ViewController:: Received file from WatchConnectivity Session")
+-        }
+-        
+-        self.present(controller, animated: true, completion: nil)
+-    }
+-}
+-

@@ -1,0 +1,211 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
+index 1fc5b95..9ace395 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
+@@ -854,3 +854,7 @@ Du kannst das Abonnement jederzeit in deinen iTunes Kontoeinstellungen beenden.
+ 
+ // Added 2020-06-05
+ "Contact / follow us on Twitter" = "Kontaktiere / folge uns auf Twitter";
++
++// Villager Visits
++"Villager Visits" = "Bewohnerbesuche";
++"Add villagers as residents to track your daily visits." = "Füge Bewohner als Inselbewohner hinzu, um deine täglichen Besuche zu verfolgen.";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
+index faecdd7..44d0f4c 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
+@@ -24,6 +24,7 @@ public class UserCollection: ObservableObject {
+     @Published public var designs: [Design] = []
+     @Published public var dailyCustomTasks = DailyCustomTasks()
+     @Published public var chores: [Chore] = []
++    @Published public var visitedResidents: [Villager] = []
+     
+     @Published public var isCloudEnabled = true
+     @Published public var isSynched = false
+@@ -163,6 +164,19 @@ public class UserCollection: ObservableObject {
+         return added
+     }
+     
++    // MARK: - Villager Visits
++    public func toggleVisitedResident(villager: Villager) {
++        if visitedResidents.contains(villager) {
++            visitedResidents.removeAll(where: { $0 == villager })
++        } else {
++            visitedResidents.append(villager)
++        }
++    }
++    
++    public func resetVisitedResidents() {
++        visitedResidents = []
++    }
++    
+     // MARK: - Todays Tasks
+     public func addCustomTask(task: DailyCustomTasks.CustomTask) {
+         dailyCustomTasks.tasks.append(task)
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/TodaySection.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/TodaySection.swift
+index 45658fc..84e256d 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/TodaySection.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/TodaySection.swift
+@@ -36,6 +36,7 @@ extension TodaySection {
+         case tasks
+         case chores
+         case nookazon
++        case villagerVisits
+     }
+ 
+     public static let defaultSectionList: [TodaySection] = [
+@@ -47,6 +48,7 @@ extension TodaySection {
+         TodaySection(name: .turnips, enabled: true),
+         TodaySection(name: .tasks, enabled: true),
+         TodaySection(name: .chores, enabled: true),
++        TodaySection(name: .villagerVisits, enabled: true),
+         TodaySection(name: .subscribe, enabled: true),
+         TodaySection(name: .music, enabled: true),
+         //TodaySection(name: .nameNookazon, enabled: true)
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionEditView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionEditView.swift
+index d750634..bc183fb 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionEditView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionEditView.swift
+@@ -85,6 +85,7 @@ extension TodaySection {
+         case .tasks: return "Today's Tasks"
+         case .chores: return "Chores"
+         case .nookazon: return "New on Nookazon"
++        case .villagerVisits: return "Villager Visits"
+         }
+     }
+ 
+@@ -102,6 +103,7 @@ extension TodaySection {
+         case .tasks: return "checkmark.seal.fill"
+         case .chores: return "checkmark.seal.fill"
+         case .nookazon: return "cart.fill"
++        case .villagerVisits: return "person.3.fill"
+         }
+     }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionView.swift
+index 2c6dfa7..cedd5b6 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionView.swift
+@@ -55,6 +55,8 @@ struct TodaySectionView: View {
+             return AnyView(TodayChoresSection())
+         case .nookazon:
+             return AnyView(TodayNookazonSection(sheet: $selectedSheet, viewModel: viewModel))
++        case .villagerVisits:
++            return AnyView(TodayVillagerVisitsSection())
+         }
+     }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodayVillagerVisitsSection.swift b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodayVillagerVisitsSection.swift
+new file mode 100644
+index 0000000..fbd2965
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodayVillagerVisitsSection.swift
+@@ -0,0 +1,108 @@
++//
++//  TodayVillagerVisitsSection.swift
++//  ACHNBrowserUI
++//
++//  Created by ACHNBrowserUI.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import SwiftUI
++import Backend
++import UI
++
++struct TodayVillagerVisitsSection: View {
++
++    // MARK: - Properties
++
++    @EnvironmentObject private var collection: UserCollection
++
++    @State private var selectedVillager: Villager?
++
++    // MARK: - Body
++
++    var body: some View {
++        Section(header: SectionHeaderView(text: "Villager Visits", icon: "person.3.fill")) {
++            if collection.residents.isEmpty {
++                Text("Add villagers as residents to track your daily visits.")
++                    .style(appStyle: .rowDescription)
++                    .padding(.vertical, 8)
++            } else {
++                ForEach(collection.residents) { villager in
++                    self.makeVillagerRow(villager: villager)
++                }
++                if !collection.visitedResidents.isEmpty {
++                    self.makeResetButton()
++                }
++            }
++        }
++        .sheet(item: $selectedVillager) { villager in
++            NavigationView {
++                VillagerDetailView(villager: villager)
++            }
++            .navigationViewStyle(StackNavigationViewStyle())
++            .environmentObject(self.collection)
++        }
++    }
++
++    // MARK: - Private
++
++    private func makeVillagerRow(villager: Villager) -> some View {
++        HStack {
++            Button(action: {
++                self.collection.toggleVisitedResident(villager: villager)
++                FeedbackGenerator.shared.triggerSelection()
++            }) {
++                Image(systemName: collection.visitedResidents.contains(villager)
++                    ? "checkmark.circle.fill" : "circle")
++                    .foregroundColor(collection.visitedResidents.contains(villager)
++                        ? .acTabBarBackground : .acText)
++                    .imageScale(.large)
++            }
++            .buttonStyle(BorderlessButtonStyle())
++
++            ItemImage(path: ACNHApiService.BASE_URL.absoluteString +
++                ACNHApiService.Endpoint.villagerIcon(id: villager.id).path(),
++                      size: 44)
++
++            Text(villager.localizedName)
++                .style(appStyle: .rowTitle)
++        }
++        .onLongPressGesture {
++            self.selectedVillager = villager
++        }
++    }
++
++    private func makeResetButton() -> some View {
++        HStack {
++            Spacer()
++            Text("Reset")
++                .onTapGesture {
++                    self.collection.resetVisitedResidents()
++                }
++                .foregroundColor(.acText)
++                .padding(.vertical, 8)
++                .padding(.horizontal, 14)
++                .background(Color.acText.opacity(0.2))
++                .mask(RoundedRectangle(cornerRadius: 14, style: .continuous))
++            Spacer()
++        }
++    }
++}
++
++// MARK: - Preview
++
++#if DEBUG
++struct TodayVillagerVisitsSection_Previews: PreviewProvider {
++    static var previews: some View {
++        NavigationView {
++            List {
++                TodayVillagerVisitsSection()
++            }
++            .listStyle(GroupedListStyle())
++            .environment(\.horizontalSizeClass, .regular)
++        }
++        .previewLayout(.sizeThatFits)
++        .environmentObject(UserCollection.shared)
++    }
++}
++#endif

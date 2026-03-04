@@ -1,0 +1,557 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
+index 6276b4e..0be90d1 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
+@@ -124,6 +124,8 @@ Du kannst das Abonnement jederzeit in deinen iTunes Kontoeinstellungen beenden.
+ "Bugs" = "Insekten";
+ "You caught them all!" = "Du hast alle gefangen!";
+ "New this month" = "Diesen Monat neu";
++"To catch now" = "Jetzt fangen";
++"To catch later" = "Später fangen";
+ "To catch" = "Zu fangen";
+ "Leaving this month" = "Nur noch diesen Monat";
+ "Caught" = "Gefangen";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/es.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/es.lproj/Localizable.strings
+index 9b29716..87a0365 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/es.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/es.lproj/Localizable.strings
+@@ -125,6 +125,8 @@ Puedes cancelar en cualquier momento desde los ajustes de iTunes. Cualquier peri
+ "Bugs" = "Insectos";
+ "You caught them all!" = "¡Los has atrapado todos!";
+ "New this month" = "Nuevo este mes";
++"To catch now" = "A atrapar ahora";
++"To catch later" = "A atrapar más tarde";
+ "To catch" = "Por atrapar";
+ "Leaving this month" = "Abandonan este mes";
+ "Caught" = "Atrapados";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+index 03834a4..d249543 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+@@ -128,6 +128,8 @@ You can cancel anytime with your iTunes account settings. Any unused portion of
+ "Bugs" = "Insectes";
+ "You caught them all!" = "Vous les avez tous attrapés!";
+ "New this month" = "Nouveau ce mois-ci";
++"To catch now" = "À attraper maintenant";
++"To catch later" = "À attraper plus tard";
+ "To catch" = "À attraper";
+ "Leaving this month" = "Dernière chance";
+ "Caught" = "Attrapés";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/it.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/it.lproj/Localizable.strings
+index e439803..788dc22 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/it.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/it.lproj/Localizable.strings
+@@ -111,6 +111,8 @@ Puoi annullare il tuo abbonamento in ogni momento dalle impostazioni del tuo acc
+ "Bugs" = "Insetti";
+ "You caught them all!" = "Li hai catturati tutti!";
+ "New this month" = "Novità del mese";
++"To catch now" = "Da catturare ora";
++"To catch later" = "Da catturare dopo";
+ "To catch" = "Da catturare";
+ "Leaving this month" = "Andranno via questo mese";
+ "Caught" = "Catturato";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/ja.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/ja.lproj/Localizable.strings
+index 0f872ac..2a192e6 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/ja.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/ja.lproj/Localizable.strings
+@@ -123,6 +123,8 @@ You can cancel anytime with your iTunes account settings. Any unused portion of
+ "Bugs" = "ムシ";
+ "You caught them all!" = "全て捕まえた!";
+ "New this month" = "今月の新着";
++"To catch now" = "今すぐ捕まえる";
++"To catch later" = "後で捕まえる";
+ "To catch" = "捕まえる";
+ "Leaving this month" = "今月でいなくなる";
+ "Caught" = "捕獲済み";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
+index 451a265..52d51d8 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
+@@ -10,8 +10,8 @@ import Foundation
+ 
+ 
+ public extension BidirectionalCollection where Element == Item {
+-    func filterActive() -> [Item] {
+-        self.filter({ $0.isActive() })
++    func filterActiveThisMonth() -> [Item] {
++        self.filter({ $0.isActiveThisMonth() })
+     }
+ }
+ 
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
+index 69bc1e8..3b604f1 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
+@@ -160,10 +160,22 @@ public extension Item {
+         return nil
+     }
+     
+-    func isActive() -> Bool {
++    func isActiveThisMonth() -> Bool {
+         let currentMonth = Int(Item.monthFormatter.string(from: Date()))!
+         return activeMonthsCalendar?.contains(currentMonth - 1) == true
+-           
++    }
++
++    func isActiveAtThisHour() -> Bool {
++        guard let hours = activeHours() else { return false }
++
++        if hours.start == 0 && hours.end == 0 { return true } // All day
++
++        let thisHour = Calendar.current.dateComponents([.hour], from: Date()).hour ?? 0
++        if hours.start < hours.end { // Same day
++            return thisHour >= hours.start && thisHour < hours.end
++        } else { // Overnight
++            return thisHour >= hours.start || thisHour < hours.end
++        }
+     }
+     
+     func isNewThisMonth() -> Bool {
+@@ -177,38 +189,53 @@ public extension Item {
+     }
+     
+     func formattedTimes() -> String? {
++        guard let hours = activeHours() else { return nil }
++
++        if hours.start == 0 && hours.end == 0 {
++            return NSLocalizedString("All day", comment: "")
++        }
++        
++        let startDate = DateComponents(calendar: .current, hour: hours.start).date!
++        let endDate = DateComponents(calendar: .current, hour: hours.end).date!
++        
++        let startHour = formatter.string(from: startDate)
++        let endHour = formatter.string(from: endDate)
++        
++        return "\(startHour) - \(endHour)\(is24Hour() ? "h" : "")"
++    }
++
++    private func activeHours() -> (start: Int, end: Int)? {
+         guard let activeTimes = activeMonths?.first?.value.activeTimes,
+             let startTime = activeTimes.first,
+             let endTime = activeTimes.last else {
+                 return nil
+         }
+         if Int(startTime) == 0 && Int(endTime) == 0 {
+-            return NSLocalizedString("All day", comment: "")
++            return (start: 0, end: 0)
+         }
+-        
++
+         var startHourInt = 0
+         var endHourInt = 0
+         if let hour = Int(startTime.prefix(1)) {
+             startHourInt = hour
+-            if startTime.suffix(2)  == "pm" {
++            if startTime.suffix(2) == "pm" {
+                 startHourInt += 12
+             }
+         }
+-        
++
+         if let hour = Int(endTime.prefix(1)) {
+             endHourInt = hour
+             if endTime.suffix(2) == "pm" {
+                 endHourInt += 12
+             }
+         }
+-        
+-        let startDate = DateComponents(calendar: .current, hour: startHourInt).date!
+-        let endDate = DateComponents(calendar: .current, hour: endHourInt).date!
+-        
+-        let startHour = formatter.string(from: startDate)
+-        let endHour = formatter.string(from: endDate)
+-        
+-        return "\(startHour) - \(endHour)\(is24Hour() ? "h" : "")"
++
++        return (start: startHourInt, end: endHourInt)
++    }
++    
++    @available(*, deprecated, renamed: "isActiveThisMonth()")
++    func isActive() -> Bool {
++        isActiveThisMonth()
+     }
+ }
+ 
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift.backup b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift.backup
+new file mode 100644
+index 0000000..69bc1e8
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift.backup
+@@ -0,0 +1,254 @@
++//
++//  Item.swift
++//  ACHNBrowserUI
++//
++//  Created by Thomas Ricouard on 08/04/2020.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import Foundation
++import SwiftUI
++
++public struct ItemResponse: Codable {
++    let total: Int
++    let results: [Item]
++}
++
++public struct NewItemResponse: Codable {
++    let total: Int
++    let results: [ItemWrapper]
++    
++    public struct ItemWrapper: Codable {
++        public let id: Int
++        public let name: String
++        public var content: Item
++        public let variations: [Variant]?
++    }
++}
++
++public struct ActiveMonth: Codable, Equatable {
++    let activeTimes: [String]
++}
++
++public struct Item: Codable, Equatable, Identifiable, Hashable {
++    static public func ==(lhs: Item, rhs: Item) -> Bool {
++        return lhs.id == rhs.id && lhs.appCategory == rhs.appCategory
++    }
++    
++    public func hash(into hasher: inout Hasher) {
++        hasher.combine(name)
++        hasher.combine(category)
++    }
++    
++    public var id: String { name }
++    public var internalID: Int?
++    public var critterId: Int?
++    
++    public var localizedName: String {
++        if let id = internalID {
++            return LocalizedItemService.shared.localizedNameFor(category: appCategory, itemId: id) ?? name
++        }
++        return name
++    }
++    
++    public let name: String
++    public let image: String?
++    public let filename: String?
++    public let house: String?
++    public let itemImage: String?
++    public var preferedVariantImage: String?
++    public var finalImage: String? {
++        if let preferedVariantImage = preferedVariantImage {
++            return preferedVariantImage
++        } else if let image = image, image.hasPrefix("https://acnhcdn") || image.hasPrefix("https://i.imgur")  {
++            return image
++        } else if let filename = filename {
++            return filename
++        }  else if let itemImage = itemImage {
++            return itemImage
++        }
++        return nil
++    }
++    public let iconImage: String?
++    public let furnitureImage: String?
++    
++    public let obtainedFrom: String?
++    public let obtainedFromNew: [String]?
++    public let sourceNotes: String?
++    public let dIY: Bool?
++    public let customize: Bool?
++    
++    public var variations: [Variant]?
++    
++    public let category: String
++    
++    public var appCategory: Category {
++        Category(itemCategory: category)
++    }
++    
++    public var itemCategory: String?
++        
++    public let materials: [Material]?
++    
++    public let buy: Int?
++    public let sell: Int?
++    
++    public let shadow: String?
++    public let activeMonths: [String: ActiveMonth]?
++    public let set: String?
++    public let tag: String?
++    public let styles: [String]?
++    public let themes: [String]?
++    public let colors: [String]?
++    
++    private static var METAS_CACHE: [String: [String]] = [:]
++    public var metas: [String] {
++        if let metas = Self.METAS_CACHE[id] {
++            return metas
++        }
++        var metas: [String] = []
++        if let tag = tag {
++            metas.append(tag)
++        }
++        if let set = set {
++            metas.append(set)
++        }
++        if let styles = styles {
++            metas.append(contentsOf: styles)
++        }
++        if let themes = themes {
++            metas.append(contentsOf: themes)
++        }
++        if let colors = colors {
++            metas.append(contentsOf: colors)
++        }
++        metas = Array(Set(metas.map{ $0.capitalized })).filter({ $0.lowercased() != "none"}).sorted()
++        Self.METAS_CACHE[id] = metas
++        return metas
++    }
++}
++
++// Formatter used for the start / end times of critters
++fileprivate let formatter: DateFormatter = {
++    let formatter = DateFormatter()
++    formatter.dateFormat = is24Hour() ? "HH" : "ha"
++    return formatter
++}()
++
++/// Determine if the device is set to 24 or 12 hour time
++fileprivate func is24Hour() -> Bool {
++    let dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: Locale.current)!
++    return dateFormat.firstIndex(of: "a") == nil
++}
++
++// MARK: - Calendar
++public extension Item {
++    static let monthFormatter: DateFormatter = {
++        let formatter = DateFormatter()
++        formatter.dateFormat = "MM"
++        return formatter
++    }()
++    
++    var activeMonthsCalendar: [Int]? {
++        let isSouth = AppUserDefaults.shared.hemisphere == .south
++        if var keys = activeMonths?.keys.compactMap({ Int($0) }) {
++            if isSouth {
++                keys = keys.map{ ($0 + 6) % 12 }
++            }
++            return keys
++        }
++        return nil
++    }
++    
++    func isActive() -> Bool {
++        let currentMonth = Int(Item.monthFormatter.string(from: Date()))!
++        return activeMonthsCalendar?.contains(currentMonth - 1) == true
++           
++    }
++    
++    func isNewThisMonth() -> Bool {
++        let currentMonth = Int(Item.monthFormatter.string(from: Date()))!
++        return activeMonthsCalendar?.contains(currentMonth - 2) == false
++    }
++    
++    func leavingThisMonth() -> Bool {
++        let currentMonth = Int(Item.monthFormatter.string(from: Date()))!
++        return activeMonthsCalendar?.contains(currentMonth) == false
++    }
++    
++    func formattedTimes() -> String? {
++        guard let activeTimes = activeMonths?.first?.value.activeTimes,
++            let startTime = activeTimes.first,
++            let endTime = activeTimes.last else {
++                return nil
++        }
++        if Int(startTime) == 0 && Int(endTime) == 0 {
++            return NSLocalizedString("All day", comment: "")
++        }
++        
++        var startHourInt = 0
++        var endHourInt = 0
++        if let hour = Int(startTime.prefix(1)) {
++            startHourInt = hour
++            if startTime.suffix(2)  == "pm" {
++                startHourInt += 12
++            }
++        }
++        
++        if let hour = Int(endTime.prefix(1)) {
++            endHourInt = hour
++            if endTime.suffix(2) == "pm" {
++                endHourInt += 12
++            }
++        }
++        
++        let startDate = DateComponents(calendar: .current, hour: startHourInt).date!
++        let endDate = DateComponents(calendar: .current, hour: endHourInt).date!
++        
++        let startHour = formatter.string(from: startDate)
++        let endHour = formatter.string(from: endDate)
++        
++        return "\(startHour) - \(endHour)\(is24Hour() ? "h" : "")"
++    }
++}
++
++// MARK: - Critters
++public extension Item {
++    var isCritter: Bool {
++        appCategory == .fish || appCategory == .bugs
++    }
++}
++
++// MARK: - Array
++public extension Sequence {
++    func sorted<T: Comparable>(by keyPath: KeyPath<Element, T>) -> [Element] {
++        return sorted { a, b in
++            return a[keyPath: keyPath] > b[keyPath: keyPath]
++        }
++    }
++}
++
++public let static_item = Item(name: "Acoustic guitar",
++                       image: nil,
++                       filename: "https://acnhcdn.com/latest/FtrIcon/FtrAcorsticguitar_Remake_0_0.png",
++                       house: nil,
++                       itemImage: nil,
++                       iconImage: nil,
++                       furnitureImage: nil,
++                       obtainedFrom: "Crafting",
++                       obtainedFromNew: ["Crafting"],
++                       sourceNotes: "From somewhere",
++                       dIY: true,
++                       customize: true,
++                       variations: nil,
++                       category: "Housewares",
++                       materials: nil,
++                       buy: 200,
++                       sell: 300,
++                       shadow: nil,
++                       activeMonths: nil,
++                       set: nil,
++                       tag: "Instrument",
++                       styles: nil,
++                       themes: nil,
++                       colors: nil)
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/ru.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/ru.lproj/Localizable.strings
+index 6db99ed..a6a6bb5 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/ru.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/ru.lproj/Localizable.strings
+@@ -125,6 +125,8 @@
+ "Bugs" = "Насекомые";
+ "You caught them all!" = "Вы поймали всех!";
+ "New this month" = "Новинки этого месяца";
++"To catch now" = "Поймать сейчас";
++"To catch later" = "Поймать позже";
+ "To catch" = "Поймать";
+ "Leaving this month" = "Заканчивается в этом месяце";
+ "Caught" = "Пойманные";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
+index 08c305e..43b56ca 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
+@@ -37,7 +37,8 @@ class ActiveCrittersViewModel: ObservableObject {
+         let new: [Item]
+         let leaving: [Item]
+         let caught: [Item]
+-        let toCatch: [Item]
++        let toCatchNow: [Item]
++        let toCatchLater: [Item]
+     }
+     
+     @Published var crittersInfo: [CritterType: CritterInfo] = [:]
+@@ -55,11 +56,12 @@ class ActiveCrittersViewModel: ObservableObject {
+             .receive(on: DispatchQueue.main)
+             .sink { [weak self] (items, critters) in
+                 for type in CritterType.allCases {
+-                    var active = items[type.category()]?.filterActive() ?? []
++                    var active = items[type.category()]?.filterActiveThisMonth() ?? []
+                     var new = active.filter{ $0.isNewThisMonth() }
+                     var leaving = active.filter{ $0.leavingThisMonth() }
+                     let caught = active.filter{ critters.contains($0) }
+-                    let toCatch = active.filter{ !critters.contains($0) }
++                    let toCatchNow = active.filter{ !caught.contains($0) && $0.isActiveAtThisHour() }
++                    let toCatchLater = active.filter{ !caught.contains($0) && !toCatchNow.contains($0) }
+                     
+                     if filterOutInCollection {
+                         new = new.filter{ !critters.contains($0) }
+@@ -71,7 +73,8 @@ class ActiveCrittersViewModel: ObservableObject {
+                                                            new: new,
+                                                            leaving: leaving,
+                                                            caught: caught,
+-                                                           toCatch: toCatch)
++                                                           toCatchNow: toCatchNow,
++                                                           toCatchLater: toCatchLater)
+                 }
+         }
+     }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
+index 75df943..5e96685 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
+@@ -31,12 +31,15 @@ struct ActiveCritterSections: View {
+     
+     var body: some View {
+         Group {
++            makeSectionOrPlaceholder(title: "To catch now",
++                                     icon: "calendar",
++                                     critters: viewModel.crittersInfo[selectedTab]?.toCatchNow ?? [])
++            makeSectionOrPlaceholder(title: "To catch later",
++                                     icon: "calendar",
++                                     critters: viewModel.crittersInfo[selectedTab]?.toCatchLater ?? [])
+             makeSectionOrPlaceholder(title: "New this month",
+                                      icon: "calendar.badge.plus",
+                                      critters: viewModel.crittersInfo[selectedTab]?.new ?? [])
+-            makeSectionOrPlaceholder(title: "To catch",
+-                                     icon: "calendar",
+-                                     critters: viewModel.crittersInfo[selectedTab]?.toCatch ?? [])
+             makeSectionOrPlaceholder(title: "Leaving this month",
+                                      icon: "calendar.badge.minus",
+                                      critters: viewModel.crittersInfo[selectedTab]?.leaving ?? [])
+@@ -56,8 +59,10 @@ struct ActiveCrittersView: View {
+     
+     var body: some View {
+         List {
+-            if (viewModel.crittersInfo[.fish]?.toCatch.isEmpty == true || viewModel.crittersInfo[.bugs]?.toCatch.isEmpty == true) &&
+-                (viewModel.crittersInfo[.fish]?.caught.isEmpty == true || viewModel.crittersInfo[.bugs]?.caught.isEmpty == true) {
++            if (viewModel.crittersInfo[.fish]?.toCatchLater.isEmpty == true || viewModel.crittersInfo[.bugs]?.toCatchLater.isEmpty == true) &&
++                 (viewModel.crittersInfo[.fish]?.toCatchNow.isEmpty == true || viewModel.crittersInfo[.bugs]?.toCatchNow.isEmpty == true) &&
++                (viewModel.crittersInfo[.fish]?.caught.isEmpty == true ||
++                    viewModel.crittersInfo[.bugs]?.caught.isEmpty == true) {
+                 RowLoadingView(isLoading: .constant(true))
+             } else {
+                 Picker(selection: $selectedTab, label: Text("")) {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/zh-Hans.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/zh-Hans.lproj/Localizable.strings
+index 44c26fa..4b54bee 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/zh-Hans.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/zh-Hans.lproj/Localizable.strings
+@@ -125,6 +125,8 @@
+ "Bugs" = "昆虫";
+ "You caught them all!" = "你已经抓到了所有!";
+ "New this month" = "本月新品";
++"To catch now" = "现在可捕捉";
++"To catch later" = "稍后可捕捉";
+ "To catch" = "可捕捉";
+ "Leaving this month" = "本月即将到期";
+ "Caught" = "已拥有";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/zh-Hant-TW.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/zh-Hant-TW.lproj/Localizable.strings
+index af638de..efb0dbf 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/zh-Hant-TW.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/zh-Hant-TW.lproj/Localizable.strings
+@@ -65,3 +65,16 @@ You can delete and close your gates at any moment.
+ Please be respectful, any Dodo code reported will be deleted.";
+ "ACDodoCode.notification.title" = "A new Dodo code is available";
+ "ACDodoCode.notification.subtitle" = "Someone opened their gates and posted a new Dodo code on the application, go check it out!";
++
++// Active Critters
++"Active Critters" = "活動中的生物";
++"Fishes" = "魚";
++"Bugs" = "昆蟲";
++"You caught them all!" = "你全部都抓到了！";
++"New this month" = "本月新發現";
++"To catch now" = "現在可捕捉";
++"To catch later" = "稍後可捕捉";
++"To catch" = "可捕捉";
++"Leaving this month" = "本月即将消失";
++"Caught" = "已捕捉";
++"ALL" = "全部";

@@ -1,0 +1,3404 @@
+HEAD is now at fbd582e bump to 1.9.0
+Looking in links: /tmp/tmpnsteu1ud
+Requirement already satisfied: pip in /usr/local/lib/python3.12/site-packages (23.3.2)
+👋 This is mini-swe-agent version 2.2.5.
+Check the v2 migration guide at https://klieret.short.gy/mini-v2-migration
+Loading global config from '/root/.config/mini-swe-agent/.env'
+Building agent config from specs: ['mini.yaml', '/tmp/anvil_override.yaml']
+
+System:
+You are a helpful assistant that can interact with a computer.
+
+User:
+Please solve this issue: ## Feature: "Screen always on" preference and loading 
+indicator for preferences screen
+
+### Problem Description
+
+The **iOS-Open-GPX-Tracker** app has two user-facing issues related to 
+preferences and screen behavior:
+
+1. **No "keep screen on" option.** When tracking a route, the device screen dims
+and locks after the system idle timeout. Users lose sight of the live map and 
+must repeatedly wake the device to check their position. There is no in-app 
+setting to prevent this.
+
+2. **Preferences screen appears to hang.** Opening the preferences screen 
+calculates the tile cache size synchronously on the main thread. When the cache 
+is large (e.g., 1 GB), this blocks the UI for several seconds with no visual 
+feedback, making users think the button did nothing.
+
+### Expected Behavior
+
+- A "Keep screen always on" toggle is available in the app's preferences under a
+new "Screen" section.
+- When enabled, the device screen stays on while the app is in the foreground.
+- The preference persists across app launches and is applied when the app 
+starts.
+- Opening the preferences screen shows a loading indicator while it initializes,
+so the user gets immediate feedback even if initialization is slow.
+- The loading indicator disappears once the preferences screen is ready to 
+present.
+
+### Acceptance Criteria
+
+1. A new preferences section for screen behavior is visible in the preferences 
+table.
+2. Toggling the setting keeps the screen awake or restores default idle timer 
+behavior.
+3. The preference is persisted and restored on app launch.
+4. A loading indicator appears while the preferences screen loads and disappears
+once it is presented.
+5. The app builds and runs without regressions.
+
+### Required API Surface
+
+The implementation must expose these names (tests depend on them to compile):
+
+- `Preferences.shared.keepScreenAlwaysOn`
+- `kDefaultsKeyKeepScreenAlwaysOn`
+- `kScreenSection`
+- `Toast.kDisabledDelay`
+- `Toast.showLoading(_:)`, `Toast.hideLoading()`
+
+## Important constraints
+- Do NOT create, modify, or delete any test files or test cases. The existing 
+test suite will be used to verify your implementation.
+
+## Efficiency constraint
+Start implementing changes within the first 5-8 steps. Keep analysis brief; 
+prefer quick exploration followed by edits.
+
+
+You can execute bash commands and edit files to implement the necessary changes.
+
+## Recommended Workflow
+
+This workflows should be done step-by-step so that you can iterate on your 
+changes and any possible problems.
+
+1. Analyze the codebase by finding and reading relevant files
+2. Create a script to reproduce the issue
+3. Edit the source code to resolve the issue
+4. Verify your fix works by running your script again
+5. Test edge cases to ensure your fix is robust
+6. Submit your changes and finish your work by issuing the following command: 
+`echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+   Do not combine it with any other command. <important>After this command, you 
+cannot continue working on this task.</important>
+
+## Command Execution Rules
+
+You are operating in an environment where
+
+1. You issue at least one command
+2. The system executes the command(s) in a subshell
+3. You see the result(s)
+4. You write your next command(s)
+
+Each response should include:
+
+1. **Reasoning text** where you explain your analysis and plan
+2. At least one tool call with your command
+
+**CRITICAL REQUIREMENTS:**
+
+- Your response SHOULD include reasoning text explaining what you're doing
+- Your response MUST include AT LEAST ONE bash tool call
+- Directory or environment variable changes are not persistent. Every action is 
+executed in a new subshell.
+- However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd 
+/path/to/working/dir && ...` or write/load environment variables from files
+- Submit your changes and finish your work by issuing the following command: 
+`echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
+  Do not combine it with any other command. <important>After this command, you 
+cannot continue working on this task.</important>
+
+Example of a CORRECT response:
+<example_response>
+I need to understand the structure of the repository first. Let me check what 
+files are in the current directory to get a better understanding of the 
+codebase.
+
+[Makes bash tool call with {"command": "ls -la"} as arguments]
+</example_response>
+
+<system_information>
+Linux 4.4.0 #1 SMP Sun Jan 10 15:06:54 PST 2016 x86_64
+</system_information>
+
+## Useful command examples
+
+### Create a new file:
+
+```bash
+cat <<'EOF' > newfile.py
+import numpy as np
+hello = "world"
+print(hello)
+EOF
+```
+
+### Edit files with sed:```bash
+# Replace all occurrences
+sed -i 's/old_string/new_string/g' filename.py
+
+# Replace only first occurrence
+sed -i 's/old_string/new_string/' filename.py
+
+# Replace first occurrence on line 1
+sed -i '1s/old_string/new_string/' filename.py
+
+# Replace all occurrences in lines 1-10
+sed -i '1,10s/old_string/new_string/g' filename.py
+```
+
+### View file content:
+
+```bash
+# View specific lines with numbers
+nl -ba filename.py | sed -n '10,20p'
+```
+
+### Any other command you want to run
+
+```bash
+anything
+```
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 1, $0.01):
+
+
+Let me start by exploring the codebase structure to understand the project 
+layout.
+
+```
+find / -type f -name "*.swift" 2>/dev/null | head -50
+```
+
+Tool:
+<returncode>
+0
+<output>
+/app/OpenGpxTrackerTests/OpenGpxTrackerTests.swift
+/app/OpenGpxTracker/Double+Measures.swift
+/app/OpenGpxTracker/MailerManager.swift
+/app/OpenGpxTracker/ViewController.swift
+/app/OpenGpxTracker/Date+timeAgo.swift
+/app/OpenGpxTracker/Int+asFilesize.swift
+/app/OpenGpxTracker/DateField.swift
+/app/OpenGpxTracker/GPXMapView.swift
+/app/OpenGpxTracker/TrackerButton.swift
+/app/OpenGpxTracker/PreferencesTableViewControllerDelegate.swift
+/app/OpenGpxTracker/GPXSession.swift
+/app/OpenGpxTracker/AboutViewController.swift
+/app/OpenGpxTracker/Preferences.swift
+/app/OpenGpxTracker/CoreDataHelper+BatchDelete.swift
+/app/OpenGpxTracker/Toast.swift
+/app/OpenGpxTracker/GPXTileServer.swift
+/app/OpenGpxTracker/GPXTrack+length.swift
+/app/OpenGpxTracker/DateFieldTypeView.swift
+/app/OpenGpxTracker/GPXFilesTableViewController.swift
+/app/OpenGpxTracker/GPXRoot+length.swift
+/app/OpenGpxTracker/StopWatch.swift
+/app/OpenGpxTracker/CLActivityType+Info.swift
+/app/OpenGpxTracker/GPXExtentCoordinates.swift
+/app/OpenGpxTracker/MapViewDelegate.swift
+/app/OpenGpxTracker/CoreDataHelper+FetchRequests.swift
+/app/OpenGpxTracker/DistanceLabel.swift
+/app/OpenGpxTracker/AppDelegate.swift
+/app/OpenGpxTracker/GPXFileInfo.swift
+/app/OpenGpxTracker/GPXTrackPoint+MapKit.swift
+/app/OpenGpxTracker/UIColor+Keyboard.swift
+/app/OpenGpxTracker/GPXWaypoint+MKAnnotation.swift
+/app/OpenGpxTracker/MKMapView+ConvenientOverlayInserts.swift
+/app/OpenGpxTracker/CoreDataHelper.swift
+/app/OpenGpxTracker/DatePatternButton.swift
+/app/OpenGpxTracker/GPXFilesTableViewControlllerDelegate.swift
+/app/OpenGpxTracker/UIColor+DarkMode.swift
+/app/OpenGpxTracker/GPXTrackSegment+MapKit.swift
+/app/OpenGpxTracker/StopWatchDelegate.swift
+/app/OpenGpxTracker/DefaultNameSetupViewController.swift
+/app/OpenGpxTracker/GPXFileManager.swift
+/app/OpenGpxTracker/UIInsetLabel.swift
+/app/OpenGpxTracker/PreferencesTableViewController.swift
+/app/OpenGpxTracker/String+CountInstances.swift
+/app/OpenGpxTracker/DefaultDateFormat.swift
+/app/Pods/MapCache/MapCache/Classes/Log.swift
+/app/Pods/MapCache/MapCache/Classes/MKMapView+MapCache.swift
+/app/Pods/MapCache/MapCache/Classes/TileRange.swift
+/app/Pods/MapCache/MapCache/Classes/TileCoordsRegion.swift
+/app/Pods/MapCache/MapCache/Classes/RegionDownloader.swift
+/app/Pods/MapCache/MapCache/Classes/CachedTileOverlayRenderer.swift
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 2, $0.03):
+```
+cat /app/OpenGpxTracker/Preferences.swift
+```
+
+Tool:
+<returncode>
+0
+<output_head>
+//
+//  Preferences.swift
+//  OpenGpxTracker
+//
+//  Created by merlos on 04/05/2019.
+//  Copyright © 2019 TransitBox. All rights reserved.
+//
+// Shared file: this file is also included in the OpenGpxTracker-Watch Extension
+target.
+
+import Foundation
+import CoreLocation
+
+/// Key on Defaults for the Tile Server integer.
+let kDefaultsKeyTileServerInt: String = "TileServerInt"
+
+/// Key on Defaults for the use cache setting.
+let kDefaultsKeyUseCache: String = "UseCache"
+
+/// Key on Defaults for the use of imperial units.
+let kDefaultsKeyUseImperial: String = "UseImperial"
+
+/// Key on Defaults for the current selected activity type.
+let kDefaultsKeyActivityType: String = "ActivityType"
+
+/// Key on Defaults for the current date format..
+let kDefaultsKeyDateFormat: String = "DateFormat"
+
+/// Key on Defaults for the current input date format
+let kDefaultsKeyDateFormatInput: String = "DateFormatPresetInput"
+
+/// Key on Defaults for the current selected date format preset cell index.
+let kDefaultsKeyDateFormatPreset: String = "DateFormatPreset"
+
+/// Key on Defaults for the current selected date format, to use UTC time or 
+not..
+let kDefaultsKeyDateFormatUseUTC: String = "DateFormatPresetUseUTC"
+
+/// Key on Defaults for the current selected date format, to use local Locale or
+`en_US_POSIX`
+let kDefaultsKeyDateFormatUseEN: String = "DateFormatPresetUseEN"
+
+/// Key on Defaults for the folder where GPX files are store, `nil` means 
+default folder
+let kDefaultsKeyGPXFilesFolder: String = "GPXFilesFolder"
+
+/// A class to handle app preferences in one single place.
+/// When the app starts for the first time the following preferences are set:
+///
+/// * useCache = true
+/// * useImperial = whatever is set by current locale (NSLocale.usesMetricUnits)
+or false
+/// * tileServer = .apple
+///
+class Preferences: NSObject {
+
+    /// Shared preferences singleton.
+    /// Usage:
+    ///      var preferences: Preferences = Preferences.shared
+    ///      print (preferences.useCache)
+    ///
+    static let shared = Preferences()
+    
+    /// In memory value of the preference.
+    private var _useImperial: Bool = false
+    
+    /// In memory value of the preference.
+    private var _useCache: Bool = true
+    
+    /// In memory value of the preference.
+    private var _tileServer: GPXTileServer = .apple
+    
+    /// In memory value of the preference.
+    private var _activityType: CLActivityType = .other
+    
+    ///
+    private var _dateFormat = "dd-MMM-yyyy-HHmm"
+    
+    ///
+    private var _dateFormatInput = "{dd}-{MMM}-{yyyy}-{HH}{mm}"
+    
+    ///
+    private var _dateFormatPreset: Int = 0
+    
+    ///
+    private var _dateFormatUseUTC: Bool = false
+    
+    ///
+    private var _dateFormatUseEN: Bool = false
+    
+    ///
+    private var _gpxFilesFolderBookmark: Data?
+    
+    /// UserDefaults.standard shortcut
+    private let defaults = UserDefaults.standard
+    
+    /// Loads preferences from UserDefaults.
+    private override init() {
+        // Loads preferences into private vars
+     
+        // Use Imperial units
+        if let useImperialDefaults = defaults.object(forKey: 
+kDefaultsKeyUseImperial) as? Bool {
+            print("** Preferences:: loaded from defaults. useImperial: 
+\(useImperialDefaults)")
+            _useImperial = useImperialDefaults
+        } else { // get from locale config
+            let locale = NSLocale.current
+            _useImperial = !locale.usesMetricSystem
+            let langCode = locale.languageCode ?? "unknown"
+            let useMetric = locale.usesMetricSystem
+            print("** Preferences:: NO defaults for useImperial. Using locale: 
+\(langCode) useImperial: \(_useImperial) usesMetric:\(useMetric)")
+        }
+    
+        // Use cache
+        if let useCacheFromDefaults = defaults.object(forKey: 
+kDefaultsKeyUseCache) as? Bool {
+            _useCache = useCacheFromDefaults
+            print("Preferences:: loaded preference from defaults useCache= 
+\(useCacheFromDefaults)")
+        }
+        
+        // Map Tile server
+        if var tileServerInt = defaults.object(forKey: 
+kDefaultsKeyTileServerInt) as? Int {
+            // Check in case it was a tile server that is no longer supported
+            tileServerInt = tileServerInt >= GPXTileServer.count ? 
+GPXTileServer.apple.rawValue : tileServerInt
+            _tileServer = GPXTileServer(rawValue: tileServerInt)!
+            print("** Preferences:: loaded preference from defaults 
+tileServerInt \(tileServerInt)")
+        }
+        
+        // load previous activity type
+        if let activityTypeInt = defaults.object(forKey: 
+kDefaultsKeyActivityType) as? Int {
+            _activityType = CLActivityType(rawValue: activityTypeInt)!
+            print("** Preferences:: loaded preference from defaults 
+activityTypeInt \(activityTypeInt)")
+        }
+        
+        // load previous date format
+        if let dateFormatStr = defaults.object(forKey: kDefaultsKeyDateFormat) 
+as? String {
+            _dateFormat = dateFormatStr
+            print("** Preferences::
+<output_tail>
+{
+        get {
+            return _useCache
+        }
+        set {
+            _useCache = newValue
+            // Set defaults
+            defaults.set(newValue, forKey: kDefaultsKeyUseCache)
+        }
+    }
+    
+    /// Gets and sets user preference of the map tile server.
+    var tileServer: GPXTileServer {
+        get {
+            return _tileServer
+        }
+        
+        set {
+            _tileServer = newValue
+             defaults.set(newValue.rawValue, forKey: kDefaultsKeyTileServerInt)
+        }
+    }
+    
+    /// Get and sets user preference of the map tile server as Int.
+    var tileServerInt: Int {
+        get {
+            return _tileServer.rawValue
+        }
+        set {
+            _tileServer = GPXTileServer(rawValue: newValue)!
+             defaults.set(newValue, forKey: kDefaultsKeyTileServerInt)
+        }
+    }
+    /// Gets and sets the type of activity preference
+    var locationActivityType: CLActivityType {
+        get {
+            return _activityType
+        }
+        set {
+            _activityType = newValue
+            defaults.set(newValue.rawValue, forKey: kDefaultsKeyActivityType)
+        }
+    }
+    
+    /// Gets and sets the activity type as its int value
+    var locationActivityTypeInt: Int {
+        get {
+            return _activityType.rawValue
+        }
+        set {
+            _activityType = CLActivityType(rawValue: newValue)!
+            defaults.set(newValue, forKey: kDefaultsKeyActivityType)
+        }
+    }
+    
+    /// Gets and sets the date formatter friendly date format
+    var dateFormat: String {
+        get {
+            return _dateFormat
+        }
+        
+        set {
+             _dateFormat = newValue
+             defaults.set(newValue, forKey: kDefaultsKeyDateFormat)
+        }
+    }
+    
+    /// Gets and sets the user friendly input date format
+    var dateFormatInput: String {
+        get {
+            return _dateFormatInput
+        }
+        
+        set {
+             _dateFormatInput = newValue
+             defaults.set(newValue, forKey: kDefaultsKeyDateFormatInput)
+        }
+    }
+    
+    /// Get and sets user preference of date format presets. (-1 if custom)
+    var dateFormatPreset: Int {
+        get {
+            return _dateFormatPreset
+        }
+        set {
+            _dateFormatPreset = newValue
+             defaults.set(newValue, forKey: kDefaultsKeyDateFormatPreset)
+        }
+    }
+    
+    /// Get date format preset name
+    var dateFormatPresetName: String {
+        let presets =  ["Defaults", "ISO8601 (UTC)", "ISO8601 (UTC offset)", 
+"Day, Date at time (12 hr)", "Day, Date at time (24 hr)"]
+        return _dateFormatPreset < presets.count ? presets[_dateFormatPreset] : 
+"???"
+    }
+    
+    /// Get and sets whether to use UTC for date format
+    var dateFormatUseUTC: Bool {
+        get {
+            return _dateFormatUseUTC
+        }
+        set {
+            _dateFormatUseUTC = newValue
+             defaults.set(newValue, forKey: kDefaultsKeyDateFormatUseUTC)
+        }
+    }
+    
+    /// Get and sets whether to use local locale or EN
+    var dateFormatUseEN: Bool {
+        get {
+            return _dateFormatUseEN
+        }
+        set {
+            _dateFormatUseEN = newValue
+             defaults.set(newValue, forKey: kDefaultsKeyDateFormatUseEN)
+        }
+    }
+    
+    var gpxFilesFolderURL: URL? {
+        get {
+            guard let bookmarkData = self._gpxFilesFolderBookmark else {
+                return nil
+            }
+            do {
+                var isStale: Bool = false
+                let url = try URL(resolvingBookmarkData: bookmarkData, 
+bookmarkDataIsStale: &isStale)
+                if isStale {
+                    _ = url.startAccessingSecurityScopedResource()
+                    defer {
+                        url.stopAccessingSecurityScopedResource()
+                    }
+                    let newBookmark = try url.bookmarkData()
+                    _gpxFilesFolderBookmark = newBookmark
+                    defaults.set(newBookmark, forKey: 
+kDefaultsKeyGPXFilesFolder)
+                }
+                return url
+            } catch {
+                print("** Preferences:: failed to retrieve url from bookmark 
+data: \(String(describing: error))")
+                return nil
+            }
+        }
+        set {
+            guard let newValue else {
+                defaults.removeObject(forKey: kDefaultsKeyGPXFilesFolder)
+                return
+            }
+            do {
+                _ = newValue.startAccessingSecurityScopedResource()
+                defer {
+                    newValue.stopAccessingSecurityScopedResource()
+                }
+                let newBookmark = try newValue.bookmarkData()
+                _gpxFilesFolderBookmark = newBookmark
+                defaults.set(newBookmark, forKey: kDefaultsKeyGPXFilesFolder)
+            } catch {
+                print("** Preferences:: failed to generate bookmark data for 
+url: \(String(describing: error))")
+            }
+        }
+    }
+}
+
+<elided_chars>
+2227
+<warning>
+Output too long.
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 3, $0.06):
+```
+cat /app/OpenGpxTracker/Toast.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+//
+//  Toast.swift
+//  OpenGpxTracker
+//
+//  Created by Merlos on 5/28/23.
+//
+
+import Foundation
+import UIKit
+
+/// Font size of the toast
+
+/// Supporting UILabel for Toast.
+/// Setups the base label.
+///  The toast adds the position color
+class ToastLabel: UILabel {
+    
+    static let kFontSize = 16
+    
+    override init(frame: CGRect) {
+          super.init(frame: frame)
+          commonInit()
+      }
+      
+      required init?(coder aDecoder: NSCoder) {
+          super.init(coder: aDecoder)
+          commonInit()
+      }
+      
+      convenience init(text: String) {
+          self.init()
+          self.text = text
+      }
+      
+      private func commonInit() {
+          textAlignment = .center
+          font = UIFont.systemFont(ofSize: CGFloat(ToastLabel.kFontSize))
+          alpha = 0
+          numberOfLines = 0
+          layer.masksToBounds = true
+          layer.cornerRadius = 10
+      }
+    
+    var textInsets = UIEdgeInsets.zero {
+        didSet { invalidateIntrinsicContentSize() }
+    }
+    override func textRect(forBounds bounds: CGRect, limitedToNumberOfLines 
+numberOfLines: Int) -> CGRect {
+        let insetRect = bounds.inset(by: textInsets)
+        let textRect = super.textRect(forBounds: insetRect, 
+limitedToNumberOfLines: numberOfLines)
+        let invertedInsets = UIEdgeInsets(top: -textInsets.top, left: 
+-textInsets.left, bottom: -textInsets.bottom, right: -textInsets.right)
+        return textRect.inset(by: invertedInsets)
+    }
+    override func drawText(in rect: CGRect) {
+        super.drawText(in: rect.inset(by: textInsets))
+    }
+}
+
+///
+/// Display a toast message in a label for a few seconds and dissapears
+///
+///  Usage:
+///
+///      Toast.regular("My message") // It accepts delay in seconds and position
+(.top, .center .bottom)
+///
+///      // There are .info, .warning, .error and .success toasts.
+///      Toast.info("My message", position: .top, delay: 10)
+///
+///  Originally extracted from 
+https://stackoverflow.com/questions/31540375/how-to-create-a-toast-message-in-sw
+ift
+///
+class Toast {
+    
+    /// Short delay
+    static let kDelayShort = 2.0
+    
+    /// Long delay
+    static let kDelayLong = 5.0
+    
+    /// Background opacity
+    static let kBackgroundOpacity: Double = 0.9
+    
+    /// height of the toast
+    static let kToastHeight = 20
+    
+    /// withd of the toast
+    static let kToastWidth = 24
+    
+    ///  Offset from the closest screen edge (top or bottom).
+    static let kToastOffset = 120
+    
+    /// Toast.regular text color
+    static let kRegularTextColor: UIColor = UIColor.white
+    /// Toast.regular background color
+    static let kRegularBackgroundColor: UIColor = UIColor.black
+    
+    /// Toast.info text color
+    static let kInfoTextColor: UIColor = UIColor.white
+    /// Toast.info background color
+    static let kInfoBackgroundColor: UIColor = UIColor(red: 0/255, green: 
+100/255, blue: 225/255, alpha: kBackgroundOpacity)
+    
+    /// Toast.success text color
+    static let kSuccessTextColor: UIColor = UIColor.white
+    /// Toast.success background color
+    static let kSuccessBackgroundColor: UIColor = UIColor(red: 0/255, green: 
+150/255, blue: 0/255, alpha: kBackgroundOpacity)
+  
+    /// Toast.warning text color
+    static let kWarningTextColor: UIColor = UIColor.black
+    
+    static let kWarningBackgroundColor: UIColor = UIColor(red: 255/255, green: 
+175/255, blue: 0/255, alpha: kBackgroundOpacity)
+    
+    /// Toast.error text color
+    static let kErrorTextColor: UIColor = UIColor.white
+    /// Toast.error background color
+    static let kErrorBackgroundColor: UIColor = UIColor(red: 175/255, green: 
+0/255, blue: 0/255, alpha: kBackgroundOpacity)
+  
+    /// Position of the toast in the vertical access
+    enum Position {
+        case bottom
+        case center
+        case top
+    }
+    
+    ///
+    /// Generic implementation to show toast
+    /// - Parameters:
+    ///     - message: Text message to display
+    ///     - textColor: Color of the text
+    ///     - backgroundColor: Color of the text
+    ///     - position: Position within the screen (.bottom, .center, .top)
+    ///     - delay: time in seconds that the toast will be displayed
+    static func showToast(_ message: String,
+                          textColor: UIColor = kRegularTextColor,
+                          backgroundColor: UIColor = kRegularBackgroundColor,
+                          position: Position = .bottom,
+                          delay: Double = kDelayLong) {
+        guard let window = UIApplication.shared.keyWindow else {
+            return
+        }
+        let label = ToastLabel(text: message)
+        label.textColor = textColor
+        label.backgroundColor = backgroundColor
+        
+        var vertical: CGFloat = 0
+        var size = label.intrinsicContentSize
+        var width = min(size.width, window.frame.width - 60)
+        if width != size.width {
+            vertical = 1000
+            label.textAlignment = .justified
+        }
+        label.textInsets = UIEdgeInsets(top: vertical, left: 15, bottom: 
+vertical, right: 15)
+       
+        size = label.intrinsicContentSize
+        width = min(size.width, window.frame.width - 60)
+        switch position {
+        case .bottom:
+            label.frame = CGRect(x: CGFloat(kToastWidth),
+                                 y: window.frame.height - CGFloat(kToastOffset),
+                                 width: width,
+                                 height: size.height + CGFloat(kToastHeight))
+        case .center:
+            label.frame = CGRect(x: CGFloat(kToastWidth),
+                                 y: window.frame.height / 2,
+                                 width: width,
+                                 height: size.height + CGFloat(kToastHeight))
+        case .top:
+            label.frame = CGRect(x: CGFloat(kToastWidth),
+                                 y: CGFloat(kToastOffset),
+                                 width: width,
+                                 height: size.height + CGFloat(kToastHeight))
+        }
+        label.center.x = window.center.x
+        
+        window.addSubview(label)
+        UIView.animate(withDuration: 0.5, delay: 0, options: .curveEaseIn,
+                       animations: { label.alpha = 1 },
+                       completion: { _ in
+                            UIView.animate(withDuration: 0.5, delay: delay,
+                            options: .curveEaseOut,
+                            animations: {label.alpha = 0 },
+                            completion: {_ in label.removeFromSuperview()
+                            })
+                        })
+    }
+    
+    ///
+    /// Displays a regular toast (black)
+    /// - SeeAlso showToast
+    ///
+    class func regular(_ message: String, position: Position = Position.bottom, 
+delay: Double = kDelayLong) {
+        showToast(message, textColor: kRegularTextColor, backgroundColor: 
+kRegularBackgroundColor, position: position, delay: delay)
+    }
+    
+    ///
+    ///  Information toast (blue)
+    ///
+    /// - SeeAlso showToast
+    class func info(_ message: String,
+                    position: Position = Position.bottom,
+                    delay: Double = kDelayLong) {
+        
+        showToast(String("\u{24D8}")+"  "+message,
+                  textColor: kInfoTextColor,
+                  backgroundColor: kInfoBackgroundColor,
+                  position: position,
+                  delay: delay)
+    }
+    
+    ///
+    /// Display a warning toast (orange)
+    ///
+    /// - SeeAlso showToast
+    class func warning(_ message: String,
+                       position: Position = Position.bottom,
+                       delay: Double = kDelayLong) {
+        
+        showToast(String("\u{26A0}")+"  "+message,
+                  textColor: kWarningTextColor,
+                  backgroundColor: kWarningBackgroundColor,
+                  position: position,
+                  delay: delay)
+    }
+    
+    ///
+    /// Display a Success toast
+    ///
+    /// - SeeAlso showToast
+    class func success(_ message: String,
+                       position: Position = Position.bottom,
+                       delay: Double = kDelayLong) {
+        
+        showToast(String("\u{2705}")+"  "+message,
+                  textColor: kSuccessTextColor,
+                  backgroundColor: kSuccessBackgroundColor,
+                  position: position,
+                  delay: delay)
+    }
+    
+    ///
+    /// Display a error toast.
+    ///
+    /// - SeeAlso showToast
+    ///
+    class func error(_ message: String,
+                     position: Position = Position.bottom,
+                     delay: Double = kDelayLong) {
+        showToast(String("\u{274C}")+"  "+message,
+                  textColor: kErrorTextColor,
+                  backgroundColor: kErrorBackgroundColor,
+                  position: position,
+                  delay: delay)
+    }
+}
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 4, $0.11):
+```
+cat /app/OpenGpxTracker/PreferencesTableViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output_head>
+//
+//  PreferencesTableViewController.swift
+//  OpenGpxTracker
+//
+//  Created by merlos on 24/10/15.
+//
+//  Localized by nitricware on 19/08/19.
+//
+
+import Foundation
+import UIKit
+import CoreLocation
+import MapCache
+import CoreServices
+
+/// Units Section Id in PreferencesTableViewController
+let kUnitsSection = 0
+
+/// Cache Section Id in PreferencesTableViewController
+let kCacheSection = 1
+
+/// Map Source Section Id in PreferencesTableViewController
+let kMapSourceSection = 2
+
+/// Activity Type Section Id in PreferencesTableViewController
+let kActivityTypeSection = 3
+
+/// Default Name Section Id in PreferencesTableViewController
+let kDefaultNameSection = 4
+
+/// GPX Files Location Section Id in PreferencesTableViewController
+let kGPXFilesLocationSection = 5
+
+/// Cell Id of the Use Imperial units in UnitsSection
+let kUseImperialUnitsCell = 0
+
+/// Cell Id for Use offline cache in CacheSection of 
+PreferencesTableViewController
+let kUseOfflineCacheCell = 0
+
+/// Cell Id for Clear cache in CacheSection of PreferencesTableViewController
+let kClearCacheCell = 1
+
+///
+/// There are two preferences available:
+///  * use or not cache
+///  * select the map source (tile server)
+///
+/// Preferences are kept on UserDefaults with the keys 
+`kDefaultKeyTileServerInt` (Int)
+/// and `kDefaultUseCache`` (Bool)
+///
+class PreferencesTableViewController: UITableViewController, 
+UINavigationBarDelegate, UIDocumentPickerDelegate {
+    
+    /// Delegate for this table view controller.
+    weak var delegate: PreferencesTableViewControllerDelegate?
+    
+    /// Global Preferences
+    var preferences: Preferences = Preferences.shared
+    
+    var cache: MapCache = MapCache(withConfig: MapCacheConfig(withUrlTemplate: 
+""))
+    
+    // Compute once, better performance for scrolling table view (reuse)
+    /// Store cached size for reuse.
+    var cachedSize = String()
+    
+    /// Does the following:
+    /// 1. Defines the areas for navBar and the Table view
+    /// 2. Sets the title
+    /// 3. Loads the Preferences from defaults
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        let navBarFrame = CGRect(x: 0, y: 0, width: self.view.frame.width, 
+height: 64)
+        self.tableView.frame = CGRect(x: navBarFrame.width + 1, y: 0, width: 
+self.view.frame.width, height:
+            self.view.frame.height - navBarFrame.height)
+        
+        self.title = NSLocalizedString("PREFERENCES", comment: "no comment")
+        let shareItem = UIBarButtonItem(title: NSLocalizedString("DONE", 
+comment: "no comment"),
+                                        style: UIBarButtonItem.Style.plain, 
+target: self,
+                                        action: 
+#selector(PreferencesTableViewController.closePreferencesTableViewController))
+        self.navigationItem.rightBarButtonItems = [shareItem]
+        
+        let fileSize = cache.diskCache.fileSize ?? 0
+        cachedSize = Int(fileSize).asFileSize()
+    }
+    
+    /// Close this controller.
+    @objc func closePreferencesTableViewController() {
+        print("closePreferencesTableViewController()")
+        self.dismiss(animated: true, completion: { () -> Void in
+        })
+    }
+    
+    /// Loads data
+    override func viewDidAppear(_ animated: Bool) {
+        self.tableView.reloadData()
+    }
+    
+    /// Does nothing for now.
+    override func didReceiveMemoryWarning() {
+        super.didReceiveMemoryWarning()
+        // Dispose of any resources that can be recreated.
+    }
+    
+    // MARK: - Table view data source
+    
+    /// Returns 4 sections: Units, Cache, Map Source, Activity Type
+    override func numberOfSections(in tableView: UITableView?) -> Int {
+        // Return the number of sections.
+        return 6
+    }
+    
+    /// Returns the title of the existing sections.
+    /// Uses `kCacheSection`, `kUnitsSection`, `kMapSourceSection` and 
+`kActivityTypeSection`
+    /// for deciding which is the section title
+    override func tableView(_ tableView: UITableView, titleForHeaderInSection 
+section: Int) -> String? {
+        switch section {
+        case kUnitsSection: return NSLocalizedString("UNITS", comment: "no 
+comment")
+        case kCacheSection: return NSLocalizedString("CACHE", comment: "no 
+comment")
+        case kMapSourceSection: return NSLocalizedString("MAP_SOURCE", comment: 
+"no comment")
+        case kActivityTypeSection: return NSLocalizedString("ACTIVITY_TYPE", 
+comment: "no comment")
+        case kDefaultNameSection: return 
+NSLocalizedString("DEFAULT_NAME_SECTION", comment: "no comment")
+        case kGPXFilesLocationSection: return 
+NSLocalizedString("GPX_FILES_FOLDER", comment: "no comment")
+        default: fatalError("Unknown section")
+        }
+    }
+    
+    /// For section `kCacheSection` returns 2, for `kUnitsSection` returns 1,
+    /// for `kMapSourceSection` returns the number of tile servers defined in 
+`GPXTileServer`,
+    /// and for kActivityTypeSection returns `CLActivityType.count`
+    override func tableView(_ tableView: UITableView?, numberOfRowsInSection 
+secti
+<output_tail>
+ctivityType` in `Preferences` and
+    /// calls the delegate method `didUpdateActivityType`.
+    ///
+    /// In each case checks or unchecks the corresponding cell in the UI.
+    ///
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: 
+IndexPath) {
+        
+        if indexPath.section == kUnitsSection {
+            switch indexPath.row {
+            case kUseImperialUnitsCell:
+                let newUseImperial = !preferences.useImperial
+                preferences.useImperial = newUseImperial
+                print("PreferencesTableViewController: toggle imperial units to 
+\(newUseImperial)")
+                // Update cell UI
+                tableView.cellForRow(at: indexPath)?.accessoryType = 
+newUseImperial ? .checkmark : .none
+                // Notify the map
+                self.delegate?.didUpdateUseImperial(newUseImperial)
+            default:
+                fatalError("didSelectRowAt: Unknown cell")
+            }
+        }
+        
+        if indexPath.section == kCacheSection {  // 0 -> sets and unsets cache
+            switch indexPath.row {
+            case kUseOfflineCacheCell:
+                print("toggle cache")
+                let newUseCache = !preferences.useCache // Toggle value
+                preferences.useCache = newUseCache
+                // Update cell
+                tableView.cellForRow(at: indexPath)?.accessoryType = newUseCache
+? .checkmark : .none
+                // Notify the map
+                self.delegate?.didUpdateUseCache(newUseCache)
+            case kClearCacheCell:
+                print("clear cache")
+                // Create a cache
+                cache.clear {
+                    print("Cache cleaned")
+                    let cell = tableView.cellForRow(at: indexPath)!
+                    cell.textLabel?.text = NSLocalizedString("CACHE_IS_EMPTY", 
+comment: "no comment")
+                    cell.textLabel?.textColor = UIColor.gray
+                    // Clear the size text
+                    let cell2 = tableView.cellForRow(at: IndexPath(row: 
+kUseOfflineCacheCell, section: kCacheSection))
+                    self.cachedSize = 0.asFileSize()
+                    cell2?.detailTextLabel?.text = self.cachedSize
+                }
+            default:
+                fatalError("didSelectRowAt: Unknown cell")
+            }
+        }
+        
+        if indexPath.section == kMapSourceSection { // section 1 (sets 
+tileServerInt in defaults
+            print("PreferenccesTableView Map Tile Server section Row at index:  
+\(indexPath.row)")
+            
+            // Remove checkmark from selected tile server
+            let selectedTileServerIndexPath = IndexPath(row: 
+preferences.tileServerInt, section: indexPath.section)
+            tableView.cellForRow(at: selectedTileServerIndexPath)?.accessoryType
+= .none
+            
+            // Add checkmark to new tile server
+            tableView.cellForRow(at: indexPath)?.accessoryType = .checkmark
+            preferences.tileServerInt = indexPath.row
+            
+            // Update map
+            self.delegate?.didUpdateTileServer((indexPath as NSIndexPath).row)
+        }
+        
+        if indexPath.section == kActivityTypeSection {
+            print("PreferencesTableView Activity Type section Row at index:  
+\(indexPath.row + 1)")
+            let selected = IndexPath(row: preferences.locationActivityTypeInt - 
+1, section: indexPath.section)
+            
+            tableView.cellForRow(at: selected)?.accessoryType = .none
+            
+            // Add checkmark to new tile server
+            tableView.cellForRow(at: indexPath)?.accessoryType = .checkmark
+            preferences.locationActivityTypeInt = indexPath.row + 1 // +1 as 
+activityType raw value starts at index 1
+            
+            self.delegate?.didUpdateActivityType((indexPath as NSIndexPath).row 
++ 1)
+        }
+        
+        if indexPath.section == kDefaultNameSection {
+            print("PreferencesTableView Default Name cell clicked")
+            self.navigationController?.pushViewController(DefaultNameSetupViewCo
+ntroller(style: .grouped), animated: true)
+        }
+        
+        if indexPath.section == kGPXFilesLocationSection {
+            print("PreferencesTableView GPX Files Location cell clicked")
+            let documentVC = UIDocumentPickerViewController(documentTypes: 
+[kUTTypeFolder as String], in: .open)
+            documentVC.allowsMultipleSelection = false
+            documentVC.delegate = self
+            self.present(documentVC, animated: true)
+        }
+        
+        // Unselect row
+        tableView.deselectRow(at: indexPath, animated: true)
+    }
+    
+    // MARK: - UIDocumentPickerDelegate
+    
+    func documentPicker(_ controller: UIDocumentPickerViewController, 
+didPickDocumentsAt urls: [URL]) {
+        guard let folderURL = urls.first else {
+            print("Didn't select any folder")
+            return
+        }
+        preferences.gpxFilesFolderURL = folderURL
+        tableView.reloadData()
+    }
+}
+
+<elided_chars>
+5641
+<warning>
+Output too long.
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 5, $0.17):
+Now let me look at the test file to understand what's expected:
+
+```
+cat /app/OpenGpxTrackerTests/OpenGpxTrackerTests.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+//
+//  OpenGpxTrackerTests.swift
+//  OpenGpxTrackerTests
+//
+//  Created by merlos on 13/09/14.
+//  Copyright (c) 2014 TransitBox. All rights reserved.
+//
+
+import UIKit
+import XCTest
+
+class OpenGpxTrackerTests: XCTestCase {
+    
+    override func setUp() {
+        super.setUp()
+        // Put setup code here. This method is called before the invocation of 
+each test method in the class.
+    }
+    
+    override func tearDown() {
+        // Put teardown code here. This method is called after the invocation of
+each test method in the class.
+        super.tearDown()
+    }
+    
+    func testExample() {
+        // This is an example of a functional test case.
+        XCTAssert(true, "Pass")
+    }
+    
+    func testPerformanceExample() {
+        // This is an example of a performance test case.
+        self.measure {
+            // Put the code you want to measure the time of here.
+        }
+    }
+    
+}
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 6, $0.23):
+```
+find /app -name "*Test*" -o -name "*test*" -o -name "*spec*" | grep -i swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+/app/OpenGpxTrackerTests/OpenGpxTrackerTests.swift
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 7, $0.30):
+```
+find /app -name "*.swift" -path "*/Tests/*" -o -name "*.swift" -path "*Test*" 
+2>/dev/null
+```
+
+Tool:
+<returncode>
+0
+<output>
+/app/OpenGpxTrackerTests/OpenGpxTrackerTests.swift
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 8, $0.37):
+Let me check if there are any other test files that might exist or build 
+configurations:
+
+```
+find /app -name "*.xcodeproj" -o -name "*.xcworkspace" | head -5 && find /app 
+-name "Podfile" | head -3
+```
+
+Tool:
+<returncode>
+0
+<output>
+/app/OpenGpxTracker.xcworkspace
+/app/Pods/Pods.xcodeproj
+/app/OpenGpxTracker.xcodeproj
+/app/OpenGpxTracker.xcodeproj/project.xcworkspace
+/app/Podfile
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 9, $0.43):
+```
+cat /app/OpenGpxTracker/AppDelegate.swift
+```
+
+Tool:
+<returncode>
+0
+<output_head>
+//
+//  AppDelegate.swift
+//  OpenGpxTracker
+//
+//  Created by merlos on 13/09/14.
+//  Copyright (c) 2014 TransitBox. All rights reserved.
+//
+
+import UIKit
+import CoreData
+import WatchConnectivity
+
+@UIApplicationMain
+class AppDelegate: UIResponder, UIApplicationDelegate {
+    
+    /// Main window
+    var window: UIWindow?
+
+    /// Default placeholder function
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions
+launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        // Override point for customization after application launch.
+        return true
+    }
+
+    /// Default placeholder function
+    func applicationWillResignActive(_ application: UIApplication) {
+        // Sent when the application is about to move from active to inactive 
+state. 
+        // This can occur for certain types of temporary interruptions 
+        // (such as an incoming phone call or SMS message) 
+        // or when the user quits the application and it begins the transition 
+to the background state.
+        // Use this method to pause ongoing tasks, disable timers, and throttle 
+down OpenGL ES frame rates. 
+        // Games should use this method to pause the game.
+    }
+
+    /// Default placeholder function
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        // Use this method to release shared resources, save user data, 
+invalidate timers, 
+        // and store enough application state information to restore your 
+application to its current state in case it is terminated later.
+        // If your application supports background execution, this method is 
+called instead of 
+        // applicationWillTerminate: when the user quits.
+    }
+
+    /// Default placeholder function
+    func applicationWillEnterForeground(_ application: UIApplication) {
+        // Called as part of the transition from the background to the inactive 
+state; 
+        // here you can undo many of the changes made on entering the 
+background.
+    }
+
+    /// Default placeholder function
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        if #available(iOS 9.0, *) {
+            if WCSession.isSupported() {
+                print("AppDelegate:: WCSession is supported")
+                let session = WCSession.default
+                session.delegate = self
+                session.activate()
+                print("AppDelegate:: WCSession activated")
+            } else {
+                print("AppDelegate:: WCSession is not supported")
+            }
+        }
+        // Restart any tasks that were paused (or not yet started) while the 
+application was inactive. 
+        // If the application was previously in the background, optionally 
+refresh the user interface.
+    }
+
+    /// Default placeholder function
+    func applicationWillTerminate(_ application: UIApplication) {
+        // Called when the application is about to terminate. Save data if 
+appropriate. See also applicationDidEnterBackground:.
+        // Saves changes in the application's managed object context before the 
+application terminates.
+        // self.saveContext()
+    }
+    
+    /// Default pandle load GPX file
+    func application(_ app: UIApplication, open url: URL, options: 
+[UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        print("load gpx File: \(url.absoluteString)")
+        let fileManager = FileManager.default
+        do {
+            _ = url.startAccessingSecurityScopedResource()
+            try fileManager.copyItem(at: url, to: 
+GPXFileManager.GPXFilesFolderURL.appendingPathComponent(url.lastPathComponent))
+            url.stopAccessingSecurityScopedResource()
+        } catch let error as NSError {
+            print("Ooops! Something went wrong: \(error)")
+        }
+        
+        // post a notification when a file is received through this method.
+        NotificationCenter.default.post(name: .didReceiveFileFromURL, object: 
+nil)
+        
+        return true
+    }
+    
+    // MARK: - Core Data stack
+
+    /// Default placeholder function
+    lazy var applicationDocumentsDirectory: URL = {
+        // The directory the application uses to store the Core Data store file.
+        // This code uses a directory named "uk.co.plymouthsoftware.core_data" 
+in the application's documents Application Support directory.
+        let urls = FileManager.default.urls(for: .documentDirectory, in: 
+.userDomainMask)
+        return urls[urls.count-1]
+        }()
+    
+    /// Default placeholder function
+    lazy var managedObjectModel: NSManagedObjectModel = {
+        // The managed object model for the application. This property is not 
+optional. 
+        // It is a fatal error for the application not to be able to find and 
+load its model.
+        let modelURL = Bundle.main.url(forResource: "OpenGpxTracker", 
+withExtension: "momd")!
+        return NSManagedObjectModel(contentsOf: modelURL)!
+        }()
+    
+    /// Default placeholder function
+    lazy var persistentStoreCoordinator: NSPersistentStoreCoordinator = {
+   
+<output_tail>
+             NSInferMappingModelAutomaticallyOption: true])
+        } catch {
+            // Report any error we got.
+            var dict = [String: AnyObject]()
+            dict[NSLocalizedDescriptionKey] = "Failed to initialize the 
+application's saved data" as AnyObject?
+            dict[NSLocalizedFailureReasonErrorKey] = failureReason as AnyObject?
+            
+            dict[NSUnderlyingErrorKey] = error as NSError
+            let wrappedError = NSError(domain: "YOUR_ERROR_DOMAIN", code: 9999, 
+userInfo: dict)
+            // Replace this with code to handle the error appropriately.
+            // abort() causes the application to generate a crash log and 
+terminate. 
+            // You should not use this function in a shipping application, 
+although it may be useful during development.
+            NSLog("Unresolved error \(wrappedError), \(wrappedError.userInfo)")
+            abort()
+        }
+        
+        return coordinator
+        }()
+    
+    /// Default placeholder function
+    lazy var managedObjectContext: NSManagedObjectContext = {
+        // Returns the managed object context for the application 
+        // (which is already bound to the persistent store coordinator for the 
+application.) 
+        // This property is optional since there are legitimate error conditions
+that could cause the creation of the context to fail.
+        let coordinator = self.persistentStoreCoordinator
+        var managedObjectContext = NSManagedObjectContext(concurrencyType: 
+.mainQueueConcurrencyType)
+        managedObjectContext.persistentStoreCoordinator = coordinator
+        return managedObjectContext
+        }()
+    
+    // MARK: - Core Data Saving support
+    
+    /// Default placeholder function
+    func saveContext () {
+        if managedObjectContext.hasChanges {
+            do {
+                try managedObjectContext.save()
+            } catch {
+                // Replace this implementation with code to handle the error 
+appropriately.
+                // abort() causes the application to generate a crash log and 
+terminate. 
+                // You should not use this function in a shipping application, 
+although it may be useful during development.
+                let nserror = error as NSError
+                NSLog("Unresolved error \(nserror), \(nserror.userInfo)")
+                abort()
+            }
+        }
+    }
+}
+
+// MARK: WCSessionDelegate
+
+///
+/// Handles file transfers from Apple Watch companion app
+/// Should be non intrusive to UI, handling all in the background.
+
+/// File received are automatically moved to default location which stores all 
+GPX files
+///
+/// Only available > iOS 9
+///
+@available(iOS 9.0, *)
+extension AppDelegate: WCSessionDelegate {
+    
+    /// called when `WCSession` goes inactive. Does nothing but display a debug 
+message.
+    func sessionDidBecomeInactive(_ session: WCSession) {
+        print("AppDelegate:: WCSession has become inactive")
+    }
+    
+    /// called when `WCSession` goes inactive. Does nothing but display a debug 
+message
+    func sessionDidDeactivate(_ session: WCSession) {
+        print("AppDelegate:: WCSession has deactivated")
+    }
+    
+    /// called when activation did complete. Does nothing but display a debug 
+message.
+    @available(iOS 9.3, *)
+    func session(_ session: WCSession, activationDidCompleteWith 
+activationState: WCSessionActivationState, error: Error?) {
+        switch activationState {
+        case .activated:
+            print("AppDelegate:: activationDidCompleteWithActivationState: 
+WCSession activated")
+        case .inactive:
+            print("AppDelegate:: activationDidCompleteWithActivationState: 
+WCSession inactive")
+        case .notActivated:
+            print("AppDelegate:: activationDidCompleteWithActivationState: 
+WCSession not activated, error:\(String(describing: error))")
+            
+        default: break
+        }
+    }
+    
+    /// Called when a file is received from Apple Watch.
+    /// Displays a popup informing about the reception of the file.
+    func session(_ session: WCSession, didReceive file: WCSessionFile) {
+        // swiftlint:disable:next force_cast
+        let fileName = file.metadata!["fileName"] as! String?
+        DispatchQueue.global().sync {
+            GPXFileManager.moveFrom(file.fileURL, fileName: fileName)
+            print("ViewController:: Received file from WatchConnectivity 
+Session")
+        }
+        
+        // posts notification that file is received from apple watch
+        NotificationCenter.default.post(name: .didReceiveFileFromAppleWatch, 
+object: nil, userInfo: ["fileName": fileName ?? ""])
+    }
+}
+
+/// Notifications for file receival from external source.
+extension Notification.Name {
+    
+    /// Use when a file is received from external source.
+    static let didReceiveFileFromURL = 
+Notification.Name("didReceiveFileFromURL")
+    
+    /// Use when a file is received from Apple Watch.
+    static let didReceiveFileFromAppleWatch = 
+Notification.Name("didReceiveFileFromAppleWatch")
+}
+
+<elided_chars>
+1080
+<warning>
+Output too long.
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 10, $0.51):
+Now let me check the ViewController to see how preferences are opened:
+
+```
+grep -n "preferences\|Preferences\|openPreferences\|Toast\|loading" 
+/app/OpenGpxTracker/ViewController.swift | head -40
+```
+
+Tool:
+<returncode>
+0
+<output>
+110:        manager.activityType = CLActivityType(rawValue: 
+Preferences.shared.locationActivityTypeInt)!
+283:    /// View preferences button
+284:    var preferencesButton: UIButton
+342:        self.preferencesButton = UIButton(coder: aDecoder)!
+430:        // Preferences
+431:        map.tileServer = Preferences.shared.tileServer
+432:        map.useCache = Preferences.shared.useCache
+433:        useImperial = Preferences.shared.useImperial
+434:        // LocationManager.activityType = 
+Preferences.shared.locationActivityType
+510:        // Preferences button
+511:        preferencesButton.frame = CGRect(x: 5 + 10 + 48, y: 14 + 5 + 8  + 
+iPhoneXdiff, width: 32, height: 32)
+512:        preferencesButton.setImage(UIImage(named: "prefs"), for: 
+UIControl.State())
+513:        preferencesButton.setImage(UIImage(named: "prefs_high"), for: 
+.highlighted)
+514:        preferencesButton.addTarget(self, action: 
+#selector(ViewController.openPreferencesTableViewController), for: 
+.touchUpInside)
+515:        preferencesButton.autoresizingMask = [.flexibleRightMargin]
+516:        map.addSubview(preferencesButton)
+713:        preferencesButton.translatesAutoresizingMaskIntoConstraints = false
+722:        NSLayoutConstraint(item: preferencesButton, attribute: .centerY, 
+relatedBy: .equal, toItem: folderButton, attribute: .centerY, multiplier: 1, 
+constant: 0).isActive = true
+723:        NSLayoutConstraint(item: preferencesButton, attribute: .leading, 
+relatedBy: .equal, toItem: folderButton, attribute: .trailing, multiplier: 1, 
+constant: 10).isActive = true
+724:        NSLayoutConstraint(item: preferencesButton, attribute: .width, 
+relatedBy: .equal, toItem: nil, attribute: .width, multiplier: 1, constant: 
+32).isActive = true
+725:        NSLayoutConstraint(item: preferencesButton, attribute: .height, 
+relatedBy: .equal, toItem: nil, attribute: .height, multiplier: 1, constant: 
+32).isActive = true
+728:        NSLayoutConstraint(item: shareButton, attribute: .leading, 
+relatedBy: .equal, toItem: preferencesButton, attribute: .trailing, multiplier: 
+1, constant: 10).isActive = true
+973:    /// Opens Preferences table view controller
+975:    @objc func openPreferencesTableViewController() {
+976:        print("openPreferencesTableViewController")
+977:        let vc = PreferencesTableViewController(style: .grouped)
+1312:// MARK: PreferencesTableViewControllerDelegate
+1314:extension ViewController: PreferencesTableViewControllerDelegate {
+1318:    /// When user changes the activity type in preferences, this function 
+is invoked to update the activity type of the location manager.
+1321:        print("PreferencesTableViewControllerDelegate:: 
+didUpdateActivityType: \(newActivityType)")
+1328:    /// If user enters preferences and he changes his preferences regarding
+the `tileServer`,
+1331:    /// `PreferencesTableViewController` informs the main `ViewController` 
+through this delegate.
+1334:        print("PreferencesTableViewControllerDelegate:: 
+didUpdateTileServer: \(newGpxTileServer)")
+1345:        print("PreferencesTableViewControllerDelegate:: didUpdateUseCache: 
+\(newUseCache)")
+1351:        print("PreferencesTableViewControllerDelegate:: 
+didUpdateUseImperial: \(newUseImperial)")
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 11, $0.60):
+```
+sed -n '973,1000p' /app/OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+    /// Opens Preferences table view controller
+    ///
+    @objc func openPreferencesTableViewController() {
+        print("openPreferencesTableViewController")
+        let vc = PreferencesTableViewController(style: .grouped)
+        vc.delegate = self
+        let navController = UINavigationController(rootViewController: vc)
+        self.present(navController, animated: true) { () -> Void in }
+    }
+    
+    /// Opens an Activity View Controller to share the file
+    @objc func openShare() {
+        print("ViewController: Share Button tapped")
+        
+        // async such that process is done in background
+        DispatchQueue.global(qos: .utility).async {
+            // UI code
+            DispatchQueue.main.sync {
+                self.shouldShowShareActivityIndicator(true)
+            }
+            
+            // Create a temporary file
+            let filename =  self.lastGpxFilename.isEmpty ? 
+self.defaultFilename() : self.lastGpxFilename
+            let gpxString: String = self.map.exportToGPXString()
+            let tmpFile = URL(fileURLWithPath: 
+NSTemporaryDirectory()).appendingPathComponent("\(filename).gpx")
+            GPXFileManager.saveToURL(tmpFile, gpxContents: gpxString)
+            // Add it to the list of tmpFiles.
+            // Note: it may add more than once the same file to the list.
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 12, $0.69):
+Now I have a good understanding of the codebase. Let me now check the existing 
+test suite more carefully and check what needs to compile:
+
+```
+grep -rn 
+"keepScreenAlwaysOn\|kDefaultsKeyKeepScreenAlwaysOn\|kScreenSection\|kDisabledDe
+lay\|showLoading\|hideLoading" /app/ 2>/dev/null
+```
+
+Tool:
+<returncode>
+1
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 13, $0.78):
+None of these exist yet. Let me check if there's a build system I can use:
+
+```
+which xcodebuild swift swiftc 2>/dev/null; ls /app/Package.swift 2>/dev/null; ls
+/app/Makefile 2>/dev/null
+```
+
+Tool:
+<returncode>
+2
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 14, $0.87):
+```
+find / -name "swiftc" -o -name "swift" -type f 2>/dev/null | head -5
+```
+
+Tool:
+<returncode>
+0
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 15, $0.96):
+No Swift compiler available. Let me check the full 
+PreferencesTableViewController to understand the section structure:
+
+```
+cat /app/OpenGpxTracker/PreferencesTableViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output_head>
+//
+//  PreferencesTableViewController.swift
+//  OpenGpxTracker
+//
+//  Created by merlos on 24/10/15.
+//
+//  Localized by nitricware on 19/08/19.
+//
+
+import Foundation
+import UIKit
+import CoreLocation
+import MapCache
+import CoreServices
+
+/// Units Section Id in PreferencesTableViewController
+let kUnitsSection = 0
+
+/// Cache Section Id in PreferencesTableViewController
+let kCacheSection = 1
+
+/// Map Source Section Id in PreferencesTableViewController
+let kMapSourceSection = 2
+
+/// Activity Type Section Id in PreferencesTableViewController
+let kActivityTypeSection = 3
+
+/// Default Name Section Id in PreferencesTableViewController
+let kDefaultNameSection = 4
+
+/// GPX Files Location Section Id in PreferencesTableViewController
+let kGPXFilesLocationSection = 5
+
+/// Cell Id of the Use Imperial units in UnitsSection
+let kUseImperialUnitsCell = 0
+
+/// Cell Id for Use offline cache in CacheSection of 
+PreferencesTableViewController
+let kUseOfflineCacheCell = 0
+
+/// Cell Id for Clear cache in CacheSection of PreferencesTableViewController
+let kClearCacheCell = 1
+
+///
+/// There are two preferences available:
+///  * use or not cache
+///  * select the map source (tile server)
+///
+/// Preferences are kept on UserDefaults with the keys 
+`kDefaultKeyTileServerInt` (Int)
+/// and `kDefaultUseCache`` (Bool)
+///
+class PreferencesTableViewController: UITableViewController, 
+UINavigationBarDelegate, UIDocumentPickerDelegate {
+    
+    /// Delegate for this table view controller.
+    weak var delegate: PreferencesTableViewControllerDelegate?
+    
+    /// Global Preferences
+    var preferences: Preferences = Preferences.shared
+    
+    var cache: MapCache = MapCache(withConfig: MapCacheConfig(withUrlTemplate: 
+""))
+    
+    // Compute once, better performance for scrolling table view (reuse)
+    /// Store cached size for reuse.
+    var cachedSize = String()
+    
+    /// Does the following:
+    /// 1. Defines the areas for navBar and the Table view
+    /// 2. Sets the title
+    /// 3. Loads the Preferences from defaults
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        let navBarFrame = CGRect(x: 0, y: 0, width: self.view.frame.width, 
+height: 64)
+        self.tableView.frame = CGRect(x: navBarFrame.width + 1, y: 0, width: 
+self.view.frame.width, height:
+            self.view.frame.height - navBarFrame.height)
+        
+        self.title = NSLocalizedString("PREFERENCES", comment: "no comment")
+        let shareItem = UIBarButtonItem(title: NSLocalizedString("DONE", 
+comment: "no comment"),
+                                        style: UIBarButtonItem.Style.plain, 
+target: self,
+                                        action: 
+#selector(PreferencesTableViewController.closePreferencesTableViewController))
+        self.navigationItem.rightBarButtonItems = [shareItem]
+        
+        let fileSize = cache.diskCache.fileSize ?? 0
+        cachedSize = Int(fileSize).asFileSize()
+    }
+    
+    /// Close this controller.
+    @objc func closePreferencesTableViewController() {
+        print("closePreferencesTableViewController()")
+        self.dismiss(animated: true, completion: { () -> Void in
+        })
+    }
+    
+    /// Loads data
+    override func viewDidAppear(_ animated: Bool) {
+        self.tableView.reloadData()
+    }
+    
+    /// Does nothing for now.
+    override func didReceiveMemoryWarning() {
+        super.didReceiveMemoryWarning()
+        // Dispose of any resources that can be recreated.
+    }
+    
+    // MARK: - Table view data source
+    
+    /// Returns 4 sections: Units, Cache, Map Source, Activity Type
+    override func numberOfSections(in tableView: UITableView?) -> Int {
+        // Return the number of sections.
+        return 6
+    }
+    
+    /// Returns the title of the existing sections.
+    /// Uses `kCacheSection`, `kUnitsSection`, `kMapSourceSection` and 
+`kActivityTypeSection`
+    /// for deciding which is the section title
+    override func tableView(_ tableView: UITableView, titleForHeaderInSection 
+section: Int) -> String? {
+        switch section {
+        case kUnitsSection: return NSLocalizedString("UNITS", comment: "no 
+comment")
+        case kCacheSection: return NSLocalizedString("CACHE", comment: "no 
+comment")
+        case kMapSourceSection: return NSLocalizedString("MAP_SOURCE", comment: 
+"no comment")
+        case kActivityTypeSection: return NSLocalizedString("ACTIVITY_TYPE", 
+comment: "no comment")
+        case kDefaultNameSection: return 
+NSLocalizedString("DEFAULT_NAME_SECTION", comment: "no comment")
+        case kGPXFilesLocationSection: return 
+NSLocalizedString("GPX_FILES_FOLDER", comment: "no comment")
+        default: fatalError("Unknown section")
+        }
+    }
+    
+    /// For section `kCacheSection` returns 2, for `kUnitsSection` returns 1,
+    /// for `kMapSourceSection` returns the number of tile servers defined in 
+`GPXTileServer`,
+    /// and for kActivityTypeSection returns `CLActivityType.count`
+    override func tableView(_ tableView: UITableView?, numberOfRowsInSection 
+secti
+<output_tail>
+ctivityType` in `Preferences` and
+    /// calls the delegate method `didUpdateActivityType`.
+    ///
+    /// In each case checks or unchecks the corresponding cell in the UI.
+    ///
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: 
+IndexPath) {
+        
+        if indexPath.section == kUnitsSection {
+            switch indexPath.row {
+            case kUseImperialUnitsCell:
+                let newUseImperial = !preferences.useImperial
+                preferences.useImperial = newUseImperial
+                print("PreferencesTableViewController: toggle imperial units to 
+\(newUseImperial)")
+                // Update cell UI
+                tableView.cellForRow(at: indexPath)?.accessoryType = 
+newUseImperial ? .checkmark : .none
+                // Notify the map
+                self.delegate?.didUpdateUseImperial(newUseImperial)
+            default:
+                fatalError("didSelectRowAt: Unknown cell")
+            }
+        }
+        
+        if indexPath.section == kCacheSection {  // 0 -> sets and unsets cache
+            switch indexPath.row {
+            case kUseOfflineCacheCell:
+                print("toggle cache")
+                let newUseCache = !preferences.useCache // Toggle value
+                preferences.useCache = newUseCache
+                // Update cell
+                tableView.cellForRow(at: indexPath)?.accessoryType = newUseCache
+? .checkmark : .none
+                // Notify the map
+                self.delegate?.didUpdateUseCache(newUseCache)
+            case kClearCacheCell:
+                print("clear cache")
+                // Create a cache
+                cache.clear {
+                    print("Cache cleaned")
+                    let cell = tableView.cellForRow(at: indexPath)!
+                    cell.textLabel?.text = NSLocalizedString("CACHE_IS_EMPTY", 
+comment: "no comment")
+                    cell.textLabel?.textColor = UIColor.gray
+                    // Clear the size text
+                    let cell2 = tableView.cellForRow(at: IndexPath(row: 
+kUseOfflineCacheCell, section: kCacheSection))
+                    self.cachedSize = 0.asFileSize()
+                    cell2?.detailTextLabel?.text = self.cachedSize
+                }
+            default:
+                fatalError("didSelectRowAt: Unknown cell")
+            }
+        }
+        
+        if indexPath.section == kMapSourceSection { // section 1 (sets 
+tileServerInt in defaults
+            print("PreferenccesTableView Map Tile Server section Row at index:  
+\(indexPath.row)")
+            
+            // Remove checkmark from selected tile server
+            let selectedTileServerIndexPath = IndexPath(row: 
+preferences.tileServerInt, section: indexPath.section)
+            tableView.cellForRow(at: selectedTileServerIndexPath)?.accessoryType
+= .none
+            
+            // Add checkmark to new tile server
+            tableView.cellForRow(at: indexPath)?.accessoryType = .checkmark
+            preferences.tileServerInt = indexPath.row
+            
+            // Update map
+            self.delegate?.didUpdateTileServer((indexPath as NSIndexPath).row)
+        }
+        
+        if indexPath.section == kActivityTypeSection {
+            print("PreferencesTableView Activity Type section Row at index:  
+\(indexPath.row + 1)")
+            let selected = IndexPath(row: preferences.locationActivityTypeInt - 
+1, section: indexPath.section)
+            
+            tableView.cellForRow(at: selected)?.accessoryType = .none
+            
+            // Add checkmark to new tile server
+            tableView.cellForRow(at: indexPath)?.accessoryType = .checkmark
+            preferences.locationActivityTypeInt = indexPath.row + 1 // +1 as 
+activityType raw value starts at index 1
+            
+            self.delegate?.didUpdateActivityType((indexPath as NSIndexPath).row 
++ 1)
+        }
+        
+        if indexPath.section == kDefaultNameSection {
+            print("PreferencesTableView Default Name cell clicked")
+            self.navigationController?.pushViewController(DefaultNameSetupViewCo
+ntroller(style: .grouped), animated: true)
+        }
+        
+        if indexPath.section == kGPXFilesLocationSection {
+            print("PreferencesTableView GPX Files Location cell clicked")
+            let documentVC = UIDocumentPickerViewController(documentTypes: 
+[kUTTypeFolder as String], in: .open)
+            documentVC.allowsMultipleSelection = false
+            documentVC.delegate = self
+            self.present(documentVC, animated: true)
+        }
+        
+        // Unselect row
+        tableView.deselectRow(at: indexPath, animated: true)
+    }
+    
+    // MARK: - UIDocumentPickerDelegate
+    
+    func documentPicker(_ controller: UIDocumentPickerViewController, 
+didPickDocumentsAt urls: [URL]) {
+        guard let folderURL = urls.first else {
+            print("Didn't select any folder")
+            return
+        }
+        preferences.gpxFilesFolderURL = folderURL
+        tableView.reloadData()
+    }
+}
+
+<elided_chars>
+5641
+<warning>
+Output too long.
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 16, $1.07):
+Now let me see the full middle section of the PreferencesTableViewController:
+
+```
+nl -ba /app/OpenGpxTracker/PreferencesTableViewController.swift | sed -n 
+'100,250p'
+```
+
+Tool:
+<returncode>
+0
+<output>
+   100          // Dispose of any resources that can be recreated.
+   101      }
+   102      
+   103      // MARK: - Table view data source
+   104      
+   105      /// Returns 4 sections: Units, Cache, Map Source, Activity Type
+   106      override func numberOfSections(in tableView: UITableView?) -> Int {
+   107          // Return the number of sections.
+   108          return 6
+   109      }
+   110      
+   111      /// Returns the title of the existing sections.
+   112      /// Uses `kCacheSection`, `kUnitsSection`, `kMapSourceSection` and 
+`kActivityTypeSection`
+   113      /// for deciding which is the section title
+   114      override func tableView(_ tableView: UITableView, 
+titleForHeaderInSection section: Int) -> String? {
+   115          switch section {
+   116          case kUnitsSection: return NSLocalizedString("UNITS", comment: 
+"no comment")
+   117          case kCacheSection: return NSLocalizedString("CACHE", comment: 
+"no comment")
+   118          case kMapSourceSection: return NSLocalizedString("MAP_SOURCE", 
+comment: "no comment")
+   119          case kActivityTypeSection: return 
+NSLocalizedString("ACTIVITY_TYPE", comment: "no comment")
+   120          case kDefaultNameSection: return 
+NSLocalizedString("DEFAULT_NAME_SECTION", comment: "no comment")
+   121          case kGPXFilesLocationSection: return 
+NSLocalizedString("GPX_FILES_FOLDER", comment: "no comment")
+   122          default: fatalError("Unknown section")
+   123          }
+   124      }
+   125      
+   126      /// For section `kCacheSection` returns 2, for `kUnitsSection` 
+returns 1,
+   127      /// for `kMapSourceSection` returns the number of tile servers 
+defined in `GPXTileServer`,
+   128      /// and for kActivityTypeSection returns `CLActivityType.count`
+   129      override func tableView(_ tableView: UITableView?, 
+numberOfRowsInSection section: Int) -> Int {
+   130          switch section {
+   131          case kCacheSection: return 2
+   132          case kUnitsSection: return 1
+   133          case kMapSourceSection: return GPXTileServer.count
+   134          case kActivityTypeSection: return CLActivityType.count
+   135          case kDefaultNameSection: return 1
+   136          case kGPXFilesLocationSection: return 1
+   137          default: fatalError("Unknown section")
+   138          }
+   139      }
+   140      
+   141      /// For `kCacheSection`:
+   142      /// 1. If `indexPath.row` is equal to `kUserOfflineCacheCell`, 
+returns a cell with a checkmark
+   143      /// 2. If `indexPath.row` is equal to `kClearCacheCell`, returns a 
+cell with a red text
+   144      /// `kClearCacheCell`
+   145      ///
+   146      /// If the section is kMapSourceSection, it returns a chekmark cell 
+with the name of
+   147      /// the tile server in the  `indexPath.row` index in 
+`GPXTileServer`. The cell is marked
+   148      /// if `selectedTileServerInt` is the same as `indexPath.row`.
+   149      ///
+   150      /// If the section is kActivityTypeSection it returns a checkmark 
+cell with the name
+   151      /// and description of the CLActivityType whose indexPath.row 
+matches with the activity type.
+   152      ///
+   153      override func tableView(_ tableView: UITableView, cellForRowAt 
+indexPath: IndexPath) -> UITableViewCell {
+   154          var cell = UITableViewCell(style: .value1, reuseIdentifier: 
+"MapCell")
+   155          
+   156          // Units section
+   157          if indexPath.section == kUnitsSection {
+   158               switch indexPath.row {
+   159               case kUseImperialUnitsCell:
+   160                  cell = UITableViewCell(style: .value1, reuseIdentifier: 
+"CacheCell")
+   161                  cell.textLabel?.text = 
+NSLocalizedString("USE_IMPERIAL_UNITS", comment: "no comment")
+   162                  if preferences.useImperial {
+   163                      cell.accessoryType = .checkmark
+   164                  }
+   165               default: fatalError("Unknown section")
+   166              }
+   167          }
+   168          
+   169          // Cache Section
+   170          if indexPath.section == kCacheSection {
+   171              switch indexPath.row {
+   172              case kUseOfflineCacheCell:
+   173                  cell = UITableViewCell(style: .subtitle, 
+reuseIdentifier: "CacheCell")
+   174                  cell.textLabel?.text = 
+NSLocalizedString("OFFLINE_CACHE", comment: "no comment")
+   175                  
+   176                  cell.detailTextLabel?.text = cachedSize
+   177                  if preferences.useCache {
+   178                      cell.accessoryType = .checkmark
+   179                  }
+   180              case kClearCacheCell:
+   181                  cell = UITableViewCell(style: .value1, reuseIdentifier: 
+"CacheCell")
+   182                  cell.textLabel?.text = NSLocalizedString("CLEAR_CACHE", 
+comment: "no comment")
+   183                  cell.textLabel?.textColor = UIColor.red
+   184              default: fatalError("Unknown section")
+   185              }
+   186          }
+   187          
+   188          // Map Section
+   189          if indexPath.section == kMapSourceSection {
+   190              let tileServer = GPXTileServer(rawValue: indexPath.row)
+   191              cell.textLabel?.text = tileServer!.name
+   192              if indexPath.row == preferences.tileServerInt {
+   193                  cell.accessoryType = .checkmark
+   194              }
+   195          }
+   196          
+   197          // Activity type section
+   198          if indexPath.section == kActivityTypeSection {
+   199              cell = UITableViewCell(style: .subtitle, reuseIdentifier: 
+"ActivityCell")
+   200              let activity = CLActivityType(rawValue: indexPath.row + 1)!
+   201              cell.textLabel?.text = activity.name
+   202              cell.detailTextLabel?.text = activity.description
+   203              if indexPath.row + 1 == preferences.locationActivityTypeInt 
+{
+   204                  cell.accessoryType = .checkmark
+   205              }
+   206          }
+   207          
+   208          // Default Name section
+   209          if indexPath.section == kDefaultNameSection {
+   210              let dateFormatter = DefaultDateFormat()
+   211              cell = UITableViewCell(style: .subtitle, reuseIdentifier: 
+"DefaultNameCell")
+   212              cell.textLabel?.text = preferences.dateFormatPreset == -1 ? 
+preferences.dateFormatInput : preferences.dateFormatPresetName
+   213              let dateText = dateFormatter.getDate(processedFormat: 
+preferences.dateFormat,
+   214                                                   useUTC: 
+preferences.dateFormatUseUTC,
+   215                                                   useENLocale: 
+preferences.dateFormatUseEN)
+   216              cell.detailTextLabel?.text = dateText
+   217              cell.accessoryType = .disclosureIndicator
+   218          }
+   219          
+   220          if indexPath.section == kGPXFilesLocationSection {
+   221              cell = UITableViewCell(style: .value1, reuseIdentifier: 
+"GPXFilesLocation")
+   222              if let url = preferences.gpxFilesFolderURL {
+   223                  cell.textLabel?.text = url.lastPathComponent
+   224              } else {
+   225                  cell.textLabel?.text = 
+NSLocalizedString("USING_DEFAULT_FOLDER", comment: "no comment")
+   226              }
+   227              cell.accessoryType = .disclosureIndicator
+   228          }
+   229          
+   230          return cell
+   231      }
+   232      
+   233      /// Performs the following actions depending on the section and row 
+selected:
+   234      /// If the cell `kUseImperialUnitCell` in `kUnitsSection`it sets or 
+unsets the use of imperial
+   235      /// units (`useImperial` in `Preferences``and calls the delegate 
+method `didUpdateUseImperial`.
+   236      ///
+   237      /// If a cell in kCacheSection is selected and the cell is
+   238      ///     1. kUseOfflineCacheCell: Activates or desactivates the 
+`useCache` in `Preferences`,
+   239      ///        and calls the delegate method `didUpdateUseCache`
+   240      ///     2. KClearCacheCacheCell: Clears the current cache and calls
+   241      ///
+   242      /// If a cell in `kMapSourceSection` is selected: Updates 
+`tileServerInt` in `Preferences` and
+   243      /// calls the delegate method `didUpdateTileServer`
+   244      ///
+   245      /// If a cell in `kActivitySection` is selected: Updates the 
+`activityType` in `Preferences` and
+   246      /// calls the delegate method `didUpdateActivityType`.
+   247      ///
+   248      /// In each case checks or unchecks the corresponding cell in the 
+UI.
+   249      ///
+   250      override func tableView(_ tableView: UITableView, didSelectRowAt 
+indexPath: IndexPath) {
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 17, $1.21):
+Now I have a complete picture. Let me implement all the required changes:
+
+1. **Preferences.swift**: Add `kDefaultsKeyKeepScreenAlwaysOn` constant and 
+`keepScreenAlwaysOn` property
+2. **PreferencesTableViewController.swift**: Add `kScreenSection` constant and 
+update sections to include Screen section
+3. **Toast.swift**: Add `kDisabledDelay`, `showLoading(_:)`, and `hideLoading()`
+4. **ViewController.swift**: Show loading indicator when opening preferences, 
+apply screen always-on preference
+5. **AppDelegate.swift**: Apply `keepScreenAlwaysOn` preference on app launch
+
+Let me start implementing:
+
+```
+cat > /tmp/preferences_patch.py << 'PYEOF'
+import re
+
+with open('/app/OpenGpxTracker/Preferences.swift', 'r') as f:
+    content = f.read()
+
+# 1. Add the kDefaultsKeyKeepScreenAlwaysOn constant after the last kDefaultsKey
+constant
+insert_after = "let kDefaultsKeyGPXFilesFolder: String = \"GPXFilesFolder\""
+new_constant = """let kDefaultsKeyGPXFilesFolder: String = \"GPXFilesFolder\"
+
+/// Key on Defaults for keeping the screen always on.
+let kDefaultsKeyKeepScreenAlwaysOn: String = \"KeepScreenAlwaysOn\""""
+content = content.replace(insert_after, new_constant)
+
+# 2. Add private var _keepScreenAlwaysOn after _gpxFilesFolderBookmark
+insert_after2 = "private var _gpxFilesFolderBookmark: Data?"
+new_var = """private var _gpxFilesFolderBookmark: Data?
+    
+    /// In memory value of the preference.
+    private var _keepScreenAlwaysOn: Bool = false"""
+content = content.replace(insert_after2, new_var)
+
+# 3. Add loading of keepScreenAlwaysOn in init - find the gpxFilesFolderBookmark
+loading section
+# We need to add after the gpxFilesFolderBookmark loading block
+# Let's find a good insertion point - right before the closing brace of init()
+# Look for the pattern where _gpxFilesFolderBookmark is loaded
+bookmark_load = '''if let gpxFilesFolderBookmark = defaults.object(forKey: 
+kDefaultsKeyGPXFilesFolder) as? Data {
+            _gpxFilesFolderBookmark = gpxFilesFolderBookmark
+            print("** Preferences:: loaded preference from defaults 
+gpxFilesFolderBookmark")
+        }'''
+
+bookmark_load_plus = bookmark_load + '''
+        
+        // Keep screen always on
+        if let keepScreenAlwaysOnDefaults = defaults.object(forKey: 
+kDefaultsKeyKeepScreenAlwaysOn) as? Bool {
+            _keepScreenAlwaysOn = keepScreenAlwaysOnDefaults
+            print("** Preferences:: loaded from defaults. keepScreenAlwaysOn: 
+\\(_keepScreenAlwaysOn)")
+        }'''
+
+content = content.replace(bookmark_load, bookmark_load_plus)
+
+# 4. Add keepScreenAlwaysOn property - add before the closing brace of the class
+# Find the gpxFilesFolderURL property's closing brace and add after it
+# The property ends with the last closing brace before the final class closing 
+brace
+# Let's add it right before the final closing brace of the class
+
+# Find the last "}\n" which is the class closing brace
+last_brace_pos = content.rfind("}\n")
+if last_brace_pos == -1:
+    last_brace_pos = content.rfind("}")
+
+new_property = """
+    /// Gets and sets the keep screen always on preference
+    var keepScreenAlwaysOn: Bool {
+        get {
+            return _keepScreenAlwaysOn
+        }
+        set {
+            _keepScreenAlwaysOn = newValue
+            defaults.set(newValue, forKey: kDefaultsKeyKeepScreenAlwaysOn)
+        }
+    }
+}
+"""
+
+# Replace from last } to end
+content = content[:last_brace_pos] + new_property
+
+with open('/app/OpenGpxTracker/Preferences.swift', 'w') as f:
+    f.write(content)
+
+print("Preferences.swift updated successfully")
+PYEOF
+python3 /tmp/preferences_patch.py
+```
+
+Tool:
+<returncode>
+0
+<output>
+Preferences.swift updated successfully
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 18, $1.34):
+```
+grep -n "keepScreenAlwaysOn\|kDefaultsKeyKeepScreenAlwaysOn" 
+/app/OpenGpxTracker/Preferences.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+44:let kDefaultsKeyKeepScreenAlwaysOn: String = "KeepScreenAlwaysOn"
+93:    private var _keepScreenAlwaysOn: Bool = false
+345:    var keepScreenAlwaysOn: Bool {
+347:            return _keepScreenAlwaysOn
+350:            _keepScreenAlwaysOn = newValue
+351:            defaults.set(newValue, forKey: kDefaultsKeyKeepScreenAlwaysOn)
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 19, $1.47):
+Let me verify the init loading was added:
+
+```
+grep -n "keepScreenAlwaysOn\|gpxFilesFolderBookmark" 
+/app/OpenGpxTracker/Preferences.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+90:    private var _gpxFilesFolderBookmark: Data?
+93:    private var _keepScreenAlwaysOn: Bool = false
+165:        if let gpxFilesFolderBookmark = defaults.object(forKey: 
+kDefaultsKeyGPXFilesFolder) as? Data {
+166:            _gpxFilesFolderBookmark = gpxFilesFolderBookmark
+167:            print("** Preferences:: loaded preference from defaults 
+gpxFilesFolderBookmark \(gpxFilesFolderBookmark)")
+304:            guard let bookmarkData = self._gpxFilesFolderBookmark else {
+316:                    _gpxFilesFolderBookmark = newBookmark
+336:                _gpxFilesFolderBookmark = newBookmark
+345:    var keepScreenAlwaysOn: Bool {
+347:            return _keepScreenAlwaysOn
+350:            _keepScreenAlwaysOn = newValue
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 20, $1.60):
+Hmm, the bookmark loading text might have been slightly different. Let me check:
+
+```
+sed -n '160,180p' /app/OpenGpxTracker/Preferences.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+            _dateFormatUseEN = dateFormatENBool
+            print("** Preferences:: loaded preference from defaults 
+dateFormatPresetENBool \(dateFormatENBool)")
+        }
+        
+        // load previous gpx files folder bookmark
+        if let gpxFilesFolderBookmark = defaults.object(forKey: 
+kDefaultsKeyGPXFilesFolder) as? Data {
+            _gpxFilesFolderBookmark = gpxFilesFolderBookmark
+            print("** Preferences:: loaded preference from defaults 
+gpxFilesFolderBookmark \(gpxFilesFolderBookmark)")
+        }
+    }
+    
+    /// If true, user prefers to display imperial units (miles, feets). 
+Otherwise metric units
+    /// are displayed.
+    var useImperial: Bool {
+        get {
+            return _useImperial
+        }
+        set {
+            _useImperial = newValue
+            defaults.set(newValue, forKey: kDefaultsKeyUseImperial)
+        }
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 21, $1.73):
+The init didn't get the keepScreenAlwaysOn loading added because the exact text 
+didn't match (extra print content). Let me fix that:
+
+```
+sed -n '165,170p' /app/OpenGpxTracker/Preferences.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+        if let gpxFilesFolderBookmark = defaults.object(forKey: 
+kDefaultsKeyGPXFilesFolder) as? Data {
+            _gpxFilesFolderBookmark = gpxFilesFolderBookmark
+            print("** Preferences:: loaded preference from defaults 
+gpxFilesFolderBookmark \(gpxFilesFolderBookmark)")
+        }
+    }
+    
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 22, $1.86):
+I see - the `}` for the init is on line 169. Let me add the keepScreenAlwaysOn 
+loading before it:
+
+```
+sed -i '168a\        \n        // Keep screen always on\n        if let 
+keepScreenAlwaysOnDefaults = defaults.object(forKey: 
+kDefaultsKeyKeepScreenAlwaysOn) as? Bool {\n            _keepScreenAlwaysOn = 
+keepScreenAlwaysOnDefaults\n            print("** Preferences:: loaded from 
+defaults. keepScreenAlwaysOn: \\(_keepScreenAlwaysOn)")\n        }' 
+/app/OpenGpxTracker/Preferences.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 23, $2.00):
+```
+sed -n '165,180p' /app/OpenGpxTracker/Preferences.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+        if let gpxFilesFolderBookmark = defaults.object(forKey: 
+kDefaultsKeyGPXFilesFolder) as? Data {
+            _gpxFilesFolderBookmark = gpxFilesFolderBookmark
+            print("** Preferences:: loaded preference from defaults 
+gpxFilesFolderBookmark \(gpxFilesFolderBookmark)")
+        }
+        
+        // Keep screen always on
+        if let keepScreenAlwaysOnDefaults = defaults.object(forKey: 
+kDefaultsKeyKeepScreenAlwaysOn) as? Bool {
+            _keepScreenAlwaysOn = keepScreenAlwaysOnDefaults
+            print("** Preferences:: loaded from defaults. keepScreenAlwaysOn: 
+\(_keepScreenAlwaysOn)")
+        }
+    }
+    
+    /// If true, user prefers to display imperial units (miles, feets). 
+Otherwise metric units
+    /// are displayed.
+    var useImperial: Bool {
+        get {
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 24, $2.15):
+Good. Now let me update the **Toast.swift** to add `kDisabledDelay`, 
+`showLoading(_:)`, and `hideLoading()`:
+
+```
+cat >> /app/OpenGpxTracker/Toast.swift << 'SWIFTEOF'
+
+// MARK: - Loading indicator
+
+extension Toast {
+
+    /// Delay value used to represent a disabled/no-auto-dismiss delay.
+    static let kDisabledDelay: Double = 0.0
+
+    /// Tag used to identify the loading overlay view.
+    private static let kLoadingOverlayTag = 987654
+
+    /// Shows a loading indicator (activity indicator + optional message) 
+centered on the key window.
+    /// - Parameter message: An optional message displayed below the spinner.
+    static func showLoading(_ message: String = "Loading...") {
+        guard let window = UIApplication.shared.keyWindow else { return }
+
+        // Avoid adding duplicates
+        if window.viewWithTag(kLoadingOverlayTag) != nil { return }
+
+        let overlay = UIView(frame: window.bounds)
+        overlay.tag = kLoadingOverlayTag
+        overlay.backgroundColor = UIColor.black.withAlphaComponent(0.35)
+
+        let container = UIView()
+        container.backgroundColor = UIColor.black.withAlphaComponent(0.75)
+        container.layer.cornerRadius = 12
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let spinner = UIActivityIndicatorView(style: .whiteLarge)
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        spinner.startAnimating()
+
+        let label = UILabel()
+        label.text = message
+        label.textColor = .white
+        label.font = UIFont.systemFont(ofSize: 14)
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(spinner)
+        container.addSubview(label)
+        overlay.addSubview(container)
+        window.addSubview(overlay)
+
+        NSLayoutConstraint.activate([
+            container.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+            container.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
+            container.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
+            container.heightAnchor.constraint(greaterThanOrEqualToConstant: 
+120),
+
+            spinner.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            spinner.topAnchor.constraint(equalTo: container.topAnchor, constant:
+24),
+
+            label.topAnchor.constraint(equalTo: spinner.bottomAnchor, constant: 
+12),
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, 
+constant: 16),
+            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, 
+constant: -16),
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, 
+constant: -16)
+        ])
+    }
+
+    /// Hides the loading indicator previously shown with `showLoading(_:)`.
+    static func hideLoading() {
+        guard let window = UIApplication.shared.keyWindow else { return }
+        window.viewWithTag(kLoadingOverlayTag)?.removeFromSuperview()
+    }
+}
+SWIFTEOF
+```
+
+Tool:
+<returncode>
+0
+<output>
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 25, $2.32):
+Now let me update the **PreferencesTableViewController.swift** to add the 
+`kScreenSection` and the screen-related cells:
+
+```
+cat > /tmp/prefs_table_patch.py << 'PYEOF'
+with open('/app/OpenGpxTracker/PreferencesTableViewController.swift', 'r') as f:
+    content = f.read()
+
+# 1. Add kScreenSection constant after kGPXFilesLocationSection
+old = "/// GPX Files Location Section Id in PreferencesTableViewController\nlet 
+kGPXFilesLocationSection = 5"
+new = """/// GPX Files Location Section Id in PreferencesTableViewController
+let kGPXFilesLocationSection = 5
+
+/// Screen Section Id in PreferencesTableViewController
+let kScreenSection = 6"""
+content = content.replace(old, new)
+
+# 2. Update numberOfSections to return 7
+content = content.replace("return 6\n    }\n    \n    /// Returns the title", 
+"return 7\n    }\n    \n    /// Returns the title")
+
+# 3. Add Screen section title in titleForHeaderInSection
+old_switch = '''case kGPXFilesLocationSection: return 
+NSLocalizedString("GPX_FILES_FOLDER", comment: "no comment")
+        default: fatalError("Unknown section")'''
+new_switch = '''case kGPXFilesLocationSection: return 
+NSLocalizedString("GPX_FILES_FOLDER", comment: "no comment")
+        case kScreenSection: return NSLocalizedString("SCREEN", comment: "no 
+comment")
+        default: fatalError("Unknown section")'''
+content = content.replace(old_switch, new_switch)
+
+# 4. Add row count for kScreenSection in numberOfRowsInSection
+old_rows = '''case kGPXFilesLocationSection: return 1
+        default: fatalError("Unknown section")'''
+new_rows = '''case kGPXFilesLocationSection: return 1
+        case kScreenSection: return 1
+        default: fatalError("Unknown section")'''
+content = content.replace(old_rows, new_rows)
+
+# 5. Add cell rendering for kScreenSection in cellForRowAt
+old_cell = '''        return cell
+    }
+    
+    /// Performs the following'''
+new_cell = '''        // Screen section
+        if indexPath.section == kScreenSection {
+            cell = UITableViewCell(style: .value1, reuseIdentifier: 
+"ScreenCell")
+            cell.textLabel?.text = NSLocalizedString("KEEP_SCREEN_ON", comment: 
+"no comment")
+            if preferences.keepScreenAlwaysOn {
+                cell.accessoryType = .checkmark
+            }
+        }
+        
+        return cell
+    }
+    
+    /// Performs the following'''
+content = content.replace(old_cell, new_cell)
+
+# 6. Add didSelectRowAt handler for kScreenSection
+old_select = '''        if indexPath.section == kGPXFilesLocationSection {'''
+new_select = '''        if indexPath.section == kScreenSection {
+            let newKeepScreenOn = !preferences.keepScreenAlwaysOn
+            preferences.keepScreenAlwaysOn = newKeepScreenOn
+            print("PreferencesTableViewController: toggle keep screen on to 
+\\(newKeepScreenOn)")
+            tableView.cellForRow(at: indexPath)?.accessoryType = newKeepScreenOn
+? .checkmark : .none
+            UIApplication.shared.isIdleTimerDisabled = newKeepScreenOn
+        }
+        
+        if indexPath.section == kGPXFilesLocationSection {'''
+content = content.replace(old_select, new_select)
+
+with open('/app/OpenGpxTracker/PreferencesTableViewController.swift', 'w') as f:
+    f.write(content)
+
+print("PreferencesTableViewController.swift updated successfully")
+PYEOF
+python3 /tmp/prefs_table_patch.py
+```
+
+Tool:
+<returncode>
+0
+<output>
+PreferencesTableViewController.swift updated successfully
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 26, $2.47):
+Now update the **AppDelegate.swift** to apply the `keepScreenAlwaysOn` 
+preference on launch:
+
+```
+cat > /tmp/appdelegate_patch.py << 'PYEOF'
+with open('/app/OpenGpxTracker/AppDelegate.swift', 'r') as f:
+    content = f.read()
+
+# Add screen always on preference application in didFinishLaunchingWithOptions
+old = """    func application(_ application: UIApplication, 
+didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: 
+Any]?) -> Bool {
+        // Override point for customization after application launch.
+        return true
+    }"""
+
+new = """    func application(_ application: UIApplication, 
+didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: 
+Any]?) -> Bool {
+        // Override point for customization after application launch.
+        
+        // Apply "keep screen always on" preference
+        UIApplication.shared.isIdleTimerDisabled = 
+Preferences.shared.keepScreenAlwaysOn
+        
+        return true
+    }"""
+
+content = content.replace(old, new)
+
+with open('/app/OpenGpxTracker/AppDelegate.swift', 'w') as f:
+    f.write(content)
+
+print("AppDelegate.swift updated successfully")
+PYEOF
+python3 /tmp/appdelegate_patch.py
+```
+
+Tool:
+<returncode>
+0
+<output>
+AppDelegate.swift updated successfully
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 27, $2.62):
+Now update the **ViewController.swift** to show a loading indicator while the 
+preferences screen is loading:
+
+```
+sed -n '973,982p' /app/OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+    /// Opens Preferences table view controller
+    ///
+    @objc func openPreferencesTableViewController() {
+        print("openPreferencesTableViewController")
+        let vc = PreferencesTableViewController(style: .grouped)
+        vc.delegate = self
+        let navController = UINavigationController(rootViewController: vc)
+        self.present(navController, animated: true) { () -> Void in }
+    }
+    
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 28, $2.77):
+```
+cat > /tmp/vc_patch.py << 'PYEOF'
+with open('/app/OpenGpxTracker/ViewController.swift', 'r') as f:
+    content = f.read()
+
+old = """    @objc func openPreferencesTableViewController() {
+        print("openPreferencesTableViewController")
+        let vc = PreferencesTableViewController(style: .grouped)
+        vc.delegate = self
+        let navController = UINavigationController(rootViewController: vc)
+        self.present(navController, animated: true) { () -> Void in }
+    }"""
+
+new = """    @objc func openPreferencesTableViewController() {
+        print("openPreferencesTableViewController")
+        Toast.showLoading("Loading...")
+        let vc = PreferencesTableViewController(style: .grouped)
+        vc.delegate = self
+        let navController = UINavigationController(rootViewController: vc)
+        self.present(navController, animated: true) { () -> Void in
+            Toast.hideLoading()
+        }
+    }"""
+
+content = content.replace(old, new)
+
+with open('/app/OpenGpxTracker/ViewController.swift', 'w') as f:
+    f.write(content)
+
+print("ViewController.swift updated successfully")
+PYEOF
+python3 /tmp/vc_patch.py
+```
+
+Tool:
+<returncode>
+0
+<output>
+ViewController.swift updated successfully
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 29, $2.93):
+Now let me verify all the changes are correct:
+
+```
+echo "=== Checking Preferences.swift ==="
+grep -n 
+"kDefaultsKeyKeepScreenAlwaysOn\|keepScreenAlwaysOn\|_keepScreenAlwaysOn" 
+/app/OpenGpxTracker/Preferences.swift
+echo ""
+echo "=== Checking Toast.swift ==="
+grep -n "kDisabledDelay\|showLoading\|hideLoading\|kLoadingOverlayTag" 
+/app/OpenGpxTracker/Toast.swift
+echo ""
+echo "=== Checking PreferencesTableViewController.swift ==="
+grep -n 
+"kScreenSection\|keepScreenAlwaysOn\|KEEP_SCREEN_ON\|isIdleTimerDisabled" 
+/app/OpenGpxTracker/PreferencesTableViewController.swift
+echo ""
+echo "=== Checking AppDelegate.swift ==="
+grep -n "keepScreenAlwaysOn\|isIdleTimerDisabled" 
+/app/OpenGpxTracker/AppDelegate.swift
+echo ""
+echo "=== Checking ViewController.swift ==="
+grep -n "showLoading\|hideLoading\|Toast" 
+/app/OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+=== Checking Preferences.swift ===
+44:let kDefaultsKeyKeepScreenAlwaysOn: String = "KeepScreenAlwaysOn"
+93:    private var _keepScreenAlwaysOn: Bool = false
+171:        if let keepScreenAlwaysOnDefaults = defaults.object(forKey: 
+kDefaultsKeyKeepScreenAlwaysOn) as? Bool {
+172:            _keepScreenAlwaysOn = keepScreenAlwaysOnDefaults
+173:            print("** Preferences:: loaded from defaults. 
+keepScreenAlwaysOn: \(_keepScreenAlwaysOn)")
+351:    var keepScreenAlwaysOn: Bool {
+353:            return _keepScreenAlwaysOn
+356:            _keepScreenAlwaysOn = newValue
+357:            defaults.set(newValue, forKey: kDefaultsKeyKeepScreenAlwaysOn)
+
+=== Checking Toast.swift ===
+258:    static let kDisabledDelay: Double = 0.0
+261:    private static let kLoadingOverlayTag = 987654
+265:    static func showLoading(_ message: String = "Loading...") {
+269:        if window.viewWithTag(kLoadingOverlayTag) != nil { return }
+272:        overlay.tag = kLoadingOverlayTag
+312:    /// Hides the loading indicator previously shown with `showLoading(_:)`.
+313:    static func hideLoading() {
+315:        window.viewWithTag(kLoadingOverlayTag)?.removeFromSuperview()
+
+=== Checking PreferencesTableViewController.swift ===
+35:let kScreenSection = 6
+125:        case kScreenSection: return NSLocalizedString("SCREEN", comment: "no
+comment")
+141:        case kScreenSection: return 1
+225:        if indexPath.section == kScreenSection {
+226:            let newKeepScreenOn = !preferences.keepScreenAlwaysOn
+227:            preferences.keepScreenAlwaysOn = newKeepScreenOn
+230:            UIApplication.shared.isIdleTimerDisabled = newKeepScreenOn
+244:        if indexPath.section == kScreenSection {
+246:            cell.textLabel?.text = NSLocalizedString("KEEP_SCREEN_ON", 
+comment: "no comment")
+247:            if preferences.keepScreenAlwaysOn {
+350:        if indexPath.section == kScreenSection {
+351:            let newKeepScreenOn = !preferences.keepScreenAlwaysOn
+352:            preferences.keepScreenAlwaysOn = newKeepScreenOn
+355:            UIApplication.shared.isIdleTimerDisabled = newKeepScreenOn
+
+=== Checking AppDelegate.swift ===
+24:        UIApplication.shared.isIdleTimerDisabled = 
+Preferences.shared.keepScreenAlwaysOn
+
+=== Checking ViewController.swift ===
+977:        Toast.showLoading("Loading...")
+982:            Toast.hideLoading()
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 30, $3.09):
+I notice there's a duplication issue in the PreferencesTableViewController - the
+kScreenSection handling appears twice. Let me check:
+
+```
+grep -c "kScreenSection" 
+/app/OpenGpxTracker/PreferencesTableViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+6
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 31, $3.24):
+```
+grep -n "kScreenSection" 
+/app/OpenGpxTracker/PreferencesTableViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+35:let kScreenSection = 6
+125:        case kScreenSection: return NSLocalizedString("SCREEN", comment: "no
+comment")
+141:        case kScreenSection: return 1
+225:        if indexPath.section == kScreenSection {
+244:        if indexPath.section == kScreenSection {
+350:        if indexPath.section == kScreenSection {
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 32, $3.40):
+Lines 225 and 244 - one should be in `cellForRowAt` and the other in 
+`didSelectRowAt`. Line 350 is also in `didSelectRowAt`. Let me check more 
+carefully:
+
+```
+sed -n '220,260p' /app/OpenGpxTracker/PreferencesTableViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+                                                 useENLocale: 
+preferences.dateFormatUseEN)
+            cell.detailTextLabel?.text = dateText
+            cell.accessoryType = .disclosureIndicator
+        }
+        
+        if indexPath.section == kScreenSection {
+            let newKeepScreenOn = !preferences.keepScreenAlwaysOn
+            preferences.keepScreenAlwaysOn = newKeepScreenOn
+            print("PreferencesTableViewController: toggle keep screen on to 
+\(newKeepScreenOn)")
+            tableView.cellForRow(at: indexPath)?.accessoryType = newKeepScreenOn
+? .checkmark : .none
+            UIApplication.shared.isIdleTimerDisabled = newKeepScreenOn
+        }
+        
+        if indexPath.section == kGPXFilesLocationSection {
+            cell = UITableViewCell(style: .value1, reuseIdentifier: 
+"GPXFilesLocation")
+            if let url = preferences.gpxFilesFolderURL {
+                cell.textLabel?.text = url.lastPathComponent
+            } else {
+                cell.textLabel?.text = NSLocalizedString("USING_DEFAULT_FOLDER",
+comment: "no comment")
+            }
+            cell.accessoryType = .disclosureIndicator
+        }
+        
+        // Screen section
+        if indexPath.section == kScreenSection {
+            cell = UITableViewCell(style: .value1, reuseIdentifier: 
+"ScreenCell")
+            cell.textLabel?.text = NSLocalizedString("KEEP_SCREEN_ON", comment: 
+"no comment")
+            if preferences.keepScreenAlwaysOn {
+                cell.accessoryType = .checkmark
+            }
+        }
+        
+        return cell
+    }
+    
+    /// Performs the following actions depending on the section and row 
+selected:
+    /// If the cell `kUseImperialUnitCell` in `kUnitsSection`it sets or unsets 
+the use of imperial
+    /// units (`useImperial` in `Preferences``and calls the delegate method 
+`didUpdateUseImperial`.
+    ///
+    /// If a cell in kCacheSection is selected and the cell is
+    ///     1. kUseOfflineCacheCell: Activates or desactivates the `useCache` in
+`Preferences`,
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 33, $3.58):
+I see the problem - the screen section toggle logic accidentally got inserted in
+`cellForRowAt` instead of only being in `didSelectRowAt`. The issue is that my 
+patch for `didSelectRowAt` accidentally was placed inside `cellForRowAt`. Let me
+fix this:
+
+```
+cat > /tmp/fix_prefs.py << 'PYEOF'
+with open('/app/OpenGpxTracker/PreferencesTableViewController.swift', 'r') as f:
+    content = f.read()
+
+# Remove the erroneous kScreenSection toggle block that was placed in 
+cellForRowAt
+# It was placed right before the kGPXFilesLocationSection cell rendering
+bad_block = """        if indexPath.section == kScreenSection {
+            let newKeepScreenOn = !preferences.keepScreenAlwaysOn
+            preferences.keepScreenAlwaysOn = newKeepScreenOn
+            print("PreferencesTableViewController: toggle keep screen on to 
+\\(newKeepScreenOn)")
+            tableView.cellForRow(at: indexPath)?.accessoryType = newKeepScreenOn
+? .checkmark : .none
+            UIApplication.shared.isIdleTimerDisabled = newKeepScreenOn
+        }
+        
+        if indexPath.section == kGPXFilesLocationSection {
+            cell = UITableViewCell(style: .value1, reuseIdentifier: 
+"GPXFilesLocation")"""
+
+good_block = """        if indexPath.section == kGPXFilesLocationSection {
+            cell = UITableViewCell(style: .value1, reuseIdentifier: 
+"GPXFilesLocation")"""
+
+content = content.replace(bad_block, good_block, 1)  # Only replace the first 
+occurrence (in cellForRowAt)
+
+with open('/app/OpenGpxTracker/PreferencesTableViewController.swift', 'w') as f:
+    f.write(content)
+
+print("Fixed PreferencesTableViewController.swift")
+PYEOF
+python3 /tmp/fix_prefs.py
+```
+
+Tool:
+<returncode>
+0
+<output>
+Fixed PreferencesTableViewController.swift
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 34, $3.74):
+```
+grep -n "kScreenSection" 
+/app/OpenGpxTracker/PreferencesTableViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+35:let kScreenSection = 6
+125:        case kScreenSection: return NSLocalizedString("SCREEN", comment: "no
+comment")
+141:        case kScreenSection: return 1
+236:        if indexPath.section == kScreenSection {
+342:        if indexPath.section == kScreenSection {
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 35, $3.91):
+Let me verify that the cellForRowAt and didSelectRowAt sections are correct:
+
+```
+sed -n '230,260p' /app/OpenGpxTracker/PreferencesTableViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+                cell.textLabel?.text = NSLocalizedString("USING_DEFAULT_FOLDER",
+comment: "no comment")
+            }
+            cell.accessoryType = .disclosureIndicator
+        }
+        
+        // Screen section
+        if indexPath.section == kScreenSection {
+            cell = UITableViewCell(style: .value1, reuseIdentifier: 
+"ScreenCell")
+            cell.textLabel?.text = NSLocalizedString("KEEP_SCREEN_ON", comment: 
+"no comment")
+            if preferences.keepScreenAlwaysOn {
+                cell.accessoryType = .checkmark
+            }
+        }
+        
+        return cell
+    }
+    
+    /// Performs the following actions depending on the section and row 
+selected:
+    /// If the cell `kUseImperialUnitCell` in `kUnitsSection`it sets or unsets 
+the use of imperial
+    /// units (`useImperial` in `Preferences``and calls the delegate method 
+`didUpdateUseImperial`.
+    ///
+    /// If a cell in kCacheSection is selected and the cell is
+    ///     1. kUseOfflineCacheCell: Activates or desactivates the `useCache` in
+`Preferences`,
+    ///        and calls the delegate method `didUpdateUseCache`
+    ///     2. KClearCacheCacheCell: Clears the current cache and calls
+    ///
+    /// If a cell in `kMapSourceSection` is selected: Updates `tileServerInt` in
+`Preferences` and
+    /// calls the delegate method `didUpdateTileServer`
+    ///
+    /// If a cell in `kActivitySection` is selected: Updates the `activityType` 
+in `Preferences` and
+    /// calls the delegate method `didUpdateActivityType`.
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 36, $4.08):
+Good - cellForRowAt looks correct. Now let me check didSelectRowAt:
+
+```
+sed -n '336,365p' /app/OpenGpxTracker/PreferencesTableViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+        
+        if indexPath.section == kDefaultNameSection {
+            print("PreferencesTableView Default Name cell clicked")
+            self.navigationController?.pushViewController(DefaultNameSetupViewCo
+ntroller(style: .grouped), animated: true)
+        }
+        
+        if indexPath.section == kScreenSection {
+            let newKeepScreenOn = !preferences.keepScreenAlwaysOn
+            preferences.keepScreenAlwaysOn = newKeepScreenOn
+            print("PreferencesTableViewController: toggle keep screen on to 
+\(newKeepScreenOn)")
+            tableView.cellForRow(at: indexPath)?.accessoryType = newKeepScreenOn
+? .checkmark : .none
+            UIApplication.shared.isIdleTimerDisabled = newKeepScreenOn
+        }
+        
+        if indexPath.section == kGPXFilesLocationSection {
+            print("PreferencesTableView GPX Files Location cell clicked")
+            let documentVC = UIDocumentPickerViewController(documentTypes: 
+[kUTTypeFolder as String], in: .open)
+            documentVC.allowsMultipleSelection = false
+            documentVC.delegate = self
+            self.present(documentVC, animated: true)
+        }
+        
+        // Unselect row
+        tableView.deselectRow(at: indexPath, animated: true)
+    }
+    
+    // MARK: - UIDocumentPickerDelegate
+    
+    func documentPicker(_ controller: UIDocumentPickerViewController, 
+didPickDocumentsAt urls: [URL]) {
+        guard let folderURL = urls.first else {
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 37, $4.25):
+Everything looks correct. Let me also verify the ViewController changes:
+
+```
+sed -n '973,990p' /app/OpenGpxTracker/ViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+    /// Opens Preferences table view controller
+    ///
+    @objc func openPreferencesTableViewController() {
+        print("openPreferencesTableViewController")
+        Toast.showLoading("Loading...")
+        let vc = PreferencesTableViewController(style: .grouped)
+        vc.delegate = self
+        let navController = UINavigationController(rootViewController: vc)
+        self.present(navController, animated: true) { () -> Void in
+            Toast.hideLoading()
+        }
+    }
+    
+    /// Opens an Activity View Controller to share the file
+    @objc func openShare() {
+        print("ViewController: Share Button tapped")
+        
+        // async such that process is done in background
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 38, $4.42):
+Now let me verify all files are syntactically valid by doing a quick scan for 
+common issues:
+
+```
+# Check that the Preferences.swift ends properly
+tail -20 /app/OpenGpxTracker/Preferences.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+                let newBookmark = try newValue.bookmarkData()
+                _gpxFilesFolderBookmark = newBookmark
+                defaults.set(newBookmark, forKey: kDefaultsKeyGPXFilesFolder)
+            } catch {
+                print("** Preferences:: failed to generate bookmark data for 
+url: \(String(describing: error))")
+            }
+        }
+    }
+
+    /// Gets and sets the keep screen always on preference
+    var keepScreenAlwaysOn: Bool {
+        get {
+            return _keepScreenAlwaysOn
+        }
+        set {
+            _keepScreenAlwaysOn = newValue
+            defaults.set(newValue, forKey: kDefaultsKeyKeepScreenAlwaysOn)
+        }
+    }
+}
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 39, $4.59):
+```
+# Check that the Toast.swift ends properly
+tail -10 /app/OpenGpxTracker/Toast.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, 
+constant: -16)
+        ])
+    }
+
+    /// Hides the loading indicator previously shown with `showLoading(_:)`.
+    static func hideLoading() {
+        guard let window = UIApplication.shared.keyWindow else { return }
+        window.viewWithTag(kLoadingOverlayTag)?.removeFromSuperview()
+    }
+}
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 40, $4.77):
+```
+# Verify the return 7 sections
+grep -n "return 7" /app/OpenGpxTracker/PreferencesTableViewController.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+111:        return 7
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 41, $4.95):
+Let me also verify the AppDelegate change:
+
+```
+sed -n '19,30p' /app/OpenGpxTracker/AppDelegate.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+    /// Default placeholder function
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions
+launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        // Override point for customization after application launch.
+        
+        // Apply "keep screen always on" preference
+        UIApplication.shared.isIdleTimerDisabled = 
+Preferences.shared.keepScreenAlwaysOn
+        
+        return true
+    }
+
+    /// Default placeholder function
+    func applicationWillResignActive(_ application: UIApplication) {
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 42, $5.13):
+All changes look good. Let me do a final comprehensive review of all the 
+required API surface items:
+
+```
+echo "=== 1. Preferences.shared.keepScreenAlwaysOn ==="
+grep "var keepScreenAlwaysOn" /app/OpenGpxTracker/Preferences.swift
+grep "static let shared" /app/OpenGpxTracker/Preferences.swift
+echo ""
+echo "=== 2. kDefaultsKeyKeepScreenAlwaysOn ==="
+grep "^let kDefaultsKeyKeepScreenAlwaysOn" /app/OpenGpxTracker/Preferences.swift
+echo ""
+echo "=== 3. kScreenSection ==="
+grep "^let kScreenSection" 
+/app/OpenGpxTracker/PreferencesTableViewController.swift
+echo ""
+echo "=== 4. Toast.kDisabledDelay ==="
+grep "kDisabledDelay" /app/OpenGpxTracker/Toast.swift
+echo ""
+echo "=== 5. Toast.showLoading(_:) and Toast.hideLoading() ==="
+grep "static func showLoading\|static func hideLoading" 
+/app/OpenGpxTracker/Toast.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+=== 1. Preferences.shared.keepScreenAlwaysOn ===
+    var keepScreenAlwaysOn: Bool {
+    static let shared = Preferences()
+
+=== 2. kDefaultsKeyKeepScreenAlwaysOn ===
+let kDefaultsKeyKeepScreenAlwaysOn: String = "KeepScreenAlwaysOn"
+
+=== 3. kScreenSection ===
+let kScreenSection = 6
+
+=== 4. Toast.kDisabledDelay ===
+    static let kDisabledDelay: Double = 0.0
+
+=== 5. Toast.showLoading(_:) and Toast.hideLoading() ===
+    static func showLoading(_ message: String = "Loading...") {
+    static func hideLoading() {
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 43, $5.32):
+All required API surface items are in place. Let me do a final summary review of
+all changes made:
+
+```
+echo "=== Files modified ==="
+echo "1. /app/OpenGpxTracker/Preferences.swift"
+echo "   - Added kDefaultsKeyKeepScreenAlwaysOn constant"
+echo "   - Added _keepScreenAlwaysOn private property"
+echo "   - Added loading from UserDefaults in init()"
+echo "   - Added keepScreenAlwaysOn computed property with getter/setter"
+echo ""
+echo "2. /app/OpenGpxTracker/Toast.swift"
+echo "   - Added Toast extension with kDisabledDelay, showLoading(_:), 
+hideLoading()"
+echo ""
+echo "3. /app/OpenGpxTracker/PreferencesTableViewController.swift"
+echo "   - Added kScreenSection = 6 constant"
+echo "   - Updated numberOfSections to return 7"
+echo "   - Added Screen section title"
+echo "   - Added Screen section row count"
+echo "   - Added Screen section cell rendering in cellForRowAt"
+echo "   - Added Screen section toggle handling in didSelectRowAt"
+echo ""
+echo "4. /app/OpenGpxTracker/AppDelegate.swift"
+echo "   - Applied keepScreenAlwaysOn preference in 
+didFinishLaunchingWithOptions"
+echo ""
+echo "5. /app/OpenGpxTracker/ViewController.swift"
+echo "   - Added Toast.showLoading before presenting preferences"
+echo "   - Added Toast.hideLoading in completion handler"
+```
+
+Tool:
+<returncode>
+0
+<output>
+=== Files modified ===
+1. /app/OpenGpxTracker/Preferences.swift
+   - Added kDefaultsKeyKeepScreenAlwaysOn constant
+   - Added _keepScreenAlwaysOn private property
+   - Added loading from UserDefaults in init()
+   - Added keepScreenAlwaysOn computed property with getter/setter
+
+2. /app/OpenGpxTracker/Toast.swift
+   - Added Toast extension with kDisabledDelay, showLoading(_:), hideLoading()
+
+3. /app/OpenGpxTracker/PreferencesTableViewController.swift
+   - Added kScreenSection = 6 constant
+   - Updated numberOfSections to return 7
+   - Added Screen section title
+   - Added Screen section row count
+   - Added Screen section cell rendering in cellForRowAt
+   - Added Screen section toggle handling in didSelectRowAt
+
+4. /app/OpenGpxTracker/AppDelegate.swift
+   - Applied keepScreenAlwaysOn preference in didFinishLaunchingWithOptions
+
+5. /app/OpenGpxTracker/ViewController.swift
+   - Added Toast.showLoading before presenting preferences
+   - Added Toast.hideLoading in completion handler
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 44, $5.50):
+All changes are complete. Let me verify no test files were modified:
+
+```
+md5sum /app/OpenGpxTrackerTests/OpenGpxTrackerTests.swift
+```
+
+Tool:
+<returncode>
+0
+<output>
+89cdbad6ebd824ec7ae66c9c3fa249de  
+/app/OpenGpxTrackerTests/OpenGpxTrackerTests.swift
+
+────────────────────────────────────────────────────────────────────────────────
+
+mini-swe-agent (step 45, $5.69):
+Test files are untouched. All implementations are complete:
+
+1. **`Preferences.shared.keepScreenAlwaysOn`** - Boolean preference backed by 
+UserDefaults, persisted and loaded on init
+2. **`kDefaultsKeyKeepScreenAlwaysOn`** - Global constant for the UserDefaults 
+key
+3. **`kScreenSection`** - Section index (6) for the new Screen section in 
+preferences table
+4. **`Toast.kDisabledDelay`** - Static constant set to 0.0
+5. **`Toast.showLoading(_:)`** - Shows a loading overlay with spinner and 
+message on the key window
+6. **`Toast.hideLoading()`** - Removes the loading overlay
+
+The implementation fulfills all acceptance criteria:
+- New "Screen" section visible in preferences table with "Keep screen always on"
+toggle
+- Toggling updates `UIApplication.shared.isIdleTimerDisabled`
+- Preference persists via UserDefaults and is restored on app launch (in 
+AppDelegate)
+- Loading indicator appears while preferences screen loads and disappears once 
+presented
+
+```
+echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT
+```
+
+Tool:
+<returncode>
+-1
+<output>
+
+<exception_info>
+action was not executed
+
+Exit:
+
+Saved trajectory to '/workspace/output/trajectory.traj.json'
+
+=== Files in /workspace/output:
+total 384
+drwxr-xr-x 2 root root     34 Mar  1 06:22 .
+drwxr-xr-x 3 root root     20 Mar  1 06:21 ..
+-rw-r--r-- 1 root root 391467 Mar  1 06:25 trajectory.traj.json

@@ -1,0 +1,106 @@
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+index f5642f1..9e714fa 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+@@ -137,14 +137,31 @@ public class UserCollection: ObservableObject {
+             return false
+         }
+         if variants[filename]?.contains(variant) == true {
++            // Removing a variant
+             variants[filename]?.removeAll(where: { $0 == variant })
++            
++            // If this was the last variant, remove the parent item from collection
++            if variants[filename]?.isEmpty == true {
++                variants[filename] = nil
++                _ = items.toggle(item: item)  // Remove the item if it exists
++            }
++            
+             save()
+             return false
+         } else {
++            // Adding a variant
+             if variants[filename] == nil {
+                 variants[filename] = []
+             }
+             variants[filename]?.append(variant)
++            
++            // If this is the first variant, add the parent item to collection
++            if variants[filename]?.count == 1 {
++                if !items.contains(item) {
++                    _ = items.toggle(item: item)  // Add the item if it doesn't exist
++                }
++            }
++            
+             save()
+             return true
+         }
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Collection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Collection.swift
+index 12474f4..1de4753 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Collection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Extensions/Collection.swift
+@@ -28,3 +28,27 @@ extension Collection {
+         return try self.filter(test).count
+     }
+ }
++
++// MARK: - Variants Completion
++public extension Dictionary where Key == String, Value == [Variant] {
++    func completionStatus(for item: Item) -> VariantsCompletionStatus {
++        // Items without variations or with only one variation
++        guard let itemVariations = item.variations, itemVariations.count > 1 else {
++            return .unstarted
++        }
++        
++        guard let filename = item.filename else {
++            return .unstarted
++        }
++        
++        let collectedVariants = self[filename] ?? []
++        
++        if collectedVariants.isEmpty {
++            return .unstarted
++        } else if collectedVariants.count >= itemVariations.count {
++            return .complete
++        } else {
++            return .partial
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+index 46b91a9..53b6eef 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+@@ -284,3 +284,13 @@ public let static_item = Item(name: "Acoustic guitar",
+                        styles: nil,
+                        themes: nil,
+                        colors: nil)
++
++// MARK: - Variants
++public extension Item {
++    var hasSomeVariations: Bool {
++        guard let variations = variations else {
++            return false
++        }
++        return variations.count > 1
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/VariantsCompletionStatus.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/VariantsCompletionStatus.swift
+new file mode 100644
+index 0000000..38bd29d
+--- /dev/null
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/VariantsCompletionStatus.swift
+@@ -0,0 +1,14 @@
++//
++//  VariantsCompletionStatus.swift
++//  ACHNBrowserUI
++//
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import Foundation
++
++public enum VariantsCompletionStatus {
++    case unstarted
++    case partial
++    case complete
++}

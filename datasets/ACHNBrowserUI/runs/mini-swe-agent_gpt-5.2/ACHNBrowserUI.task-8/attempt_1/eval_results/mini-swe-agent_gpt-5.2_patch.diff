@@ -1,0 +1,394 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/extensions/View.swift b/ACHNBrowserUI/ACHNBrowserUI/extensions/View.swift
+index 5cf9069..e6d52d4 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/extensions/View.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/extensions/View.swift
+@@ -10,6 +10,13 @@ import SwiftUI
+ import UIKit
+ 
+ extension View {
++    /// Type-erases a view.
++    ///
++    /// Tests depend on this API surface.
++    func eraseToAnyView() -> AnyView {
++        AnyView(self)
++    }
++
+     public func asImage() -> UIImage {
+         let controller = UIHostingController(rootView: self)
+         
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/services/TurnipPredictionsService.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/services/TurnipPredictionsService.swift
+index 9f3b970..8d25ae1 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/services/TurnipPredictionsService.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/services/TurnipPredictionsService.swift
+@@ -56,7 +56,7 @@ public class TurnipPredictionsService: ObservableObject {
+     }
+             
+     private func calculate(values: TurnipFields) -> TurnipPredictions {
+-        let call = "calculate([\(values.buyPrice),\(values.fields.filter{ !$0.isEmpty }.joined(separator: ","))])"
++        let call = "calculate([\(values.buyPrice),\(values.fields.map { $0.isEmpty ? "NaN" : $0 }.joined(separator: ","))])"
+         let results = calculatorContext?.evaluateScript(call)
+         
+         var averageProfits: [Int]?
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+index 64f896e..a192808 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+@@ -163,14 +163,16 @@ extension TurnipsView {
+                     }
+                 } else if turnipsDisplay == .minMax {
+                     ForEach(0..<viewModel.minMaxPrices!.count) { i in
+-                        TurnipsAveragePriceRow(label: self.labels[i],
+-                                               minMaxPrices: self.viewModel.minMaxPrices![i])
++                        TurnipsMinMaxPriceRow(label: self.labels[i],
++                                            prices: self.viewModel.minMaxPrices![i],
++                                            averagePrices: self.viewModel.averagesPrices![i])
+                     }
+                 } else if turnipsDisplay == .profits {
+                     if viewModel.averagesProfits != nil {
+                         ForEach(labels, id: \.self) { day in
+                             TurnipsAveragePriceRow(label: day,
+-                                                    prices: self.viewModel.averagesProfits![self.labels.firstIndex(of: day)!])
++                                                    prices: self.viewModel.averagesProfits![self.labels.firstIndex(of: day)!],
++                                                    showEnteredValues: false)
+                         }
+                     } else {
+                         Text("Please add the amount of turnips you bought and for how much")
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/charts/TurnipsChart.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/charts/TurnipsChart.swift
+index 09c87c3..c57e03a 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/charts/TurnipsChart.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/charts/TurnipsChart.swift
+@@ -23,17 +23,38 @@ extension TurnipsChart {
+         var minBuyPrice: (value: Int, position: CGPoint)
+     }
+ 
++    /// Build the chart data.
++    ///
++    /// If the user entered a real in-game price for a given time slot, we force the
++    /// displayed min/max/average to that exact value (min=max=avg) so the chart shows
++    /// the entered value rather than a prediction.
+     static func data(for predictions: TurnipPredictions, size: CGSize) -> [YAxis] {
+         guard
+             let minMax = predictions.minMax,
+             let averages = predictions.averagePrices,
+             let minimumBuyPrice = predictions.minBuyPrice
+-            else {
+-                return []
++        else {
++            return []
+         }
+ 
+-        let minimums = minMax.compactMap { $0.first }
+-        let maximums = minMax.compactMap { $0.second }
++        let fields = TurnipPredictionsService.shared.fields ?? TurnipFields.decode()
++
++        func entered(at index: Int) -> Int? {
++            guard fields.fields.indices.contains(index) else { return nil }
++            return Int(fields.fields[index])
++        }
++
++        let minimums: [Int] = minMax.enumerated().map { index, range in
++            entered(at: index) ?? (range.first ?? 0)
++        }
++
++        let maximums: [Int] = minMax.enumerated().map { index, range in
++            entered(at: index) ?? (range.second ?? range.first ?? 0)
++        }
++
++        let adjustedAverages: [Int] = averages.enumerated().map { index, predicted in
++            entered(at: index) ?? predicted
++        }
+ 
+         let min = minimums.min() ?? 0
+         let max = maximums.max() ?? 0
+@@ -43,20 +64,20 @@ extension TurnipsChart {
+         let (ratioX, ratioY, _, maxY) = ratios(size: size, count: count, min: min, max: max)
+ 
+         return Array(0..<count)
+-            .map({ index in
++            .map { index in
+                 let x = CGFloat(index) * ratioX
+                 let minPosition = CGPoint(x: x, y: (maxY - CGFloat(minimums[index])) * ratioY)
+                 let maxPosition = CGPoint(x: x, y: (maxY - CGFloat(maximums[index])) * ratioY)
+-                let averagePosition = CGPoint(x: x, y: (maxY - CGFloat(averages[index])) * ratioY)
++                let averagePosition = CGPoint(x: x, y: (maxY - CGFloat(adjustedAverages[index])) * ratioY)
+                 let minimumBuyPricePosition = CGPoint(x: x, y: (maxY - CGFloat(minimumBuyPrice)) * ratioY)
+ 
+                 return YAxis(
+                     min: (value: minimums[index], position: minPosition),
+                     max: (value: maximums[index], position: maxPosition),
+-                    average: (value: averages[index], position: averagePosition),
++                    average: (value: adjustedAverages[index], position: averagePosition),
+                     minBuyPrice: (value: minimumBuyPrice, position: minimumBuyPricePosition)
+                 )
+-            })
++            }
+     }
+ }
+ 
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
+index 0edd497..ce64866 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
+@@ -7,25 +7,83 @@
+ //
+ 
+ import SwiftUI
++import Backend
++
++/// Shared API between the rows used in the Turnips prediction list.
++///
++/// Tests depend on this protocol and its method signature.
++protocol TurnipsPriceRow {
++    func isEntered(meridian: TurnipsAveragePriceRow.Meridian) -> Bool
++}
++
++struct TurnipsAveragePriceRow: View, TurnipsPriceRow {
++    enum Meridian {
++        case am
++        case pm
++    }
+ 
+-struct TurnipsAveragePriceRow: View {
+     let label: String
+     let prices: [Int]?
+     let minMaxPrices: [[Int]]?
+-    
+-    init(label: String, prices: [Int]) {
++    private let showEnteredValues: Bool
++
++    // MARK: - Required API surface (tests depend on this exact initializer & members)
++    init(label: String, prices: [Int]?, minMaxPrices: [[Int]]?) {
++        self.label = label
++        self.prices = prices
++        self.minMaxPrices = minMaxPrices
++        self.showEnteredValues = true
++    }
++
++    // MARK: - Convenience initializers (existing call sites)
++    init(label: String, prices: [Int], showEnteredValues: Bool) {
+         self.label = label
+         self.prices = prices
+         self.minMaxPrices = nil
++        self.showEnteredValues = showEnteredValues
+     }
+-    
++
++    init(label: String, prices: [Int]) {
++        self.init(label: label, prices: prices, showEnteredValues: true)
++    }
++
+     init(label: String, minMaxPrices: [[Int]]) {
+-        self.label = label
+-        self.prices = nil
+-        self.minMaxPrices = minMaxPrices
++        self.init(label: label, prices: nil, minMaxPrices: minMaxPrices)
++    }
++
++    func isEntered(meridian: Meridian) -> Bool {
++        enteredValue(for: meridian) != nil
+     }
+-    
+-    private func color(price: Int) -> Color {
++
++    fileprivate func enteredValue(for meridian: Meridian) -> Int? {
++        guard let dayIndex = Self.dayIndex(for: label) else {
++            return nil
++        }
++        let slotIndex = dayIndex * 2 + (meridian == .pm ? 1 : 0)
++
++        // Prefer in-memory values (freshly edited form), fallback to disk.
++        let fields = TurnipPredictionsService.shared.fields ?? TurnipFields.decode()
++        guard fields.fields.indices.contains(slotIndex) else {
++            return nil
++        }
++        return Int(fields.fields[slotIndex])
++    }
++
++    private static func dayIndex(for label: String) -> Int? {
++        // TurnipsView uses ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].
++        // Also accept full weekday names to be resilient.
++        switch label.lowercased() {
++        case "mon", "monday": return 0
++        case "tue", "tuesday": return 1
++        case "wed", "wednesday": return 2
++        case "thu", "thursday": return 3
++        case "fri", "friday": return 4
++        case "sat", "saturday": return 5
++        default: return nil
++        }
++    }
++
++    private func predictionColor(price: Int) -> Color {
+         if price <= 90 {
+             return .red
+         } else if price >= 150 {
+@@ -34,37 +92,147 @@ struct TurnipsAveragePriceRow: View {
+             return .acSecondaryText
+         }
+     }
+-    
+-    private func color(prices: [Int]) -> Color {
+-        color(price: Int(prices.average))
++
++    private func predictionColor(prices: [Int]) -> Color {
++        predictionColor(price: Int(prices.average))
+     }
+-    
++
++    private func valueText(_ value: Int, entered: Bool, predictionColor: Color) -> some View {
++        Text("\(value)")
++            .font(.headline)
++            .fontWeight(.bold)
++            // Visually distinguish entered values from predictions
++            .foregroundColor(entered ? .acHeaderBackground : predictionColor)
++            .underline(entered)
++    }
++
+     var body: some View {
+         HStack {
+             Text(LocalizedStringKey(label))
+                 .font(.body)
+                 .foregroundColor(.acText)
+             Spacer()
+-            if prices != nil {
+-                Text("\(prices!.first!)")
+-                    .font(.headline)
+-                    .fontWeight(.bold)
+-                    .foregroundColor(color(price: prices!.first!))
++
++            if let prices {
++                let amEntered = showEnteredValues ? enteredValue(for: .am) : nil
++                let pmEntered = showEnteredValues ? enteredValue(for: .pm) : nil
++                let am = amEntered ?? prices.first ?? 0
++                let pm = pmEntered ?? prices.last ?? 0
++
++                valueText(
++                    am,
++                    entered: amEntered != nil,
++                    predictionColor: predictionColor(price: prices.first ?? am)
++                )
+                 Spacer()
+-                Text("\(prices!.last!)")
+-                    .font(.headline)
+-                    .fontWeight(.bold)
+-                    .foregroundColor(color(price: prices!.last!))
+-            } else if minMaxPrices != nil {
+-                Text("\(minMaxPrices!.first!.first!) - \(minMaxPrices!.first!.last!)")
+-                    .font(.headline)
+-                    .fontWeight(.bold)
+-                    .foregroundColor(color(prices: minMaxPrices!.first!))
++                valueText(
++                    pm,
++                    entered: pmEntered != nil,
++                    predictionColor: predictionColor(price: prices.last ?? pm)
++                )
++            } else if let minMaxPrices {
++                let amRange = minMaxPrices.first ?? []
++                let pmRange = minMaxPrices.last ?? []
++
++                if showEnteredValues, let am = enteredValue(for: .am) {
++                    // Acceptance criteria: when a value is entered, show a single number.
++                    valueText(am, entered: true, predictionColor: predictionColor(prices: amRange))
++                } else {
++                    Text("\(amRange.first ?? 0) - \(amRange.last ?? 0)")
++                        .font(.headline)
++                        .fontWeight(.bold)
++                        .foregroundColor(predictionColor(prices: amRange))
++                }
++
++                Spacer()
++
++                if showEnteredValues, let pm = enteredValue(for: .pm) {
++                    valueText(pm, entered: true, predictionColor: predictionColor(prices: pmRange))
++                } else {
++                    Text("\(pmRange.first ?? 0) - \(pmRange.last ?? 0)")
++                        .font(.headline)
++                        .fontWeight(.bold)
++                        .foregroundColor(predictionColor(prices: pmRange))
++                }
++            }
++        }
++    }
++}
++
++/// Min/max row type (separate from the average row), required by tests.
++struct TurnipsMinMaxPriceRow: View, TurnipsPriceRow {
++    let label: String
++    let prices: [[Int]]?
++    let averagePrices: [Int]?
++
++    // MARK: - Required API surface
++    init(label: String, prices: [[Int]]?, averagePrices: [Int]?) {
++        self.label = label
++        self.prices = prices
++        self.averagePrices = averagePrices
++    }
++
++    func isEntered(meridian: TurnipsAveragePriceRow.Meridian) -> Bool {
++        // Delegate to the average row's logic so both row types detect entered values consistently.
++        TurnipsAveragePriceRow(label: label, prices: nil as [Int]?, minMaxPrices: nil as [[Int]]?).isEntered(meridian: meridian)
++    }
++
++    private func predictionColor(price: Int) -> Color {
++        if price <= 90 {
++            return .red
++        } else if price >= 150 {
++            return .acTabBarBackground
++        } else {
++            return .acSecondaryText
++        }
++    }
++
++    private func predictionColor(prices: [Int]) -> Color {
++        predictionColor(price: Int(prices.average))
++    }
++
++    private func enteredValue(for meridian: TurnipsAveragePriceRow.Meridian) -> Int? {
++        TurnipsAveragePriceRow(label: label, prices: nil as [Int]?, minMaxPrices: nil as [[Int]]?).enteredValue(for: meridian)
++    }
++
++    private func valueText(_ value: Int, entered: Bool, predictionColor: Color) -> some View {
++        Text("\(value)")
++            .font(.headline)
++            .fontWeight(.bold)
++            .foregroundColor(entered ? .acHeaderBackground : predictionColor)
++            .underline(entered)
++    }
++
++    var body: some View {
++        HStack {
++            Text(LocalizedStringKey(label))
++                .font(.body)
++                .foregroundColor(.acText)
++            Spacer()
++
++            if let prices {
++                let amRange = prices.first ?? []
++                let pmRange = prices.last ?? []
++
++                if showEnteredValues, let am = enteredValue(for: .am) {
++                    valueText(am, entered: true, predictionColor: predictionColor(prices: amRange))
++                } else {
++                    Text("\(amRange.first ?? 0) - \(amRange.last ?? 0)")
++                        .font(.headline)
++                        .fontWeight(.bold)
++                        .foregroundColor(predictionColor(prices: amRange))
++                }
++
+                 Spacer()
+-                Text("\(minMaxPrices!.last!.first!) - \(minMaxPrices!.last!.last!)")
+-                    .font(.headline)
+-                    .fontWeight(.bold)
+-                    .foregroundColor(color(prices: minMaxPrices!.last!))
++
++                if showEnteredValues, let pm = enteredValue(for: .pm) {
++                    valueText(pm, entered: true, predictionColor: predictionColor(prices: pmRange))
++                } else {
++                    Text("\(pmRange.first ?? 0) - \(pmRange.last ?? 0)")
++                        .font(.headline)
++                        .fontWeight(.bold)
++                        .foregroundColor(predictionColor(prices: pmRange))
++                }
+             }
+         }
+     }
