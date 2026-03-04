@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -126,7 +127,10 @@ def _create_simulator_pool(n: int, test_destination: str) -> list[str]:
             created += 1
             logger.info(
                 "Created & booted simulator %s (%s) [%d/%d]",
-                sim_name, udid, created, n,
+                sim_name,
+                udid,
+                created,
+                n,
             )
         return udid
 
@@ -279,7 +283,11 @@ def _add_file_to_pbxproj(
         return
 
     if XcodeProject is None:
-        logger.warning("pbxproj not installed: cannot inject %s into target %s", file_path, target_name)
+        logger.warning(
+            "pbxproj not installed: cannot inject %s into target %s",
+            file_path,
+            target_name,
+        )
         return
 
     try:
@@ -314,8 +322,11 @@ def _propagate_pods_framework_paths(
         return
 
     pods_xcconfig = (
-        worktree_dir / "Pods" / "Target Support Files"
-        / f"Pods-{scheme}" / f"Pods-{scheme}.debug.xcconfig"
+        worktree_dir
+        / "Pods"
+        / "Target Support Files"
+        / f"Pods-{scheme}"
+        / f"Pods-{scheme}.debug.xcconfig"
     )
     if not pods_xcconfig.exists():
         return
@@ -325,9 +336,7 @@ def _propagate_pods_framework_paths(
     except OSError:
         return
 
-    pod_dirs = re.findall(
-        r'PODS_CONFIGURATION_BUILD_DIR\}/([^\s"]+)', xcconfig_text
-    )
+    pod_dirs = re.findall(r'PODS_CONFIGURATION_BUILD_DIR\}/([^\s"]+)', xcconfig_text)
     if not pod_dirs:
         return
 
@@ -341,16 +350,14 @@ def _propagate_pods_framework_paths(
         return
 
     # Build the replacement FRAMEWORK_SEARCH_PATHS value.
-    extra_paths = "".join(
-        f'\n\t\t\t\t\t"$(BUILT_PRODUCTS_DIR)/{d}",' for d in pod_dirs
-    )
+    extra_paths = "".join(f'\n\t\t\t\t\t"$(BUILT_PRODUCTS_DIR)/{d}",' for d in pod_dirs)
 
     # Find and patch each build configuration block belonging to the test
     # target.  Configurations are linked via buildConfigurationList; rather
     # than full pbxproj parsing, we locate the test target's config UUIDs and
     # inject paths into their FRAMEWORK_SEARCH_PATHS arrays.
     target_match = re.search(
-        rf'(/\* {re.escape(test_target)} \*/ = \{{.*?buildConfigurationList = )(\w{{24}})',
+        rf"(/\* {re.escape(test_target)} \*/ = \{{.*?buildConfigurationList = )(\w{{24}})",
         pbx,
         re.DOTALL,
     )
@@ -359,34 +366,31 @@ def _propagate_pods_framework_paths(
 
     config_list_uuid = target_match.group(2)
     config_list_match = re.search(
-        rf'{config_list_uuid}.*?buildConfigurations = \((.*?)\)',
+        rf"{config_list_uuid}.*?buildConfigurations = \((.*?)\)",
         pbx,
         re.DOTALL,
     )
     if not config_list_match:
         return
 
-    config_uuids = re.findall(r'(\w{24})', config_list_match.group(1))
+    config_uuids = re.findall(r"(\w{24})", config_list_match.group(1))
 
     modified = False
     for uuid in config_uuids:
         # Find the FRAMEWORK_SEARCH_PATHS in this config block
         pattern = (
-            rf'({uuid}\s*/\*.*?\*/\s*=\s*\{{.*?'
-            r'FRAMEWORK_SEARCH_PATHS\s*=\s*\()(.*?\);)'
+            rf"({uuid}\s*/\*.*?\*/\s*=\s*\{{.*?"
+            r"FRAMEWORK_SEARCH_PATHS\s*=\s*\()(.*?\);)"
         )
         m = re.search(pattern, pbx, re.DOTALL)
         if m:
-            pbx = (
-                pbx[: m.start(2)]
-                + extra_paths
-                + m.group(2)
-                + pbx[m.end(2) :]
-            )
+            pbx = pbx[: m.start(2)] + extra_paths + m.group(2) + pbx[m.end(2) :]
             modified = True
         else:
             # No existing FRAMEWORK_SEARCH_PATHS — inject one
-            cfg_pattern = rf'({uuid}\s*/\*.*?\*/\s*=\s*\{{[^{{}}]*?buildSettings\s*=\s*\{{)'
+            cfg_pattern = (
+                rf"({uuid}\s*/\*.*?\*/\s*=\s*\{{[^{{}}]*?buildSettings\s*=\s*\{{)"
+            )
             cm = re.search(cfg_pattern, pbx, re.DOTALL)
             if cm:
                 insert = (
@@ -539,7 +543,9 @@ def _run_app_tests(
     """
     app_test_dd = worktree_dir / "DerivedData-app-tests"
     cmd_info = _build_xcodebuild_app_test_cmd(
-        xcode_config, worktree_dir, app_test_dd,
+        xcode_config,
+        worktree_dir,
+        app_test_dd,
     )
     if not cmd_info:
         return None
@@ -550,7 +556,9 @@ def _run_app_tests(
     _gate_build_start()
 
     build_cmd = _as_build_for_testing(test_cmd)
-    build_result = _run_xcodebuild(build_cmd, str(test_cwd), _DEFAULT_XCODEBUILD_TIMEOUT)
+    build_result = _run_xcodebuild(
+        build_cmd, str(test_cwd), _DEFAULT_XCODEBUILD_TIMEOUT
+    )
 
     if build_result.returncode != 0:
         output = parse_xcodebuild_output(build_result.stdout, build_result.stderr)
@@ -614,7 +622,11 @@ def eval_single_patch(
     worktree_dir = None
 
     try:
-        worktree_dir = Path(tempfile.gettempdir()) / (
+        # Use a temp dir on the same APFS volume as the xcode cache so that
+        # cp -c (clonefile) works for DerivedData.
+        _tmp_base = Path(os.environ.get("ANVIL_TMPDIR", tempfile.gettempdir()))
+        _tmp_base.mkdir(parents=True, exist_ok=True)
+        worktree_dir = _tmp_base / (
             f"anvil-eval-{instance_id}-{attempt or 0}-{time.monotonic_ns()}"
         )
 
@@ -640,9 +652,7 @@ def eval_single_patch(
                 patch_file.unlink(missing_ok=True)
                 if fallback.returncode != 0:
                     err_detail = fallback.stderr[:200] or fallback.stdout[:200]
-                    logger.warning(
-                        "Patch apply failed for %s: %s", tag, err_detail
-                    )
+                    logger.warning("Patch apply failed for %s: %s", tag, err_detail)
                     return {
                         "tests": [
                             {
@@ -661,7 +671,9 @@ def eval_single_patch(
         if project_rel and "project.pbxproj" in patch:
             pbxproj_error = _validate_pbxproj(worktree_dir, project_rel)
             if pbxproj_error:
-                logger.warning("pbxproj validation failed for %s: %s", tag, pbxproj_error)
+                logger.warning(
+                    "pbxproj validation failed for %s: %s", tag, pbxproj_error
+                )
                 result = {
                     "tests": [
                         {
@@ -672,8 +684,14 @@ def eval_single_patch(
                     ]
                 }
                 _save_eval_output(
-                    output_dir, instance_id, attempt, eval_id,
-                    result, patch, "", pbxproj_error,
+                    output_dir,
+                    instance_id,
+                    attempt,
+                    eval_id,
+                    result,
+                    patch,
+                    "",
+                    pbxproj_error,
                 )
                 return result
 
@@ -699,7 +717,10 @@ def eval_single_patch(
             _gate_build_start()
 
             build_cmd = _build_xcodebuild_cmd(
-                xcode_config, worktree_dir, dd_dir, clean=False,
+                xcode_config,
+                worktree_dir,
+                dd_dir,
+                clean=False,
             )
 
             build_result = _run_xcodebuild(
@@ -744,7 +765,9 @@ def eval_single_patch(
                 xctest_output = _run_app_tests(test_xcode_config, worktree_dir)
             else:
                 xctest_output = _run_spm_tests(
-                    test_xcode_config, worktree_dir, dd_dir,
+                    test_xcode_config,
+                    worktree_dir,
+                    dd_dir,
                     spm_standalone=bool(spm_standalone),
                 )
 
@@ -931,7 +954,9 @@ def run_xcode_evals(
             iid = ps["instance_id"]
             if iid not in _has_tests_cache:
                 task_name = iid.split(".")[-1]
-                _has_tests_cache[iid] = (src_tasks / task_name / "tests.swift").is_file()
+                _has_tests_cache[iid] = (
+                    src_tasks / task_name / "tests.swift"
+                ).is_file()
 
     def _has_tests(iid: str) -> bool:
         return _has_tests_cache.get(iid, False)
@@ -949,9 +974,7 @@ def run_xcode_evals(
             eval_results[result_key] = False
             has_tests = _has_tests(iid)
             output = _make_empty_patch_result(has_tests)
-            _save_eval_output(
-                output_dir, iid, attempt, eval_id, output, "", "", ""
-            )
+            _save_eval_output(output_dir, iid, attempt, eval_id, output, "", "", "")
             if attempt is not None:
                 task_results_dir = (
                     output_dir / iid / f"attempt_{attempt}" / "eval_results"
@@ -982,9 +1005,7 @@ def run_xcode_evals(
     if not real_patches:
         (output_dir / "eval_results.json").write_text(json.dumps(eval_results))
         passed_count = sum(1 for v in eval_results.values() if v)
-        typer.echo(
-            f"Xcode eval complete: {passed_count}/{len(eval_results)} passed"
-        )
+        typer.echo(f"Xcode eval complete: {passed_count}/{len(eval_results)} passed")
         return eval_results
 
     needs_tests = n_with_tests > 0 or not compile_only
@@ -1044,7 +1065,8 @@ def run_xcode_evals(
 
         actual_workers = min(max_workers, len(real_patches))
         with ThreadPoolExecutor(
-            max_workers=actual_workers, initializer=_thread_initializer,
+            max_workers=actual_workers,
+            initializer=_thread_initializer,
         ) as pool:
             future_to_patch = {}
             for patch_sample in real_patches:
@@ -1073,7 +1095,9 @@ def run_xcode_evals(
                             {
                                 "name": "eval_infrastructure",
                                 "status": "FAILED",
-                                "message": f"Worker error: {type(e).__name__}: {e}"[:500],
+                                "message": f"Worker error: {type(e).__name__}: {e}"[
+                                    :500
+                                ],
                             }
                         ]
                     }
@@ -1131,9 +1155,7 @@ def run_xcode_evals(
             _destroy_simulator_pool(sim_udids)
 
     (output_dir / "eval_results.json").write_text(json.dumps(eval_results))
-    typer.echo(
-        f"Xcode eval complete: {passed_count}/{len(eval_results)} passed"
-    )
+    typer.echo(f"Xcode eval complete: {passed_count}/{len(eval_results)} passed")
 
     return eval_results
 
@@ -1199,9 +1221,7 @@ def validate_task_tests(
         xcode_config.get("destination", ""),
     )
     needs_sim_pool = (
-        max_workers > 1
-        and test_destination
-        and "generic/" not in test_destination
+        max_workers > 1 and test_destination and "generic/" not in test_destination
     )
 
     global _build_start_lock
@@ -1212,9 +1232,7 @@ def validate_task_tests(
 
     try:
         if needs_sim_pool:
-            typer.echo(
-                f"Creating {max_workers} simulators for parallel validation..."
-            )
+            typer.echo(f"Creating {max_workers} simulators for parallel validation...")
             sim_udids = _create_simulator_pool(max_workers, test_destination)
 
         _thread_idx = 0
@@ -1254,7 +1272,8 @@ def validate_task_tests(
             return (task_name, result)
 
         with ThreadPoolExecutor(
-            max_workers=max_workers, initializer=_thread_init,
+            max_workers=max_workers,
+            initializer=_thread_init,
         ) as pool:
             future_to_task: dict = {}
             for inst in tasks_with_tests:
