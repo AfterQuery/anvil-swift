@@ -121,6 +121,8 @@ anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model 
 
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --n-attempts 4 --no-continue
 
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/google/gemini-3.1-pro-preview --n-attempts 4 --no-continue
+
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/google/gemini-3-pro-preview --n-attempts 4 --no-continue
 
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/qwen/qwen3-coder-next --n-attempts 4 --no-continue
