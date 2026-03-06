@@ -1,0 +1,134 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+index 5869b7a..204ad7c 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+@@ -287,6 +287,8 @@ You can cancel anytime with your iTunes account settings. Any unused portion of
+ 
+ // VillagersListView
+ "Search a villager" = "Rechercher un villageois";
++"Sort Villagers" = "Trier les villageois";
++"Clear Sort" = "Effacer le tri";
+ "Personality" = "Personnalité";
+ "Birthday" = "Anniversaire";
+ "Species" = "Espèce";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+index 70909fb..112ef32 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+@@ -11,6 +11,21 @@ import Combine
+ import Backend
+ 
+ class VillagersViewModel: ObservableObject {
++    
++    enum Sort: String, CaseIterable {
++        case name
++        case species
++        
++        var label: String {
++            switch self {
++            case .name:
++                return NSLocalizedString("Name", comment: "Sort by name")
++            case .species:
++                return NSLocalizedString("Species", comment: "Sort by species")
++            }
++        }
++    }
++    
+     private static var cachedVillagers: [Villager] = []
+     
+     @Published var villagers: [Villager] = [] {
+@@ -26,6 +41,26 @@ class VillagersViewModel: ObservableObject {
+     @Published var searchResults: [Villager] = []
+     @Published var searchText = ""
+     @Published var todayBirthdays: [Villager] = []
++    @Published var sort: Sort? = nil
++    @Published var sortAscending: Bool = true
++    
++    var sortedVillagers: [Villager] {
++        guard let sort = sort else {
++            return villagers
++        }
++        let sorted: [Villager]
++        switch sort {
++        case .name:
++            sorted = villagers.sorted {
++                $0.localizedName.compare($1.localizedName, locale: .current) == .orderedAscending
++            }
++        case .species:
++            sorted = villagers.sorted {
++                $0.species.compare($1.species, locale: .current) == .orderedAscending
++            }
++        }
++        return sortAscending ? sorted : sorted.reversed()
++    }
+     
+     private var apiPublisher: AnyPublisher<[String: Villager], Never>?
+     private var searchCancellable: AnyCancellable?
+@@ -64,5 +99,18 @@ class VillagersViewModel: ObservableObject {
+             $0.localizedName.lowercased().contains(string.lowercased()) == true
+         }
+     }
++    
++    func setSort(_ newSort: Sort) {
++        if sort == newSort {
++            sortAscending.toggle()
++        } else {
++            sort = newSort
++            sortAscending = true
++        }
++    }
++    
++    func clearSort() {
++        sort = nil
++        sortAscending = true
++    }
+ }
+-
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+index 1980295..a8818ca 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+@@ -12,13 +12,14 @@ import UI
+ 
+ struct VillagersListView: View {
+     @ObservedObject var viewModel = VillagersViewModel()
++    @State private var showSortSheet = false
+     
+     var currentVillagers: [Villager] {
+         get {
+             if !viewModel.searchText.isEmpty {
+                 return viewModel.searchResults
+             } else {
+-                return viewModel.villagers
++                return viewModel.sortedVillagers
+             }
+         }
+     }
+@@ -39,6 +40,27 @@ struct VillagersListView: View {
+             .listStyle(GroupedListStyle())
+             .navigationBarTitle(Text("Villagers"),
+                                 displayMode: .automatic)
++            .navigationBarItems(trailing:
++                Button(action: { self.showSortSheet = true }) {
++                    Image(systemName: viewModel.sort != nil ? "arrow.up.arrow.down.circle.fill" : "arrow.up.arrow.down.circle")
++                        .imageScale(.large)
++                }
++            )
++            .actionSheet(isPresented: $showSortSheet) {
++                ActionSheet(
++                    title: Text("Sort Villagers"),
++                    buttons: VillagersViewModel.Sort.allCases.map { sortOption in
++                        .default(Text(sortOption.label)) {
++                            viewModel.setSort(sortOption)
++                        }
++                    } + [
++                        .default(Text(NSLocalizedString("Clear Sort", comment: "Clear active sort"))) {
++                            viewModel.clearSort()
++                        },
++                        .cancel()
++                    ]
++                )
++            }
+             .modifier(DismissingKeyboardOnSwipe())
+             if !viewModel.villagers.isEmpty {
+                 VillagerDetailView(villager: viewModel.villagers.first!)
