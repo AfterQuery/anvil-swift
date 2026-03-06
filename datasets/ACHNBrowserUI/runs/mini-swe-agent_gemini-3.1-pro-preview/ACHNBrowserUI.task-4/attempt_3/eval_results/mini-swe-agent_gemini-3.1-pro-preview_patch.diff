@@ -1,0 +1,217 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings
+index 02fae42..bc81fb3 100644
+Binary files a/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings and b/ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings differ
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+index 5869b7a..64e04f6 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+@@ -550,3 +550,5 @@ You can cancel anytime with your iTunes account settings. Any unused portion of
+ "Music player" = "Lecteur de musique";
+ "Tracks" = "Musiques";
+ 
++
++"Sort villagers" = "Trier les villageois";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+index 70909fb..9ea0289 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+@@ -12,6 +12,39 @@ import Backend
+ 
+ class VillagersViewModel: ObservableObject {
+     private static var cachedVillagers: [Villager] = []
++    enum Sort: String, CaseIterable {
++        case name
++        case species
++    }
++    
++    @Published var sort: Sort? {
++        didSet {
++            if sort == oldValue && sort != nil {
++                sortAscending.toggle()
++            } else {
++                sortAscending = true
++            }
++        }
++    }
++    @Published private var sortAscending = true
++    
++    var sortedVillagers: [Villager] {
++        guard let sort = sort else { return villagers }
++        return villagers.sorted { v1, v2 in
++            let compareResult: ComparisonResult
++            switch sort {
++            case .name:
++                compareResult = v1.localizedName.localizedCompare(v2.localizedName)
++            case .species:
++                let s1 = NSLocalizedString(v1.species, comment: ""); let s2 = NSLocalizedString(v2.species, comment: ""); compareResult = s1.localizedCompare(s2)
++            }
++            if compareResult != .orderedSame {
++                return sortAscending ? compareResult == .orderedAscending : compareResult == .orderedDescending
++            }
++            if v1.localizedName.localizedCompare(v2.localizedName) != .orderedSame { return sortAscending ? v1.localizedName.localizedCompare(v2.localizedName) == .orderedAscending : v1.localizedName.localizedCompare(v2.localizedName) == .orderedDescending } return v1.id > v2.id
++        }
++    }
++
+     
+     @Published var villagers: [Villager] = [] {
+         didSet {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+index 1980295..4caaf14 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+@@ -1,28 +1,30 @@
+-//
+-//  VillagersListView.swift
+-//  ACHNBrowserUI
+-//
+-//  Created by Thomas Ricouard on 17/04/2020.
+-//  Copyright © 2020 Thomas Ricouard. All rights reserved.
+-//
+-
+ import SwiftUI
+ import Backend
+ import UI
+ 
+ struct VillagersListView: View {
+     @ObservedObject var viewModel = VillagersViewModel()
++    @State private var showSortSheet = false
+     
+     var currentVillagers: [Villager] {
+         get {
+             if !viewModel.searchText.isEmpty {
+                 return viewModel.searchResults
+             } else {
+-                return viewModel.villagers
++                return viewModel.sortedVillagers
+             }
+         }
+     }
+         
++    private var sortButton: some View {
++        Button(action: {
++            self.showSortSheet.toggle()
++        }) {
++            Image(systemName: viewModel.sort == nil ? "arrow.up.arrow.down.circle" : "arrow.up.arrow.down.circle.fill")
++                .imageScale(.large)
++        }
++    }
++    
+     var body: some View {
+         NavigationView {
+             List {
+@@ -39,7 +41,16 @@ struct VillagersListView: View {
+             .listStyle(GroupedListStyle())
+             .navigationBarTitle(Text("Villagers"),
+                                 displayMode: .automatic)
++            .navigationBarItems(trailing: sortButton)
+             .modifier(DismissingKeyboardOnSwipe())
++            .actionSheet(isPresented: $showSortSheet) {
++                ActionSheet(title: Text("Sort villagers"), buttons: [
++                    .default(Text("Name"), action: { self.viewModel.sort = .name }),
++                    .default(Text("Species"), action: { self.viewModel.sort = .species }),
++                    .default(Text("Clear Selection"), action: { self.viewModel.sort = nil }),
++                    .cancel()
++                ])
++            }
+             if !viewModel.villagers.isEmpty {
+                 VillagerDetailView(villager: viewModel.villagers.first!)
+             } else {
+diff --git a/fix_strings.py b/fix_strings.py
+new file mode 100644
+index 0000000..42f4ae3
+--- /dev/null
++++ b/fix_strings.py
+@@ -0,0 +1,16 @@
++import os
++
++def append_safe(filepath, key, value):
++    try:
++        with open(filepath, 'r', encoding='utf-16') as f:
++            f.read()
++        enc = 'utf-16'
++    except UnicodeDecodeError:
++        enc = 'utf-8'
++
++    # If it's utf-8, use utf-8 to append
++    with open(filepath, 'a', encoding=enc) as f:
++        f.write(f'\n"{key}" = "{value}";\n')
++
++append_safe('./ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings', 'Sort villagers', 'Trier les villageois')
++append_safe('./ACHNBrowserUI/ACHNBrowserUI/en.lproj/Localizable.strings', 'Sort villagers', 'Sort villagers')
+diff --git a/patch_listview.sh b/patch_listview.sh
+new file mode 100644
+index 0000000..0e182ea
+--- /dev/null
++++ b/patch_listview.sh
+@@ -0,0 +1,2 @@
++cat ./ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift | sed 's/return viewModel.villagers/return viewModel.sortedVillagers/' > ./ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView_new.swift
++mv ./ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView_new.swift ./ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+diff --git a/patch_viewmodel.sh b/patch_viewmodel.sh
+new file mode 100644
+index 0000000..c623841
+--- /dev/null
++++ b/patch_viewmodel.sh
+@@ -0,0 +1,36 @@
++cat ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift | sed '15i\
++    enum Sort: String, CaseIterable {\
++        case name\
++        case species\
++    }\
++    \
++    @Published var sort: Sort? {\
++        didSet {\
++            if sort == oldValue && sort != nil {\
++                sortAscending.toggle()\
++            } else {\
++                sortAscending = true\
++            }\
++        }\
++    }\
++    private var sortAscending = true\
++    \
++    var sortedVillagers: [Villager] {\
++        guard let sort = sort else { return villagers }\
++        return villagers.sorted { v1, v2 in\
++            let compareResult: ComparisonResult\
++            switch sort {\
++            case .name:\
++                compareResult = v1.localizedName.localizedCompare(v2.localizedName)\
++            case .species:\
++                compareResult = v1.species.localizedCompare(v2.species)\
++            }\
++            if compareResult != .orderedSame {\
++                return sortAscending ? compareResult == .orderedAscending : compareResult == .orderedDescending\
++            }\
++            return v1.id < v2.id\
++        }\
++    }\
++' > ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel_new.swift
++
++mv ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel_new.swift ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+diff --git a/patch_viewmodel2.sh b/patch_viewmodel2.sh
+new file mode 100644
+index 0000000..64d037a
+--- /dev/null
++++ b/patch_viewmodel2.sh
+@@ -0,0 +1,3 @@
++cat ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift | sed 's/private var sortAscending = true/@Published private var sortAscending = true/' > ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel_new.swift
++
++mv ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel_new.swift ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+diff --git a/patch_viewmodel3.sh b/patch_viewmodel3.sh
+new file mode 100644
+index 0000000..999c8fd
+--- /dev/null
++++ b/patch_viewmodel3.sh
+@@ -0,0 +1,3 @@
++cat ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift | sed 's/compareResult = v1.species.localizedCompare(v2.species)/let s1 = NSLocalizedString(v1.species, comment: ""); let s2 = NSLocalizedString(v2.species, comment: ""); compareResult = s1.localizedCompare(s2)/' > ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel_new.swift
++
++mv ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel_new.swift ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+diff --git a/patch_viewmodel4.sh b/patch_viewmodel4.sh
+new file mode 100644
+index 0000000..16fd83c
+--- /dev/null
++++ b/patch_viewmodel4.sh
+@@ -0,0 +1,3 @@
++cat ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift | sed 's/return v1.id < v2.id/if v1.localizedName.localizedCompare(v2.localizedName) != .orderedSame { return sortAscending ? v1.localizedName.localizedCompare(v2.localizedName) == .orderedAscending : v1.localizedName.localizedCompare(v2.localizedName) == .orderedDescending } return v1.id > v2.id/' > ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel_new.swift
++
++mv ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel_new.swift ./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift

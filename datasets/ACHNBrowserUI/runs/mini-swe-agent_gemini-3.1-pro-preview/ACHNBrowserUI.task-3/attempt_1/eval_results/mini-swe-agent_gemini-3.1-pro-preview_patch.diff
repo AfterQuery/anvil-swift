@@ -1,0 +1,716 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
+index 80d9cd2..d95993f 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
+@@ -18,6 +18,7 @@ class LikeButtonViewModel: ObservableObject {
+     let villager: Villager?
+     
+     @Published var isInCollection = false
++    @Published var completionStatus: VariantsCompletionStatus = .unstarted
+     
+     private let collection: UserCollection
+     private var cancellable: AnyCancellable?
+@@ -42,6 +43,7 @@ class LikeButtonViewModel: ObservableObject {
+                         self.isInCollection = variants.contains(for: item, variant: variant)
+                         return
+                     }
++                    self.completionStatus = collection.variants.completionStatus(for: item)
+                     self.isInCollection = items.contains(item) || critters.contains(item)
+                     return
+                 } else if let villager = villager {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
+index c0bc1d7..ad503a5 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
+@@ -2,10 +2,6 @@
+ //  LikeButtonView.swift
+ //  ACHNBrowserUI
+ //
+-//  Created by Eric Lewis on 4/19/20.
+-//  Copyright © 2020 Thomas Ricouard. All rights reserved.
+-//
+-
+ import SwiftUI
+ import Backend
+ 
+@@ -21,6 +17,12 @@ struct LikeButtonView: View {
+     }
+         
+     var imageName: String {
++        if let item = viewModel.item, viewModel.variant == nil {
++            if item.hasSomeVariations {
++                return viewModel.completionStatus == .complete ? "star.fill" :
++                    viewModel.completionStatus == .partial ? "star.lefthalf.fill" : "star"
++            }
++        }
+         if viewModel.item != nil {
+             if viewModel.item?.isCritter == true {
+                 return viewModel.isInCollection ? "checkmark.seal.fill" : "checkmark.seal"
+@@ -42,16 +44,31 @@ struct LikeButtonView: View {
+         return .red
+     }
+     
++    @State private var showingSheet = false
++
+     var body: some View {
+         Button(action: {
+-            let added = self.viewModel.toggleCollection()
+-            FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++            if let item = self.viewModel.item, item.hasSomeVariations, self.viewModel.variant == nil {
++                self.showingSheet = true
++            } else {
++                let added = self.viewModel.toggleCollection()
++                FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++            }
+         }) {
+             Image(systemName: imageName).foregroundColor(color)
+         }
+         .scaleEffect(viewModel.isInCollection ? 1.3 : 1.0)
+         .buttonStyle(BorderlessButtonStyle())
+         .animation(.spring(response: 0.5, dampingFraction: 0.3, blendDuration: 0.5))
++        .sheet(isPresented: $showingSheet) {
++            if let item = self.viewModel.item {
++                NavigationView {
++                    VariantSelectionView(item: item)
++                        .navigationTitle(Text(item.localizedName.capitalized))
++                        .navigationBarItems(trailing: Button("Done") { self.showingSheet = false })
++                }
++            }
++        }
+     }
+ }
+ 
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/shared/VariantSelectionView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/shared/VariantSelectionView.swift
+new file mode 100644
+index 0000000..793319e
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/shared/VariantSelectionView.swift
+@@ -0,0 +1,27 @@
++import SwiftUI
++import Backend
++
++struct VariantSelectionView: View {
++    let item: Item
++    
++    var body: some View {
++        List {
++            if let variations = item.variations {
++                ForEach(variations) { variant in
++                    HStack {
++                        ItemImage(path: variant.content.image, size: 40)
++                            .cornerRadius(4)
++                        
++                        Text(variant.name)
++                            .font(.body)
++                            .foregroundColor(.acText)
++                        
++                        Spacer()
++                        
++                        LikeButtonView(item: item, variant: variant)
++                    }
++                }
++            }
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+index f5642f1..48f77fd 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+@@ -136,6 +136,28 @@ public class UserCollection: ObservableObject {
+         guard let filename = item.filename else {
+             return false
+         }
++        var added = false
++        if variants[filename]?.contains(variant) == true {
++            variants[filename]?.removeAll(where: { $0 == variant })
++            if variants[filename]?.isEmpty == true {
++                if items.contains(item) {
++                    let _ = toggleItem(item: item)
++                }
++            }
++            added = false
++        } else {
++            if variants[filename] == nil {
++                variants[filename] = []
++            }
++            variants[filename]?.append(variant)
++            if !items.contains(item) {
++                let _ = toggleItem(item: item)
++            }
++            added = true
++        }
++        save()
++        return added
++    }
+         if variants[filename]?.contains(variant) == true {
+             variants[filename]?.removeAll(where: { $0 == variant })
+             save()
+@@ -505,4 +527,20 @@ public extension Dictionary where Key == String, Value == [Variant] {
+         }
+         return self[filename]?.contains(variant) == true
+     }
++    public func completionStatus(for item: Item) -> VariantsCompletionStatus {
++        guard item.hasSomeVariations,
++            let filename = item.filename else {
++            return .unstarted
++        }
++        let collection = self[filename] ?? []
++        if collection.isEmpty { return .unstarted }
++        if collection.count == item.variations!.count { return .complete }
++        return .partial
++    }
++}
++
++public enum VariantsCompletionStatus {
++    case unstarted
++    case partial
++    case complete
+ }
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+index 46b91a9..e91073d 100644
+--- a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+@@ -82,6 +82,10 @@ public struct Item: Codable, Equatable, Identifiable, Hashable {
+     
+     public var variations: [Variant]?
+     
++    public var hasSomeVariations: Bool {
++        return (variations?.count ?? 0) > 1
++    }
++    
+     public let category: String
+     
+     public var appCategory: Category {
+diff --git a/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift.orig b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift.orig
+new file mode 100644
+index 0000000..46b91a9
+--- /dev/null
++++ b/ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift.orig
+@@ -0,0 +1,286 @@
++//
++//  Item.swift
++//  ACHNBrowserUI
++//
++//  Created by Thomas Ricouard on 08/04/2020.
++//  Copyright © 2020 Thomas Ricouard. All rights reserved.
++//
++
++import Foundation
++import SwiftUI
++
++public struct ItemResponse: Codable {
++    let total: Int
++    let results: [Item]
++}
++
++public struct NewItemResponse: Codable {
++    let total: Int
++    let results: [ItemWrapper]
++    
++    public struct ItemWrapper: Codable {
++        public let id: Int
++        public let name: String
++        public var content: Item
++        public let variations: [Variant]?
++    }
++}
++
++public struct ActiveMonth: Codable, Equatable {
++    let activeTimes: [String]
++}
++
++public struct Item: Codable, Equatable, Identifiable, Hashable {
++    static public func ==(lhs: Item, rhs: Item) -> Bool {
++        return lhs.id == rhs.id && lhs.appCategory == rhs.appCategory
++    }
++    
++    public func hash(into hasher: inout Hasher) {
++        hasher.combine(name)
++        hasher.combine(category)
++    }
++    
++    public var id: String { name }
++    public var internalID: Int?
++    public var critterId: Int?
++    
++    public var localizedName: String {
++        if let id = internalID {
++            return LocalizedItemService.shared.localizedNameFor(category: appCategory, itemId: id) ?? name
++        }
++        return name
++    }
++    
++    public let name: String
++    public let image: String?
++    public let filename: String?
++    public let house: String?
++    public let itemImage: String?
++    public var preferedVariantImage: String?
++    public var finalImage: String? {
++        if let preferedVariantImage = preferedVariantImage {
++            return preferedVariantImage
++        } else if let image = image, image.hasPrefix("https://acnhcdn") || image.hasPrefix("https://i.imgur")  {
++            return image
++        } else if let filename = filename {
++            return filename
++        }  else if let itemImage = itemImage {
++            return itemImage
++        }
++        return nil
++    }
++    public let iconImage: String?
++    public let furnitureImage: String?
++    
++    public let obtainedFrom: String?
++    public let obtainedFromNew: [String]?
++    public let sourceNotes: String?
++    public let dIY: Bool?
++    public let customize: Bool?
++    
++    public let movementSpeed: String?
++    
++    public var variations: [Variant]?
++    
++    public let category: String
++    
++    public var appCategory: Category {
++        Category(itemCategory: category)
++    }
++    
++    public var itemCategory: String?
++        
++    public let materials: [Material]?
++    
++    public let buy: Int?
++    public let sell: Int?
++    
++    public let shadow: String?
++    public let activeMonths: [String: ActiveMonth]?
++    public let set: String?
++    public let tag: String?
++    public let styles: [String]?
++    public let themes: [String]?
++    public let colors: [String]?
++    
++    private static var METAS_CACHE: [String: [String]] = [:]
++    
++    public var metas: [String] {
++        if let metas = Self.METAS_CACHE[id] {
++            return metas
++        }
++        var metas: [String] = []
++        if let tag = tag {
++            metas.append(tag)
++        }
++        if let set = set {
++            metas.append(set)
++        }
++        if let styles = styles {
++            metas.append(contentsOf: styles)
++        }
++        if let themes = themes {
++            metas.append(contentsOf: themes)
++        }
++        if let colors = colors {
++            metas.append(contentsOf: colors)
++        }
++        metas = Array(Set(metas.map{ $0.capitalized })).filter({ $0.lowercased() != "none"}).sorted()
++        Self.METAS_CACHE[id] = metas
++        return metas
++    }
++}
++
++// Formatter used for the start / end times of critters
++fileprivate let formatter: DateFormatter = {
++    let formatter = DateFormatter()
++    formatter.dateFormat = is24Hour() ? "HH" : "ha"
++    return formatter
++}()
++
++/// Determine if the device is set to 24 or 12 hour time
++fileprivate func is24Hour() -> Bool {
++    let dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: Locale.current)!
++    return dateFormat.firstIndex(of: "a") == nil
++}
++
++// MARK: - Calendar
++public extension Item {
++    static let monthFormatter: DateFormatter = {
++        let formatter = DateFormatter()
++        formatter.dateFormat = "MM"
++        return formatter
++    }()
++    
++    var activeMonthsCalendar: [Int]? {
++        let isSouth = AppUserDefaults.shared.hemisphere == .south
++        if var keys = activeMonths?.keys.compactMap({ Int($0) }) {
++            if isSouth {
++                keys = keys.map{ ($0 + 6) % 12 }
++            }
++            return keys
++        }
++        return nil
++    }
++    
++    func isActiveThisMonth(currentDate: Date) -> Bool {
++        let currentMonth = Int(Item.monthFormatter.string(from: currentDate))!
++        return activeMonthsCalendar?.contains(currentMonth - 1) == true
++    }
++
++    func isActiveAtThisHour(currentDate: Date) -> Bool {
++        guard let hours = activeHours() else { return false }
++
++        if hours.start == 0 && hours.end == 0 { return true } // All day
++
++        let thisHour = Calendar.current.dateComponents([.hour], from: currentDate).hour ?? 0
++
++        if hours.start < hours.end { // Same day
++            return thisHour >= hours.start && thisHour < hours.end
++        } else { // Overnight
++            return thisHour >= hours.start || thisHour < hours.end
++        }
++    }
++    
++    func isNewThisMonth(currentDate: Date) -> Bool {
++        let currentMonth = Int(Item.monthFormatter.string(from: currentDate))!
++        return activeMonthsCalendar?.contains(currentMonth - 2) == false
++    }
++    
++    func leavingThisMonth(currentDate: Date) -> Bool {
++        let currentMonth = Int(Item.monthFormatter.string(from: currentDate))!
++        return activeMonthsCalendar?.contains(currentMonth) == false
++    }
++    
++    func formattedTimes() -> String? {
++        guard let hours = activeHours() else { return nil }
++
++        if hours.start == 0 && hours.end == 0 {
++            return NSLocalizedString("All day", comment: "")
++        }
++        
++        let startDate = DateComponents(calendar: .current, hour: hours.start).date!
++        let endDate = DateComponents(calendar: .current, hour: hours.end).date!
++        
++        let startHour = formatter.string(from: startDate)
++        let endHour = formatter.string(from: endDate)
++        
++        return "\(startHour) - \(endHour)\(is24Hour() ? "h" : "")"
++    }
++
++    func activeHours() -> (start: Int, end: Int)? {
++        guard let activeTimes = activeMonths?.first?.value.activeTimes,
++            let startTime = activeTimes.first,
++            let endTime = activeTimes.last else {
++                return nil
++        }
++        if Int(startTime) == 0 && Int(endTime) == 0 {
++            return (start: 0, end: 0)
++        }
++        
++        var startHourInt = 0
++        var endHourInt = 0
++        
++        var preIntStartTime = startTime
++        preIntStartTime.removeLast(2)
++        if let hour = Int(preIntStartTime) {
++            startHourInt = hour
++            if startTime.suffix(2)  == "pm" {
++                startHourInt += 12
++            }
++        }
++        
++        var preIntEndTime = endTime
++        preIntEndTime.removeLast(2)
++        if let hour = Int(preIntEndTime) {
++            endHourInt = hour
++            if endTime.suffix(2) == "pm" {
++                endHourInt += 12
++            }
++        }
++        
++        return (start: startHourInt, end: endHourInt)
++    }
++}
++
++// MARK: - Critters
++public extension Item {
++    var isCritter: Bool {
++        appCategory == .fish || appCategory == .bugs || appCategory == .seaCreatures
++    }
++}
++
++// MARK: - Array
++public extension Sequence {
++    func sorted<T: Comparable>(by keyPath: KeyPath<Element, T>) -> [Element] {
++        return sorted { a, b in
++            return a[keyPath: keyPath] > b[keyPath: keyPath]
++        }
++    }
++}
++
++public let static_item = Item(name: "Acoustic guitar",
++                       image: nil,
++                       filename: "https://acnhcdn.com/latest/FtrIcon/FtrAcorsticguitar_Remake_0_0.png",
++                       house: nil,
++                       itemImage: nil,
++                       iconImage: nil,
++                       furnitureImage: nil,
++                       obtainedFrom: "Crafting",
++                       obtainedFromNew: ["Crafting"],
++                       sourceNotes: "From somewhere",
++                       dIY: true,
++                       customize: true,
++                       movementSpeed: nil,
++                       variations: nil,
++                       category: "Housewares",
++                       materials: nil,
++                       buy: 200,
++                       sell: 300,
++                       shadow: nil,
++                       activeMonths: nil,
++                       set: nil,
++                       tag: "Instrument",
++                       styles: nil,
++                       themes: nil,
++                       colors: nil)
+diff --git a/fix1.diff b/fix1.diff
+new file mode 100644
+index 0000000..081d85a
+--- /dev/null
++++ b/fix1.diff
+@@ -0,0 +1,13 @@
++--- ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
+++++ ACHNBrowserUI/Packages/Backend/Sources/Backend/Models/Item.swift
++@@ -58,6 +58,10 @@
++     
++     public var variations: [Variant]?
++     
+++    public var hasSomeVariations: Bool {
+++        return (variations?.count ?? 0) > 1
+++    }
+++    
++     public let category: String
++     
++     public var appCategory: Category {
+diff --git a/fix2.diff b/fix2.diff
+new file mode 100644
+index 0000000..e39ced2
+--- /dev/null
++++ b/fix2.diff
+@@ -0,0 +1,24 @@
++--- ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+++++ ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++@@ -584,5 +584,23 @@
++         }
++         return self[filename]?.contains(variant) == true
++     }
+++
+++    public func completionStatus(for item: Item) -> VariantsCompletionStatus {
+++        guard item.hasSomeVariations,
+++            let filename = item.filename else {
+++            return .unstarted
+++        }
+++        let collection = self[filename] ?? []
+++        if collection.isEmpty { return .unstarted }
+++        if collection.count == item.variations!.count { return .complete }
+++        return .partial
+++    }
+++}
+++
+++public enum VariantsCompletionStatus {
+++    case unstarted
+++    case partial
+++    case complete
++ }
+diff --git a/fix3.diff b/fix3.diff
+new file mode 100644
+index 0000000..8b947a2
+--- /dev/null
++++ b/fix3.diff
+@@ -0,0 +1,22 @@
++--- ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
+++++ ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift
++@@ -171,13 +171,21 @@
++         if variants[filename]?.contains(variant) == true {
++             variants[filename]?.removeAll(where: { $0 == variant })
+++            if variants[filename]?.isEmpty == true {
+++                let _ = toggleItem(item: item)
+++            }
++             save()
++             return false
++         } else {
++             if variants[filename] == nil {
++                 variants[filename] = []
+++                if !items.contains(item) {
+++                    let _ = toggleItem(item: item)
+++                }
++             }
++             variants[filename]?.append(variant)
++             save()
++             return true
++         }
++     }
+diff --git a/fix_like.bash b/fix_like.bash
+new file mode 100644
+index 0000000..6738916
+--- /dev/null
++++ b/fix_like.bash
+@@ -0,0 +1,4 @@
++#!/bin/bash
++sed -i '/@Published var isInCollection = false/a\    @Published var completionStatus: VariantsCompletionStatus = .unstarted' ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
++
++sed -i '/self.isInCollection = items.contains(item) || critters.contains(item)/i\                    self.completionStatus = collection.variants.completionStatus(for: item)' ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
+diff --git a/fix_like.diff b/fix_like.diff
+new file mode 100644
+index 0000000..9e4d07b
+--- /dev/null
++++ b/fix_like.diff
+@@ -0,0 +1,17 @@
++--- ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
+++++ ACHNBrowserUI/ACHNBrowserUI/viewModels/LikeButtonViewModel.swift
++@@ -19,6 +19,7 @@
++     
++     @Published var isInCollection = false
+++    @Published var completionStatus: VariantsCompletionStatus = .unstarted
++     
++     private let collection: UserCollection
++     private var cancellable: AnyCancellable?
++@@ -37,6 +38,7 @@
++                     if let variant = variant {
++                         self.isInCollection = variants.contains(for: item, variant: variant)
++                         return
++                     }
+++                    self.completionStatus = collection.variants.completionStatus(for: item)
++                     self.isInCollection = items.contains(item) || critters.contains(item)
++                     return
+diff --git a/fix_like_view.bash b/fix_like_view.bash
+new file mode 100644
+index 0000000..9596896
+--- /dev/null
++++ b/fix_like_view.bash
+@@ -0,0 +1,82 @@
++#!/bin/bash
++cat << 'INNER_EOF' > ACHNBrowserUI/ACHNBrowserUI/views/shared/LikeButtonView.swift
++//
++//  LikeButtonView.swift
++//  ACHNBrowserUI
++//
++import SwiftUI
++import Backend
++
++struct LikeButtonView: View {
++    @StateObject private var viewModel: LikeButtonViewModel
++    
++    init(item: Item, variant: Variant?) {
++        _viewModel = StateObject(wrappedValue: LikeButtonViewModel(item: item, variant: variant))
++    }
++    
++    init(villager: Villager) {
++        _viewModel = StateObject(wrappedValue: LikeButtonViewModel(villager: villager))
++    }
++        
++    var imageName: String {
++        if let item = viewModel.item, viewModel.variant == nil {
++            if item.hasSomeVariations {
++                return viewModel.completionStatus == .complete ? "star.fill" :
++                    viewModel.completionStatus == .partial ? "star.lefthalf.fill" : "star"
++            }
++        }
++        if viewModel.item != nil {
++            if viewModel.item?.isCritter == true {
++                return viewModel.isInCollection ? "checkmark.seal.fill" : "checkmark.seal"
++            } else {
++                return viewModel.isInCollection ? "star.fill" : "star"
++            }
++        } else {
++            return viewModel.isInCollection ? "heart.fill" : "heart"
++        }
++    }
++    
++    var color: Color {
++        if viewModel.item != nil {
++            if viewModel.item?.isCritter == true {
++                return .acTabBarBackground
++            }
++            return .yellow
++        }
++        return .red
++    }
++    
++    @State private var showingSheet = false
++
++    var body: some View {
++        Button(action: {
++            if let item = self.viewModel.item, item.hasSomeVariations, self.viewModel.variant == nil {
++                self.showingSheet = true
++            } else {
++                let added = self.viewModel.toggleCollection()
++                FeedbackGenerator.shared.triggerNotification(type: added ? .success : .warning)
++            }
++        }) {
++            Image(systemName: imageName).foregroundColor(color)
++        }
++        .scaleEffect(viewModel.isInCollection ? 1.3 : 1.0)
++        .buttonStyle(BorderlessButtonStyle())
++        .animation(.spring(response: 0.5, dampingFraction: 0.3, blendDuration: 0.5))
++        .sheet(isPresented: $showingSheet) {
++            if let item = self.viewModel.item {
++                NavigationView {
++                    VariantSelectionView(item: item)
++                        .navigationTitle(Text(item.localizedName.capitalized))
++                        .navigationBarItems(trailing: Button("Done") { self.showingSheet = false })
++                }
++            }
++        }
++    }
++}
++
++struct StarButtonView_Previews: PreviewProvider {
++    static var previews: some View {
++        LikeButtonView(item: static_item, variant: nil)
++    }
++}
++INNER_EOF
+diff --git a/test_script.swift b/test_script.swift
+new file mode 100644
+index 0000000..a0e7707
+--- /dev/null
++++ b/test_script.swift
+@@ -0,0 +1,2 @@
++import Foundation
++print("Hello")
+diff --git a/update_toggle_variant.bash b/update_toggle_variant.bash
+new file mode 100644
+index 0000000..88d58e9
+--- /dev/null
++++ b/update_toggle_variant.bash
+@@ -0,0 +1,28 @@
++#!/bin/bash
++sed -i '/public func toggleVariant(item: Item, variant: Variant) -> Bool/,/    }/c\
++    public func toggleVariant(item: Item, variant: Variant) -> Bool {\
++        guard let filename = item.filename else {\
++            return false\
++        }\
++        var added = false\
++        if variants[filename]?.contains(variant) == true {\
++            variants[filename]?.removeAll(where: { $0 == variant })\
++            if variants[filename]?.isEmpty == true {\
++                if items.contains(item) {\
++                    let _ = toggleItem(item: item)\
++                }\
++            }\
++            added = false\
++        } else {\
++            if variants[filename] == nil {\
++                variants[filename] = []\
++            }\
++            variants[filename]?.append(variant)\
++            if !items.contains(item) {\
++                let _ = toggleItem(item: item)\
++            }\
++            added = true\
++        }\
++        save()\
++        return added\
++    }' ACHNBrowserUI/Packages/Backend/Sources/Backend/Environments/UserCollection.swift

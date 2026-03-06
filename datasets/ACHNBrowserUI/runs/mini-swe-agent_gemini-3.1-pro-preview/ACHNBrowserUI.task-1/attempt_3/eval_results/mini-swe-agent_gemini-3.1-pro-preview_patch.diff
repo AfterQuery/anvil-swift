@@ -1,0 +1,300 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+index 03834a4..1924880 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+@@ -863,3 +863,5 @@ Merci d'être respecteux. Tout code signalé sera supprimé";
+ "To help us support the application and get notifications when a new Dodo code is posted, you can try out AC Helper+" = "Pour nous aider à supporter l'application et recevoir des notifications quand un nouveau Dodo codes est posté, vous pouvez souscrire à AC Helper+";
+ "ACDodoCode.notification.title" = "Un nouveau Dodo code est disponible";
+ "ACDodoCode.notification.subtitle" = "Quelqu'un a ouvert ses portes et a posté un Dodo code dans l'application!";
++"To catch now" = "À attraper maintenant";
++"To catch later" = "À attraper plus tard";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
+index 451a265..0a7d522 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
+@@ -10,11 +10,21 @@ import Foundation
+ 
+ 
+ public extension BidirectionalCollection where Element == Item {
++    func filterActiveThisMonth() -> [Item] {
++        self.filter({ $0.isActiveThisMonth() })
++    }
++
+     func filterActive() -> [Item] {
+         self.filter({ $0.isActive() })
+     }
+ }
+ 
++public extension Sequence where Element == Item {
++    func filterActiveThisMonth() -> [Item] {
++        self.filter({ $0.isActiveThisMonth() })
++    }
++}
++
+ public extension Collection where Element: Numeric {
+     var total: Element { reduce(0, +) }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
+index 69bc1e8..e31f964 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
+@@ -160,6 +160,50 @@ public extension Item {
+         return nil
+     }
+     
++    func isActiveThisMonth() -> Bool {
++        return isActive()
++    }
++    
++    func isActiveAtThisHour() -> Bool {
++        guard isActiveThisMonth() else { return false }
++        guard let activeTimes = activeMonths?.first?.value.activeTimes,
++              let startTime = activeTimes.first,
++              let endTime = activeTimes.last else {
++            return false
++        }
++        
++        if startTime == "0" && endTime == "0" {
++            return true
++        }
++        
++        func parseHour(_ timeString: String) -> Int? {
++            let clean = timeString.lowercased()
++            let isPM = clean.hasSuffix("pm")
++            let isAM = clean.hasSuffix("am")
++            let numberString = clean.replacingOccurrences(of: "am", with: "").replacingOccurrences(of: "pm", with: "")
++            
++            guard let hour = Int(numberString) else { return nil }
++            if isPM && hour < 12 { return hour + 12 }
++            if isAM && hour == 12 { return 0 }
++            return hour
++        }
++
++        guard let startHourInt = parseHour(startTime),
++              let endHourInt = parseHour(endTime) else {
++            return false
++        }
++
++        let currentHour = Calendar.current.component(.hour, from: Date())
++
++        if startHourInt < endHourInt {
++            return currentHour >= startHourInt && currentHour < endHourInt
++        } else if startHourInt > endHourInt {
++            return currentHour >= startHourInt || currentHour < endHourInt
++        } else {
++            return true
++        }
++    }
++
+     func isActive() -> Bool {
+         let currentMonth = Int(Item.monthFormatter.string(from: Date()))!
+         return activeMonthsCalendar?.contains(currentMonth - 1) == true
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
+index 08c305e..60f429f 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
+@@ -37,7 +37,8 @@ class ActiveCrittersViewModel: ObservableObject {
+         let new: [Item]
+         let leaving: [Item]
+         let caught: [Item]
+-        let toCatch: [Item]
++        let toCatchNow: [Item]
++        let toCatchLater: [Item]
+     }
+     
+     @Published var crittersInfo: [CritterType: CritterInfo] = [:]
+@@ -55,11 +56,12 @@ class ActiveCrittersViewModel: ObservableObject {
+             .receive(on: DispatchQueue.main)
+             .sink { [weak self] (items, critters) in
+                 for type in CritterType.allCases {
+-                    var active = items[type.category()]?.filterActive() ?? []
++                    var active = items[type.category()]?.filterActiveThisMonth() ?? []
+                     var new = active.filter{ $0.isNewThisMonth() }
+                     var leaving = active.filter{ $0.leavingThisMonth() }
+                     let caught = active.filter{ critters.contains($0) }
+-                    let toCatch = active.filter{ !critters.contains($0) }
++                    let toCatchNow = active.filter{ !critters.contains($0) && $0.isActiveAtThisHour() }
++                    let toCatchLater = active.filter{ !critters.contains($0) && !$0.isActiveAtThisHour() }
+                     
+                     if filterOutInCollection {
+                         new = new.filter{ !critters.contains($0) }
+@@ -71,7 +73,8 @@ class ActiveCrittersViewModel: ObservableObject {
+                                                            new: new,
+                                                            leaving: leaving,
+                                                            caught: caught,
+-                                                           toCatch: toCatch)
++                                                           toCatchNow: toCatchNow,
++                                                           toCatchLater: toCatchLater)
+                 }
+         }
+     }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
+index 75df943..d4499af 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
+@@ -34,9 +34,12 @@ struct ActiveCritterSections: View {
+             makeSectionOrPlaceholder(title: "New this month",
+                                      icon: "calendar.badge.plus",
+                                      critters: viewModel.crittersInfo[selectedTab]?.new ?? [])
+-            makeSectionOrPlaceholder(title: "To catch",
++            makeSectionOrPlaceholder(title: "To catch now",
+                                      icon: "calendar",
+-                                     critters: viewModel.crittersInfo[selectedTab]?.toCatch ?? [])
++                                     critters: viewModel.crittersInfo[selectedTab]?.toCatchNow ?? [])
++            makeSectionOrPlaceholder(title: "To catch later",
++                                     icon: "calendar",
++                                     critters: viewModel.crittersInfo[selectedTab]?.toCatchLater ?? [])
+             makeSectionOrPlaceholder(title: "Leaving this month",
+                                      icon: "calendar.badge.minus",
+                                      critters: viewModel.crittersInfo[selectedTab]?.leaving ?? [])
+@@ -56,7 +59,7 @@ struct ActiveCrittersView: View {
+     
+     var body: some View {
+         List {
+-            if (viewModel.crittersInfo[.fish]?.toCatch.isEmpty == true || viewModel.crittersInfo[.bugs]?.toCatch.isEmpty == true) &&
++            if (viewModel.crittersInfo[.fish]?.active.isEmpty == true || viewModel.crittersInfo[.bugs]?.active.isEmpty == true) &&
+                 (viewModel.crittersInfo[.fish]?.caught.isEmpty == true || viewModel.crittersInfo[.bugs]?.caught.isEmpty == true) {
+                 RowLoadingView(isLoading: .constant(true))
+             } else {
+diff --git a/parse_bugs.swift b/parse_bugs.swift
+new file mode 100644
+index 0000000..06e9abd
+--- /dev/null
++++ b/parse_bugs.swift
+@@ -0,0 +1,18 @@
++import Foundation
++
++let url = URL(fileURLWithPath: "./ACHNBrowserUI/Resources/json/bugs")
++let data = try! Data(contentsOf: url)
++let json = try! JSONSerialization.jsonObject(with: data, options: []) as! [String: Any]
++let results = json["results"] as! [[String: Any]]
++
++for result in results {
++    let content = result["content"] as! [String: Any]
++    if let _ = content["activeMonths"] as? [String: Any] {
++       let m = content["activeMonths"] as! [String: Any]
++       if let firstKey = m.keys.first, let firstMonth = m[firstKey] as? [String: Any], let times = firstMonth["activeTimes"] as? [String] {
++           if times.count > 2 || times != ["0", "0"] {
++               print("\(content["name"] as! String): \(times)")
++           }
++       }
++    }
++}
+diff --git a/parse_item_time.swift b/parse_item_time.swift
+new file mode 100644
+index 0000000..fc0242b
+--- /dev/null
++++ b/parse_item_time.swift
+@@ -0,0 +1,23 @@
++import Foundation
++
++func getHourInt(from time: String) -> Int {
++    if time == "0" {
++        return 0
++    }
++    var hourInt = 0
++    // Try to get 1 or 2 digits
++    let timeStr = time.replacingOccurrences(of: "am", with: "").replacingOccurrences(of: "pm", with: "")
++    if let hour = Int(timeStr) {
++        hourInt = hour
++        if time.suffix(2) == "pm" && hourInt < 12 {
++            hourInt += 12
++        } else if time.suffix(2) == "am" && hourInt == 12 {
++            hourInt = 0
++        }
++    }
++    return hourInt
++}
++print(getHourInt(from: "10am")) // 10
++print(getHourInt(from: "2pm")) // 14
++print(getHourInt(from: "12pm")) // 12
++print(getHourInt(from: "12am")) // 0
+diff --git a/parse_test.swift b/parse_test.swift
+new file mode 100644
+index 0000000..90e6c77
+--- /dev/null
++++ b/parse_test.swift
+@@ -0,0 +1,4 @@
++import Foundation
++
++let time = "10am"
++print(Int(time.prefix(1)))
+diff --git a/patch_item.swift b/patch_item.swift
+new file mode 100644
+index 0000000..fc1a872
+--- /dev/null
++++ b/patch_item.swift
+@@ -0,0 +1,57 @@
++import Foundation
++
++let path = "./ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift"
++var itemCode = try! String(contentsOfFile: path)
++
++let extensionCode = """
++    func isActiveThisMonth() -> Bool {
++        return isActive()
++    }
++    
++    func isActiveAtThisHour() -> Bool {
++        guard isActiveThisMonth() else { return false }
++        guard let activeTimes = activeMonths?.first?.value.activeTimes,
++              let startTime = activeTimes.first,
++              let endTime = activeTimes.last else {
++            return false
++        }
++        if startTime == "0" && endTime == "0" {
++            return true
++        }
++
++        func parseHour(_ timeString: String) -> Int? {
++            let clean = timeString.lowercased()
++            let isPM = clean.hasSuffix("pm")
++            let isAM = clean.hasSuffix("am")
++            let numberString = clean.replacingOccurrences(of: "am", with: "").replacingOccurrences(of: "pm", with: "")
++            
++            guard let hour = Int(numberString) else { return nil }
++            if isPM && hour < 12 { return hour + 12 }
++            if isAM && hour == 12 { return 0 }
++            return hour
++        }
++
++        guard let startHourInt = parseHour(startTime),
++              let endHourInt = parseHour(endTime) else {
++            return false
++        }
++
++        let currentHour = Calendar.current.component(.hour, from: Date())
++
++        if startHourInt < endHourInt {
++            return currentHour >= startHourInt && currentHour < endHourInt
++        } else if startHourInt > endHourInt {
++            return currentHour >= startHourInt || currentHour < endHourInt
++        } else {
++            return true // starts and ends at same hour (24 hours)
++        }
++    }
++"""
++
++if let range = itemCode.range(of: "func isActive() -> Bool {") {
++    itemCode.insert(contentsOf: extensionCode + "\n\n    ", at: range.lowerBound)
++    try! itemCode.write(toFile: path, atomically: true, encoding: .utf8)
++    print("Patched Item.swift")
++} else {
++    print("Could not find insertion point!")
++}
+diff --git a/test_items.swift b/test_items.swift
+new file mode 100644
+index 0000000..c4f7064
+--- /dev/null
++++ b/test_items.swift
+@@ -0,0 +1,10 @@
++import Foundation
++
++let json = """
++{
++  "activeTimes": [
++    "8am",
++    "5pm"
++  ]
++}
++"""

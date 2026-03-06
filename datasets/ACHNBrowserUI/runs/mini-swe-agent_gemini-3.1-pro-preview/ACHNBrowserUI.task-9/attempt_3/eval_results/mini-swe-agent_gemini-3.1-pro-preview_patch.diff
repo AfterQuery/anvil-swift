@@ -1,0 +1,484 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
+index 1fc5b95..b6632d9 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings
+@@ -854,3 +854,6 @@ Du kannst das Abonnement jederzeit in deinen iTunes Kontoeinstellungen beenden.
+ 
+ // Added 2020-06-05
+ "Contact / follow us on Twitter" = "Kontaktiere / folge uns auf Twitter";
++
++// TodayVillagerVisitsSection
++"Villager Visits" = "Bewohnerbesuche";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
+index faecdd7..a9ca79d 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
+@@ -19,6 +19,7 @@ public class UserCollection: ObservableObject {
+     @Published public var variants: [String: [Variant]] = [:]
+     @Published public var villagers: [Villager] = []
+     @Published public var residents: [Villager] = []
++    @Published public var visitedResidents: [Villager] = []
+     @Published public var critters: [Item] = []
+     @Published public var lists: [UserList] = []
+     @Published public var designs: [Design] = []
+@@ -34,6 +35,7 @@ public class UserCollection: ObservableObject {
+         let variants: [String: [Variant]]?
+         let villagers: [Villager]
+         let residents: [Villager]?
++        let visitedResidents: [Villager]?
+         let critters: [Item]
+         let lists: [UserList]?
+         let dailyCustomTasks: DailyCustomTasks?
+@@ -74,6 +76,19 @@ public class UserCollection: ObservableObject {
+         }
+     }
+     
++    // MARK: - Villager visits
++
++    public func toggleVisitedResident(villager: Villager) -> Bool {
++        let added = visitedResidents.toggle(item: villager)
++        save()
++        return added
++    }
++    
++    public func resetVisitedResidents() {
++        visitedResidents = []
++        save()
++    }
++
+     // MARK: - Items management
+     public func itemsIn(category: Category, items: [Item]) -> Int {
+         os_signpost(.begin,
+@@ -373,6 +388,7 @@ public class UserCollection: ObservableObject {
+                                           variants: self.variants,
+                                           villagers: self.villagers,
+                                           residents: self.residents,
++                                          visitedResidents: self.visitedResidents,
+                                           critters: self.critters,
+                                           lists: self.lists,
+                                           dailyCustomTasks: self.dailyCustomTasks,
+@@ -403,6 +419,7 @@ public class UserCollection: ObservableObject {
+                 self.variants = savedData.variants ?? [:]
+                 self.villagers = savedData.villagers
+                 self.residents = savedData.residents ?? []
++                self.visitedResidents = savedData.visitedResidents ?? []
+                 self.critters = savedData.critters
+                 self.lists = savedData.lists ?? []
+                 self.designs = savedData.designs ?? []
+@@ -422,6 +439,7 @@ public class UserCollection: ObservableObject {
+             self.items = []
+             self.villagers = []
+             self.residents = []
++            self.visitedResidents = []
+             self.critters = []
+             self.lists = []
+             self.dailyCustomTasks = DailyCustomTasks()
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/TodaySection.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/TodaySection.swift
+index 45658fc..987abf7 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/TodaySection.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/TodaySection.swift
+@@ -36,6 +36,7 @@ extension TodaySection {
+         case tasks
+         case chores
+         case nookazon
++        case villagerVisits
+     }
+ 
+     public static let defaultSectionList: [TodaySection] = [
+@@ -51,5 +52,6 @@ extension TodaySection {
+         TodaySection(name: .music, enabled: true),
+         //TodaySection(name: .nameNookazon, enabled: true)
+         TodaySection(name: .mysteryIsland, enabled: true),
++        TodaySection(name: .villagerVisits, enabled: true),
+     ]
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionEditView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionEditView.swift
+index d750634..c096dc4 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionEditView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionEditView.swift
+@@ -85,6 +85,7 @@ extension TodaySection {
+         case .tasks: return "Today's Tasks"
+         case .chores: return "Chores"
+         case .nookazon: return "New on Nookazon"
++        case .villagerVisits: return "Villager Visits"
+         }
+     }
+ 
+@@ -102,6 +103,7 @@ extension TodaySection {
+         case .tasks: return "checkmark.seal.fill"
+         case .chores: return "checkmark.seal.fill"
+         case .nookazon: return "cart.fill"
++        case .villagerVisits: return "person.2.fill"
+         }
+     }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionView.swift
+index 2c6dfa7..cedd5b6 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionView.swift
+@@ -55,6 +55,8 @@ struct TodaySectionView: View {
+             return AnyView(TodayChoresSection())
+         case .nookazon:
+             return AnyView(TodayNookazonSection(sheet: $selectedSheet, viewModel: viewModel))
++        case .villagerVisits:
++            return AnyView(TodayVillagerVisitsSection())
+         }
+     }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodayVillagerVisitsSection.swift b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodayVillagerVisitsSection.swift
+new file mode 100644
+index 0000000..a467f87
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodayVillagerVisitsSection.swift
+@@ -0,0 +1,108 @@
++//
++//  TodayVillagerVisitsSection.swift
++//  ACHNBrowserUI
++//
++//  Created by Assistant
++//
++
++import SwiftUI
++import Backend
++import UI
++
++struct TodayVillagerVisitsSection: View {
++    @EnvironmentObject private var collection: UserCollection
++    
++    private var residentsCount: Int {
++        collection.residents.count
++    }
++    
++    private var rows: Int {
++        var rowsFloat = CGFloat(residentsCount) / 4.0
++        rowsFloat.round(.up)
++        return Int(rowsFloat)
++    }
++    
++    @State private var navigateToVillager: Villager?
++    
++    // MARK: - Task Bubble
++    private func makeTaskBubble(villager: Villager, index: Int) -> some View {
++        let isVisited = collection.visitedResidents.contains(villager)
++        return ZStack {
++            Circle()
++                .foregroundColor(Color("ACBackground"))
++            
++            ItemImage(path: ACNHApiService.BASE_URL.absoluteString +
++                ACNHApiService.Endpoint.villagerIcon(id: villager.id).path(),
++                      size: 44)
++                .scaleEffect(0.9)
++                .aspectRatio(contentMode: .fit)
++                .opacity(isVisited ? 0.3 : 1.0)
++            
++            if isVisited {
++                Image(systemName: "checkmark")
++                    .resizable()
++                    .frame(width: 20, height: 20)
++                    .foregroundColor(Color.green)
++            }
++        }
++        .frame(maxHeight: 44)
++        .onTapGesture {
++            _ = self.collection.toggleVisitedResident(villager: villager)
++            FeedbackGenerator.shared.triggerSelection()
++        }
++        .onLongPressGesture {
++            self.navigateToVillager = villager
++            FeedbackGenerator.shared.triggerSelection()
++        }
++    }
++    
++    var body: some View {
++        Section(header: SectionHeaderView(text: "Villager Visits", icon: "person.2.fill")) {
++            VStack(spacing: 15) {
++                // NavigationLink for long press
++                NavigationLink(
++                    destination: Group {
++                        if self.navigateToVillager != nil { // Safely create destination
++                            AnyView(VillagerDetailView(viewModel: VillagerDetailViewModel(villager: self.navigateToVillager!)))
++                        } else {
++                            AnyView(EmptyView())
++                        }
++                    },
++                    isActive: Binding(
++                        get: { self.navigateToVillager != nil },
++                        set: { if !$0 { self.navigateToVillager = nil } }
++                    )
++                ) {
++                    EmptyView()
++                }.hidden()
++
++                GridStack<AnyView>(rows: rows, columns: 4, showDivider: false) { (row, column) in
++                    let index = row * 4 + column
++                    if index < self.collection.residents.count {
++                        let villager = self.collection.residents[index]
++                        return self.makeTaskBubble(villager: villager, index: index).eraseToAnyView()
++                    }
++                    return EmptyView().eraseToAnyView()
++                }
++                
++                if !self.collection.visitedResidents.isEmpty {
++                    HStack {
++                        Spacer()
++                        Text("Reset")
++                            .onTapGesture {
++                                self.collection.resetVisitedResidents()
++                        }
++                        .foregroundColor(.acText)
++                        .padding(.vertical, 8)
++                        .padding(.horizontal, 14)
++                        .background(Color.acText.opacity(0.2))
++                        .mask(RoundedRectangle(cornerRadius: 14, style: .continuous))
++                        Spacer()
++                    }
++                }
++            }
++            .frame(maxWidth: .infinity)
++            .padding(.vertical, 8)
++        }
++    }
++}
+diff --git a/patch_localization.py b/patch_localization.py
+new file mode 100644
+index 0000000..fcbb926
+--- /dev/null
++++ b/patch_localization.py
+@@ -0,0 +1,9 @@
++file_path = './ACHNBrowserUI/ACHNBrowserUI/de.lproj/Localizable.strings'
++
++with open(file_path, 'r') as f:
++    content = f.read()
++
++content += '\n// TodayVillagerVisitsSection\n"Villager Visits" = "Bewohnerbesuche";\n'
++
++with open(file_path, 'w') as f:
++    f.write(content)
+diff --git a/patch_todaysection.py b/patch_todaysection.py
+new file mode 100644
+index 0000000..f4a02d0
+--- /dev/null
++++ b/patch_todaysection.py
+@@ -0,0 +1,17 @@
++file_path = './ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/TodaySection.swift'
++
++with open(file_path, 'r') as f:
++    content = f.read()
++
++content = content.replace(
++    'case nookazon\n',
++    'case nookazon\n        case villagerVisits\n'
++)
++
++content = content.replace(
++    'TodaySection(name: .mysteryIsland, enabled: true),\n',
++    'TodaySection(name: .mysteryIsland, enabled: true),\n        TodaySection(name: .villagerVisits, enabled: true),\n'
++)
++
++with open(file_path, 'w') as f:
++    f.write(content)
+diff --git a/patch_todaysectionedit.py b/patch_todaysectionedit.py
+new file mode 100644
+index 0000000..9c4993e
+--- /dev/null
++++ b/patch_todaysectionedit.py
+@@ -0,0 +1,17 @@
++file_path = './ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionEditView.swift'
++
++with open(file_path, 'r') as f:
++    content = f.read()
++
++content = content.replace(
++    'case .nookazon: return "New on Nookazon"\n        }',
++    'case .nookazon: return "New on Nookazon"\n        case .villagerVisits: return "Villager Visits"\n        }'
++)
++
++content = content.replace(
++    'case .nookazon: return "cart.fill"\n        }',
++    'case .nookazon: return "cart.fill"\n        case .villagerVisits: return "person.2.fill"\n        }'
++)
++
++with open(file_path, 'w') as f:
++    f.write(content)
+diff --git a/patch_todaysectionview.py b/patch_todaysectionview.py
+new file mode 100644
+index 0000000..4997054
+--- /dev/null
++++ b/patch_todaysectionview.py
+@@ -0,0 +1,14 @@
++import re
++
++file_path = './ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodaySectionView.swift'
++
++with open(file_path, 'r') as f:
++    content = f.read()
++
++content = content.replace(
++    'case .nookazon:\n            return AnyView(TodayNookazonSection(sheet: $selectedSheet, viewModel: viewModel))\n',
++    'case .nookazon:\n            return AnyView(TodayNookazonSection(sheet: $selectedSheet, viewModel: viewModel))\n        case .villagerVisits:\n            return AnyView(TodayVillagerVisitsSection())\n'
++)
++
++with open(file_path, 'w') as f:
++    f.write(content)
+diff --git a/patch_todayvillager.py b/patch_todayvillager.py
+new file mode 100644
+index 0000000..34aeb39
+--- /dev/null
++++ b/patch_todayvillager.py
+@@ -0,0 +1,38 @@
++file_path = './ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodayVillagerVisitsSection.swift'
++
++with open(file_path, 'r') as f:
++    content = f.read()
++
++content = content.replace(
++"""                // NavigationLink for long press
++                NavigationLink(
++                    destination: AnyView(Group {
++                        if self.navigateToVillager != nil {
++                            VillagerDetailView(viewModel: VillagerDetailViewModel(villager: self.navigateToVillager!))
++                        } else {
++                            EmptyView()
++                        }
++                    }),
++                    isActive: Binding(
++                        get: { self.navigateToVillager != nil },
++                        set: { if !$0 { self.navigateToVillager = nil } }
++                    )
++                ) {
++                    EmptyView()
++                }""",
++"""                // NavigationLink for long press
++                if self.navigateToVillager != nil {
++                    NavigationLink(
++                        destination: VillagerDetailView(viewModel: VillagerDetailViewModel(villager: self.navigateToVillager!)),
++                        isActive: Binding(
++                            get: { self.navigateToVillager != nil },
++                            set: { if !$0 { self.navigateToVillager = nil } }
++                        )
++                    ) {
++                        EmptyView()
++                    }.hidden()
++                }"""
++)
++
++with open(file_path, 'w') as f:
++    f.write(content)
+diff --git a/patch_todayvillager_safe.py b/patch_todayvillager_safe.py
+new file mode 100644
+index 0000000..a635aa8
+--- /dev/null
++++ b/patch_todayvillager_safe.py
+@@ -0,0 +1,38 @@
++file_path = './ACHNBrowserUI/ACHNBrowserUI/views/todayDashboard/TodayVillagerVisitsSection.swift'
++
++with open(file_path, 'r') as f:
++    content = f.read()
++
++content = content.replace(
++"""                // NavigationLink for long press
++                if self.navigateToVillager != nil {
++                    NavigationLink(
++                        destination: VillagerDetailView(viewModel: VillagerDetailViewModel(villager: self.navigateToVillager!)),
++                        isActive: Binding(
++                            get: { self.navigateToVillager != nil },
++                            set: { if !$0 { self.navigateToVillager = nil } }
++                        )
++                    ) {
++                        EmptyView()
++                    }.hidden()
++                }""",
++"""                // NavigationLink for long press
++                NavigationLink(
++                    destination: Group {
++                        if self.navigateToVillager != nil { // Safely create destination
++                            AnyView(VillagerDetailView(viewModel: VillagerDetailViewModel(villager: self.navigateToVillager!)))
++                        } else {
++                            AnyView(EmptyView())
++                        }
++                    },
++                    isActive: Binding(
++                        get: { self.navigateToVillager != nil },
++                        set: { if !$0 { self.navigateToVillager = nil } }
++                    )
++                ) {
++                    EmptyView()
++                }.hidden()"""
++)
++
++with open(file_path, 'w') as f:
++    f.write(content)
+diff --git a/patch_usercollection.py b/patch_usercollection.py
+new file mode 100644
+index 0000000..37a1c0a
+--- /dev/null
++++ b/patch_usercollection.py
+@@ -0,0 +1,55 @@
++import re
++
++file_path = './ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift'
++
++with open(file_path, 'r') as f:
++    content = f.read()
++
++# Add to properties
++content = content.replace(
++    '@Published public var residents: [Villager] = []\n',
++    '@Published public var residents: [Villager] = []\n    @Published public var visitedResidents: [Villager] = []\n'
++)
++
++# Add to SavedData
++content = content.replace(
++    'let residents: [Villager]?\n',
++    'let residents: [Villager]?\n        let visitedResidents: [Villager]?\n'
++)
++
++# Add to SaveData instantiate
++content = content.replace(
++    'residents: self.residents,\n',
++    'residents: self.residents,\n                                          visitedResidents: self.visitedResidents,\n'
++)
++
++# Add to loadCollection
++content = content.replace(
++    'self.residents = savedData.residents ?? []\n',
++    'self.residents = savedData.residents ?? []\n                self.visitedResidents = savedData.visitedResidents ?? []\n'
++)
++
++# Add to deleteCollection
++content = content.replace(
++    'self.residents = []\n',
++    'self.residents = []\n            self.visitedResidents = []\n'
++)
++
++# Add methods toggleVisitedResident and resetVisitedResidents
++methods = """
++    public func toggleVisitedResident(villager: Villager) -> Bool {
++        let added = visitedResidents.toggle(item: villager)
++        save()
++        return added
++    }
++    
++    public func resetVisitedResidents() {
++        visitedResidents = []
++        save()
++    }
++"""
++
++content = content.replace('// MARK: - Items management', '// MARK: - Villager visits\n' + methods + '\n    // MARK: - Items management')
++
++with open(file_path, 'w') as f:
++    f.write(content)
+diff --git a/test_villagerview.py b/test_villagerview.py
+new file mode 100644
+index 0000000..a11d334
+--- /dev/null
++++ b/test_villagerview.py
+@@ -0,0 +1,7 @@
++import re
++
++content = ""
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagerDetailView.swift', 'r') as f:
++    content = f.read()
++
++print(content[:500])

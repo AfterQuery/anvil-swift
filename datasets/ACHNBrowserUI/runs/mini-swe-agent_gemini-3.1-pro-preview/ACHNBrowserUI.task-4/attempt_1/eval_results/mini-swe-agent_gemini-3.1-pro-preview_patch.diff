@@ -1,0 +1,362 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+index 5869b7a..9dff26e 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+@@ -550,3 +550,4 @@ You can cancel anytime with your iTunes account settings. Any unused portion of
+ "Music player" = "Lecteur de musique";
+ "Tracks" = "Musiques";
+ 
++"Sort villagers" = "Trier les habitants";
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+index 70909fb..e440ca8 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift
+@@ -11,6 +11,49 @@ import Combine
+ import Backend
+ 
+ class VillagersViewModel: ObservableObject {
++    enum Sort: String, CaseIterable {
++        case name
++        case species
++    }
++    
++    @Published var sort: Sort? {
++        didSet {
++            guard let sort = sort else { return }
++            if sort == oldValue {
++                sortAscending.toggle()
++            } else {
++                sortAscending = true
++            }
++        }
++    }
++    
++    @Published var sortAscending = true
++    
++    var sortedVillagers: [Villager] {
++        guard let sort = sort else { return villagers }
++        return villagers.sorted { v1, v2 in
++            let compare: ComparisonResult
++            switch sort {
++            case .name:
++                compare = v1.localizedName.localizedCompare(v2.localizedName)
++            case .species:
++                let s1 = NSLocalizedString(v1.species, comment: "")
++                let s2 = NSLocalizedString(v2.species, comment: "")
++                compare = s1.localizedCompare(s2)
++            }
++            
++            if compare == .orderedSame {
++                return v1.id < v2.id
++            }
++            
++            if sortAscending {
++                return compare == .orderedAscending
++            } else {
++                return compare == .orderedDescending
++            }
++        }
++    }
++
+     private static var cachedVillagers: [Villager] = []
+     
+     @Published var villagers: [Villager] = [] {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+index 1980295..ffd088f 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift
+@@ -12,17 +12,60 @@ import UI
+ 
+ struct VillagersListView: View {
+     @ObservedObject var viewModel = VillagersViewModel()
++    @State private var showSortSheet = false
+     
+     var currentVillagers: [Villager] {
+         get {
+             if !viewModel.searchText.isEmpty {
+                 return viewModel.searchResults
++            } else if viewModel.sort != nil {
++                return viewModel.sortedVillagers
+             } else {
+                 return viewModel.villagers
+             }
+         }
+     }
+         
++    
++    private var sortButton: some View {
++        Button(action: {
++            self.showSortSheet.toggle()
++        }) {
++            Image(systemName: viewModel.sort == nil ? "arrow.up.arrow.down.circle" : "arrow.up.arrow.down.circle.fill")
++                .imageScale(.large)
++        }
++        .safeHoverEffectBarItem(position: .trailing)
++    }
++    
++    private var sortSheet: ActionSheet {
++        var buttons: [ActionSheet.Button] = []
++        for sort in VillagersViewModel.Sort.allCases {
++            buttons.append(.default(Text(LocalizedStringKey(sort.rawValue.localizedCapitalized)),
++                                    action: {
++                                        self.viewModel.sort = sort
++            }))
++        }
++        
++        if viewModel.sort != nil {
++            buttons.append(.default(Text("Clear Selection"), action: {
++                self.viewModel.sort = nil
++            }))
++        }
++        
++        buttons.append(.cancel())
++        
++        let title = Text("Sort villagers")
++        
++        if let currentSort = viewModel.sort {
++            let currentSortName = NSLocalizedString(currentSort.rawValue.localizedCapitalized, comment: "")
++            return ActionSheet(title: title,
++                               message: Text("Current Sort: \(currentSortName)"),
++                               buttons: buttons)
++        }
++        
++        return ActionSheet(title: title, buttons: buttons)
++    }
++
+     var body: some View {
+         NavigationView {
+             List {
+@@ -39,7 +82,10 @@ struct VillagersListView: View {
+             .listStyle(GroupedListStyle())
+             .navigationBarTitle(Text("Villagers"),
+                                 displayMode: .automatic)
++            .navigationBarItems(trailing: sortButton)
+             .modifier(DismissingKeyboardOnSwipe())
++            .actionSheet(isPresented: $showSortSheet, content: { self.sortSheet })
++
+             if !viewModel.villagers.isEmpty {
+                 VillagerDetailView(villager: viewModel.villagers.first!)
+             } else {
+diff --git a/fix_view.py b/fix_view.py
+new file mode 100644
+index 0000000..f0e6272
+--- /dev/null
++++ b/fix_view.py
+@@ -0,0 +1,9 @@
++import re
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift', 'r') as f:
++    content = f.read()
++
++content = content.replace('message: Text("Current Sort: \(currentSortName)")', 'message: Text("Current Sort: \\(currentSortName)")')
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift', 'w') as f:
++    f.write(content)
+diff --git a/fix_viewmodel.py b/fix_viewmodel.py
+new file mode 100644
+index 0000000..78512e6
+--- /dev/null
++++ b/fix_viewmodel.py
+@@ -0,0 +1,53 @@
++import re
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift', 'r') as f:
++    content = f.read()
++
++old_sorted_villagers = """    var sortedVillagers: [Villager] {
++        guard let sort = sort else { return villagers }
++        return villagers.sorted { v1, v2 in
++            let compare: ComparisonResult
++            switch sort {
++            case .name:
++                compare = v1.localizedName.localizedCompare(v2.localizedName)
++            case .species:
++                compare = v1.species.localizedCompare(v2.species)
++            }
++            if sortAscending {
++                return compare == .orderedAscending
++            } else {
++                return compare == .orderedDescending
++            }
++        }
++    }"""
++
++new_sorted_villagers = """    var sortedVillagers: [Villager] {
++        guard let sort = sort else { return villagers }
++        return villagers.sorted { v1, v2 in
++            let compare: ComparisonResult
++            switch sort {
++            case .name:
++                compare = v1.localizedName.localizedCompare(v2.localizedName)
++            case .species:
++                let s1 = NSLocalizedString(v1.species, comment: "")
++                let s2 = NSLocalizedString(v2.species, comment: "")
++                compare = s1.localizedCompare(s2)
++            }
++            
++            if compare == .orderedSame {
++                return v1.id < v2.id
++            }
++            
++            if sortAscending {
++                return compare == .orderedAscending
++            } else {
++                return compare == .orderedDescending
++            }
++        }
++    }"""
++
++content = content.replace(old_sorted_villagers, new_sorted_villagers)
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift', 'w') as f:
++    f.write(content)
++
+diff --git a/update_view.py b/update_view.py
+new file mode 100644
+index 0000000..ae19c4c
+--- /dev/null
++++ b/update_view.py
+@@ -0,0 +1,90 @@
++import re
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift', 'r') as f:
++    content = f.read()
++
++# Add showSortSheet state
++content = content.replace("@ObservedObject var viewModel = VillagersViewModel()", "@ObservedObject var viewModel = VillagersViewModel()\n    @State private var showSortSheet = false")
++
++# Update currentVillagers
++currentVillagers_old = """var currentVillagers: [Villager] {
++        get {
++            if !viewModel.searchText.isEmpty {
++                return viewModel.searchResults
++            } else {
++                return viewModel.villagers
++            }
++        }
++    }"""
++
++currentVillagers_new = """var currentVillagers: [Villager] {
++        get {
++            if !viewModel.searchText.isEmpty {
++                return viewModel.searchResults
++            } else if viewModel.sort != nil {
++                return viewModel.sortedVillagers
++            } else {
++                return viewModel.villagers
++            }
++        }
++    }"""
++content = content.replace(currentVillagers_old, currentVillagers_new)
++
++# Add sortButton and sortSheet
++sort_views = """
++    private var sortButton: some View {
++        Button(action: {
++            self.showSortSheet.toggle()
++        }) {
++            Image(systemName: viewModel.sort == nil ? "arrow.up.arrow.down.circle" : "arrow.up.arrow.down.circle.fill")
++                .imageScale(.large)
++        }
++        .safeHoverEffectBarItem(position: .trailing)
++    }
++    
++    private var sortSheet: ActionSheet {
++        var buttons: [ActionSheet.Button] = []
++        for sort in VillagersViewModel.Sort.allCases {
++            buttons.append(.default(Text(LocalizedStringKey(sort.rawValue.localizedCapitalized)),
++                                    action: {
++                                        self.viewModel.sort = sort
++            }))
++        }
++        
++        if viewModel.sort != nil {
++            buttons.append(.default(Text("Clear Selection"), action: {
++                self.viewModel.sort = nil
++            }))
++        }
++        
++        buttons.append(.cancel())
++        
++        let title = Text("Sort villagers")
++        
++        if let currentSort = viewModel.sort {
++            let currentSortName = NSLocalizedString(currentSort.rawValue.localizedCapitalized, comment: "")
++            return ActionSheet(title: title,
++                               message: Text("Current Sort: \(currentSortName)"),
++                               buttons: buttons)
++        }
++        
++        return ActionSheet(title: title, buttons: buttons)
++    }
++"""
++
++content = content.replace("var body: some View {", sort_views + "\n    var body: some View {")
++
++# Add modifiers
++modifiers_old = """.navigationBarTitle(Text("Villagers"),
++                                displayMode: .automatic)
++            .modifier(DismissingKeyboardOnSwipe())"""
++modifiers_new = """.navigationBarTitle(Text("Villagers"),
++                                displayMode: .automatic)
++            .navigationBarItems(trailing: sortButton)
++            .modifier(DismissingKeyboardOnSwipe())
++            .actionSheet(isPresented: $showSortSheet, content: { self.sortSheet })
++"""
++content = content.replace(modifiers_old, modifiers_new)
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/villagers/VillagersListView.swift', 'w') as f:
++    f.write(content)
+diff --git a/update_viewmodel.py b/update_viewmodel.py
+new file mode 100644
+index 0000000..578297b
+--- /dev/null
++++ b/update_viewmodel.py
+@@ -0,0 +1,47 @@
++import re
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift', 'r') as f:
++    content = f.read()
++
++sort_enum_code = """
++    enum Sort: String, CaseIterable {
++        case name
++        case species
++    }
++    
++    @Published var sort: Sort? {
++        didSet {
++            guard let sort = sort else { return }
++            if sort == oldValue {
++                sortAscending.toggle()
++            } else {
++                sortAscending = true
++            }
++        }
++    }
++    
++    @Published var sortAscending = true
++    
++    var sortedVillagers: [Villager] {
++        guard let sort = sort else { return villagers }
++        return villagers.sorted { v1, v2 in
++            let compare: ComparisonResult
++            switch sort {
++            case .name:
++                compare = v1.localizedName.localizedCompare(v2.localizedName)
++            case .species:
++                compare = v1.species.localizedCompare(v2.species)
++            }
++            if sortAscending {
++                return compare == .orderedAscending
++            } else {
++                return compare == .orderedDescending
++            }
++        }
++    }
++"""
++
++content = content.replace("class VillagersViewModel: ObservableObject {", "class VillagersViewModel: ObservableObject {" + sort_enum_code)
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/viewModels/VillagersViewModel.swift', 'w') as f:
++    f.write(content)

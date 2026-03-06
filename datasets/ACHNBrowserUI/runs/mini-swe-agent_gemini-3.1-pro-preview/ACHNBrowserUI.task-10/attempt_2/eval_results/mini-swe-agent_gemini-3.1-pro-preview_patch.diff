@@ -1,0 +1,1032 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
+index 3ecc96d..e6650f9 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/environments/UserCollection.swift
+@@ -19,6 +19,7 @@ public class UserCollection: ObservableObject {
+     @Published public var villagers: [Villager] = []
+     @Published public var critters: [Item] = []
+     @Published public var lists: [UserList] = []
++    @Published public var designs: [Design] = []
+     @Published public var dailyTasks = DailyTasks()
+     
+     @Published public var isCloudEnabled = true
+@@ -31,6 +32,7 @@ public class UserCollection: ObservableObject {
+         let villagers: [Villager]
+         let critters: [Item]
+         let lists: [UserList]?
++        let designs: [Design]?
+         let dailyTasks: DailyTasks?
+     }
+     
+@@ -258,7 +260,7 @@ public class UserCollection: ObservableObject {
+     }
+     
+     // MARK: - Import / Export
+-    private func save() {
++    public func save() {
+         saveQueue.async { [weak self] in
+             guard let weakself = self else { return }
+             do {
+@@ -267,6 +269,7 @@ public class UserCollection: ObservableObject {
+                                           villagers: weakself.villagers,
+                                           critters: weakself.critters,
+                                           lists: weakself.lists,
++                                          designs: weakself.designs,
+                                           dailyTasks: weakself.dailyTasks)
+                 let data = try weakself.encoder.encode(savedData)
+                 try data.write(to: weakself.filePath, options: .atomicWrite)
+@@ -294,6 +297,7 @@ public class UserCollection: ObservableObject {
+                 self.villagers = savedData.villagers
+                 self.critters = savedData.critters
+                 self.lists = savedData.lists ?? []
++                self.designs = savedData.designs ?? []
+                 self.dailyTasks = savedData.dailyTasks ?? DailyTasks()
+                 return true
+             } catch {
+@@ -310,6 +314,7 @@ public class UserCollection: ObservableObject {
+             self.villagers = []
+             self.critters = []
+             self.lists = []
++            self.designs = []
+             self.dailyTasks = DailyTasks()
+             save()
+             return true
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Design.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Design.swift
+new file mode 100644
+index 0000000..e546281
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Design.swift
+@@ -0,0 +1,19 @@
++import Foundation
++
++public struct Design: Identifiable, Equatable, Codable, Hashable {
++    public var id = UUID()
++    public var title: String
++    public var code: String
++    public var description: String
++    
++    public init(title: String, code: String, description: String) {
++        self.title = title
++        self.code = code
++        self.description = description
++    }
++    
++    public var hasValidCode: Bool {
++        let codeUpper = code.uppercased()
++        return codeUpper.hasPrefix("MA") || codeUpper.hasPrefix("MO")
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift
+index 8c7665b..87400f1 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift
+@@ -10,8 +10,212 @@ import SwiftUI
+ import SwiftUIKit
+ import Backend
+ 
+-enum Tabs: String, CaseIterable {
+-    case items, villagers, critters, lists
++import Combine
++
++public struct MessageView: View {
++    public let message: String
++    
++    public init(string: String) {
++        self.message = string
++    }
++    
++    public init(collectionName: String) {
++        self.message = "When you stars some \(collectionName), they'll be displayed here."
++    }
++    
++    public init(noResultsFor: String) {
++        self.message = "No results for \(noResultsFor)"
++    }
++    
++    public var body: some View {
++        Text(message)
++            .foregroundColor(.acSecondaryText)
++    }
++}
++
++public class DesignRowViewModel: ObservableObject {
++    @Published public var design: Design
++    
++    public init(design: Design) {
++        self.design = design
++    }
++    
++    public var category: String {
++        let codeUpper = design.code.uppercased()
++        if codeUpper.hasPrefix("MA") { return "Creator" }
++        if codeUpper.hasPrefix("MO") { return "Item" }
++        return "Unknown"
++    }
++    
++    public var code: String {
++        let clean = design.code.uppercased().replacingOccurrences(of: "-", with: "")
++        guard clean.count >= 2 else { return clean }
++        let prefix = String(clean.prefix(2))
++        let rest = String(clean.dropFirst(2))
++        var chunks = [String]()
++        var currentChunk = ""
++        for (i, char) in rest.enumerated() {
++            currentChunk.append(char)
++            if (i + 1) % 4 == 0 {
++                chunks.append(currentChunk)
++                currentChunk = ""
++            }
++        }
++        if !currentChunk.isEmpty {
++            chunks.append(currentChunk)
++        }
++        return prefix + "-" + chunks.joined(separator: "-")
++    }
++}
++
++public class DesignFormViewModel: ObservableObject {
++    @Published public var design: Design?
++    
++    public init(design: Design?) {
++        self.design = design
++    }
++}
++
++public class CollectionMoreDetailViewModel: ObservableObject {
++    public enum Row: String, CaseIterable, Identifiable {
++        case critters, designs
++        public var id: String { rawValue }
++    }
++    
++    @Published public var rows: [Row] = [.critters, .designs]
++    
++    public init() {}
++}
++
++public struct DesignRowView: View {
++    @ObservedObject public var viewModel: DesignRowViewModel
++    
++    public var body: some View {
++        VStack(alignment: .leading, spacing: 5) {
++            Text(viewModel.design.title).font(.headline)
++            Text(viewModel.category).font(.subheadline).foregroundColor(.blue)
++            Text(viewModel.code).font(.subheadline).foregroundColor(.secondary)
++            if !viewModel.design.description.isEmpty {
++                Text(viewModel.design.description).font(.body)
++            }
++        }
++        .padding(.vertical, 8)
++    }
++}
++
++public struct DesignFormView: View {
++    @Environment(\.presentationMode) var presentationMode
++    @EnvironmentObject private var collection: UserCollection
++    @ObservedObject public var viewModel: DesignFormViewModel
++    
++    @State private var title: String = ""
++    @State private var code: String = ""
++    @State private var desc: String = ""
++    
++    public init(viewModel: DesignFormViewModel) {
++        self.viewModel = viewModel
++    }
++    
++    public var body: some View {
++        NavigationView {
++            Form {
++                Section(header: Text("Design Details")) {
++                    TextField("Title", text: $title)
++                    TextField("Code (MA-... / MO-...)", text: $code)
++                        .autocapitalization(.allCharacters)
++                    TextField("Description", text: $desc)
++                }
++            }
++            .navigationBarTitle(viewModel.design == nil ? "New Design" : "Edit Design", displayMode: .inline)
++            .navigationBarItems(
++                leading: Button("Cancel") { presentationMode.wrappedValue.dismiss() },
++                trailing: Button("Save") { save() }.disabled(title.isEmpty || !Design(title: title, code: code, description: desc).hasValidCode)
++            )
++        }
++        .onAppear {
++            if let design = viewModel.design {
++                title = design.title
++                code = design.code
++                desc = design.description
++            }
++        }
++    }
++    
++    private func save() {
++        let design = Design(title: title, code: code, description: desc)
++        if design.hasValidCode {
++            if let idx = collection.designs.firstIndex(where: { $0.id == viewModel.design?.id }) {
++                collection.designs[idx] = design
++            } else {
++                collection.designs.append(design)
++            }
++            // Notify collection
++            collection.save()
++            presentationMode.wrappedValue.dismiss()
++        }
++    }
++}
++
++public struct CollectionMoreDetailView: View {
++    @ObservedObject public var viewModel = CollectionMoreDetailViewModel()
++    @EnvironmentObject private var collection: UserCollection
++    @State private var showAddDesign = false
++    
++    public init() {}
++    
++    public var body: some View {
++        ForEach(viewModel.rows) { row in
++            NavigationLink(destination: destination(for: row)) {
++                Text(LocalizedStringKey(row.rawValue.capitalized))
++            }
++        }
++        .sheet(isPresented: $showAddDesign) {
++            DesignFormView(viewModel: DesignFormViewModel(design: nil))
++                .environmentObject(collection)
++        }
++    }
++    
++    private func destination(for row: CollectionMoreDetailViewModel.Row) -> AnyView {
++        if row == .critters {
++            if collection.critters.isEmpty {
++                return AnyView(MessageView(collectionName: "critters")
++                    .navigationBarTitle("Critters")
++                    .frame(maxWidth: .infinity, maxHeight: .infinity))
++            } else {
++                return AnyView(List {
++                    ForEach(collection.critters) { critter in
++                        NavigationLink(destination: ItemDetailView(item: critter)) {
++                            ItemRowView(displayMode: .large, item: critter)
++                        }
++                    }
++                }
++                .listStyle(GroupedListStyle())
++                .navigationBarTitle("Critters"))
++            }
++        } else {
++            return AnyView(List {
++                Section(header: Text("Custom Designs")) {
++                    Button("Add Custom Design") {
++                        showAddDesign = true
++                    }
++                    if collection.designs.isEmpty {
++                        MessageView(string: "No designs saved yet.")
++                    } else {
++                        ForEach(collection.designs) { design in
++                            DesignRowView(viewModel: DesignRowViewModel(design: design))
++                        }
++                        .onDelete { indexes in
++                            collection.designs.remove(atOffsets: indexes)
++                            collection.save()
++                        }
++                    }
++                }
++            }
++            .listStyle(GroupedListStyle())
++            .navigationBarTitle("Custom Designs", displayMode: .inline)
++            })
++        }
++    }
+ }
+ 
+ struct CollectionListView: View {
+@@ -38,12 +242,8 @@ struct CollectionListView: View {
+                                 VillagerRowView(villager: villager)
+                             }
+                         }
+-                    } else if selectedTab == .critters && !collection.critters.isEmpty {
+-                        ForEach(collection.critters) { critter in
+-                            NavigationLink(destination: ItemDetailView(item: critter)) {
+-                                ItemRowView(displayMode: .large, item: critter)
+-                            }
+-                        }
++                    } else if selectedTab == .more {
++                        CollectionMoreDetailView()
+                     } else if selectedTab == .lists {
+                         userListsSections
+                     }  else {
+@@ -93,8 +293,7 @@ struct CollectionListView: View {
+     
+     private var emptyView: some View {
+         let selectedTabName = NSLocalizedString(selectedTab.rawValue, comment: "")
+-        return Text("When you stars some \(selectedTabName), they'll be displayed here.")
+-            .foregroundColor(.acSecondaryText)
++        return MessageView(collectionName: selectedTabName)
+     }
+     
+     private var picker: some View {
+diff --git a/add_to_top.py b/add_to_top.py
+new file mode 100644
+index 0000000..7fb1ef1
+--- /dev/null
++++ b/add_to_top.py
+@@ -0,0 +1,212 @@
++import sys
++
++new_code = """
++import Combine
++
++public struct MessageView: View {
++    public let message: String
++    
++    public init(string: String) {
++        self.message = string
++    }
++    
++    public init(collectionName: String) {
++        self.message = "When you stars some \(collectionName), they'll be displayed here."
++    }
++    
++    public init(noResultsFor: String) {
++        self.message = "No results for \(noResultsFor)"
++    }
++    
++    public var body: some View {
++        Text(message)
++            .foregroundColor(.acSecondaryText)
++    }
++}
++
++public class DesignRowViewModel: ObservableObject {
++    @Published public var design: Design
++    
++    public init(design: Design) {
++        self.design = design
++    }
++    
++    public var category: String {
++        let codeUpper = design.code.uppercased()
++        if codeUpper.hasPrefix("MA") { return "Creator" }
++        if codeUpper.hasPrefix("MO") { return "Item" }
++        return "Unknown"
++    }
++    
++    public var code: String {
++        let clean = design.code.uppercased().replacingOccurrences(of: "-", with: "")
++        guard clean.count >= 2 else { return clean }
++        let prefix = String(clean.prefix(2))
++        let rest = String(clean.dropFirst(2))
++        var chunks = [String]()
++        var currentChunk = ""
++        for (i, char) in rest.enumerated() {
++            currentChunk.append(char)
++            if (i + 1) % 4 == 0 {
++                chunks.append(currentChunk)
++                currentChunk = ""
++            }
++        }
++        if !currentChunk.isEmpty {
++            chunks.append(currentChunk)
++        }
++        return prefix + "-" + chunks.joined(separator: "-")
++    }
++}
++
++public class DesignFormViewModel: ObservableObject {
++    @Published public var design: Design?
++    
++    public init(design: Design?) {
++        self.design = design
++    }
++}
++
++public class CollectionMoreDetailViewModel: ObservableObject {
++    public enum Row: String, CaseIterable, Identifiable {
++        case critters, designs
++        public var id: String { rawValue }
++    }
++    
++    @Published public var rows: [Row] = [.critters, .designs]
++    
++    public init() {}
++}
++
++public struct DesignRowView: View {
++    @ObservedObject public var viewModel: DesignRowViewModel
++    
++    public var body: some View {
++        VStack(alignment: .leading, spacing: 5) {
++            Text(viewModel.design.title).font(.headline)
++            Text(viewModel.category).font(.subheadline).foregroundColor(.blue)
++            Text(viewModel.code).font(.subheadline).foregroundColor(.secondary)
++            if !viewModel.design.description.isEmpty {
++                Text(viewModel.design.description).font(.body)
++            }
++        }
++        .padding(.vertical, 8)
++    }
++}
++
++public struct DesignFormView: View {
++    @Environment(\\.presentationMode) var presentationMode
++    @EnvironmentObject private var collection: UserCollection
++    @ObservedObject public var viewModel: DesignFormViewModel
++    
++    @State private var title: String = ""
++    @State private var code: String = ""
++    @State private var desc: String = ""
++    
++    public init(viewModel: DesignFormViewModel) {
++        self.viewModel = viewModel
++    }
++    
++    public var body: some View {
++        NavigationView {
++            Form {
++                Section(header: Text("Design Details")) {
++                    TextField("Title", text: $title)
++                    TextField("Code (MA-... / MO-...)", text: $code)
++                        .autocapitalization(.allCharacters)
++                    TextField("Description", text: $desc)
++                }
++            }
++            .navigationBarTitle(viewModel.design == nil ? "New Design" : "Edit Design", displayMode: .inline)
++            .navigationBarItems(
++                leading: Button("Cancel") { presentationMode.wrappedValue.dismiss() },
++                trailing: Button("Save") { save() }.disabled(title.isEmpty || code.isEmpty)
++            )
++        }
++        .onAppear {
++            if let design = viewModel.design {
++                title = design.title
++                code = design.code
++                desc = design.description
++            }
++        }
++    }
++    
++    private func save() {
++        let design = Design(title: title, code: code, description: desc)
++        if design.hasValidCode {
++            if let idx = collection.designs.firstIndex(where: { $0.id == viewModel.design?.id }) {
++                collection.designs[idx] = design
++            } else {
++                collection.designs.append(design)
++            }
++            // Notify collection
++            collection.objectWillChange.send()
++            presentationMode.wrappedValue.dismiss()
++        }
++    }
++}
++
++public struct CollectionMoreDetailView: View {
++    @ObservedObject public var viewModel = CollectionMoreDetailViewModel()
++    @EnvironmentObject private var collection: UserCollection
++    @State private var showAddDesign = false
++    
++    public init() {}
++    
++    public var body: some View {
++        List {
++            ForEach(viewModel.rows) { row in
++                if row == .critters {
++                    Section(header: Text("Critters")) {
++                        if collection.critters.isEmpty {
++                            MessageView(collectionName: "critters")
++                        } else {
++                            ForEach(collection.critters) { critter in
++                                NavigationLink(destination: ItemDetailView(item: critter)) {
++                                    ItemRowView(displayMode: .large, item: critter)
++                                }
++                            }
++                        }
++                    }
++                } else if row == .designs {
++                    Section(header: Text("Custom Designs")) {
++                        Button("Add Custom Design") {
++                            showAddDesign = true
++                        }
++                        if collection.designs.isEmpty {
++                            MessageView(string: "No designs saved yet.")
++                        } else {
++                            ForEach(collection.designs) { design in
++                                DesignRowView(viewModel: DesignRowViewModel(design: design))
++                            }
++                            .onDelete { indexes in
++                                collection.designs.remove(atOffsets: indexes)
++                                collection.objectWillChange.send()
++                            }
++                        }
++                    }
++                }
++            }
++        }
++        .listStyle(GroupedListStyle())
++        .navigationBarTitle("More", displayMode: .inline)
++        .sheet(isPresented: $showAddDesign) {
++            DesignFormView(viewModel: DesignFormViewModel(design: nil))
++                .environmentObject(collection)
++        }
++    }
++}
++"""
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'r') as f:
++    content = f.read()
++
++content = content.replace('import Backend', 'import Backend\n' + new_code)
++content = content.replace('enum Tabs: String, CaseIterable {\n    case items, villagers, critters, lists\n}', 'public enum Tabs: String, CaseIterable {\n    case items, villagers, lists, more\n}')
++
++content = content.replace('} else if selectedTab == .critters && !collection.critters.isEmpty {\n                        ForEach(collection.critters) { critter in\n                            NavigationLink(destination: ItemDetailView(item: critter)) {\n                                ItemRowView(displayMode: .large, item: critter)\n                            }\n                        }', '} else if selectedTab == .more {\n                        CollectionMoreDetailView()')
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'w') as f:
++    f.write(content)
++
+diff --git a/fix_collection_save.py b/fix_collection_save.py
+new file mode 100644
+index 0000000..58043b1
+--- /dev/null
++++ b/fix_collection_save.py
+@@ -0,0 +1,11 @@
++import sys
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'r') as f:
++    orig = f.read()
++
++orig = orig.replace('collection.objectWillChange.send()\n            presentationMode', 'collection.save()\n            presentationMode')
++orig = orig.replace('collection.designs.remove(atOffsets: indexes)\n                                collection.objectWillChange.send()', 'collection.designs.remove(atOffsets: indexes)\n                                collection.save()')
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'w') as f:
++    f.write(orig)
++
+diff --git a/fix_detail_view.py b/fix_detail_view.py
+new file mode 100644
+index 0000000..b6f311a
+--- /dev/null
++++ b/fix_detail_view.py
+@@ -0,0 +1,11 @@
++import sys
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'r') as f:
++    orig = f.read()
++
++orig = orig.replace('public var body: some View {\n        List {\n            ForEach', 'public var body: some View {\n        Group {\n            ForEach')
++orig = orig.replace('        .listStyle(GroupedListStyle())\n        .navigationBarTitle("More", displayMode: .inline)\n', '')
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'w') as f:
++    f.write(orig)
++
+diff --git a/fix_detail_view_brace.py b/fix_detail_view_brace.py
+new file mode 100644
+index 0000000..a5eea7d
+--- /dev/null
++++ b/fix_detail_view_brace.py
+@@ -0,0 +1,10 @@
++import sys
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'r') as f:
++    orig = f.read()
++
++orig = orig.replace('                }\n            }\n        }\n        .sheet', '                }\n            }\n        }\n        .sheet') # Oh wait, the closing brace is correct because `Group` also uses `}`
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'w') as f:
++    f.write(orig)
++
+diff --git a/fix_empty.py b/fix_empty.py
+new file mode 100644
+index 0000000..52be218
+--- /dev/null
++++ b/fix_empty.py
+@@ -0,0 +1,17 @@
++import sys
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'r') as f:
++    orig = f.read()
++
++orig = orig.replace('''private var emptyView: some View {
++        let selectedTabName = NSLocalizedString(selectedTab.rawValue, comment: "")
++        return Text("When you stars some \(selectedTabName), they\'ll be displayed here.")
++            .foregroundColor(.acSecondaryText)
++    }''', '''private var emptyView: some View {
++        let selectedTabName = NSLocalizedString(selectedTab.rawValue, comment: "")
++        return MessageView(collectionName: selectedTabName)
++    }''')
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'w') as f:
++    f.write(orig)
++
+diff --git a/fix_save.py b/fix_save.py
+new file mode 100644
+index 0000000..447d4bc
+--- /dev/null
++++ b/fix_save.py
+@@ -0,0 +1,10 @@
++import sys
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'r') as f:
++    orig = f.read()
++
++orig = orig.replace('.disabled(title.isEmpty || code.isEmpty)', '.disabled(title.isEmpty || !Design(title: title, code: code, description: desc).hasValidCode)')
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'w') as f:
++    f.write(orig)
++
+diff --git a/make_secondary_nav.py b/make_secondary_nav.py
+new file mode 100644
+index 0000000..03a0aaa
+--- /dev/null
++++ b/make_secondary_nav.py
+@@ -0,0 +1,74 @@
++import sys
++
++new_code = """
++public struct CollectionMoreDetailView: View {
++    @ObservedObject public var viewModel = CollectionMoreDetailViewModel()
++    @EnvironmentObject private var collection: UserCollection
++    @State private var showAddDesign = false
++    
++    public init() {}
++    
++    public var body: some View {
++        Group {
++            ForEach(viewModel.rows) { row in
++                NavigationLink(destination: destination(for: row)) {
++                    Text(LocalizedStringKey(row.rawValue.capitalized))
++                        .font(.headline)
++                }
++            }
++        }
++    }
++    
++    @ViewBuilder
++    private func destination(for row: CollectionMoreDetailViewModel.Row) -> some View {
++        if row == .critters {
++            List {
++                if collection.critters.isEmpty {
++                    MessageView(collectionName: "critters")
++                } else {
++                    ForEach(collection.critters) { critter in
++                        NavigationLink(destination: ItemDetailView(item: critter)) {
++                            ItemRowView(displayMode: .large, item: critter)
++                        }
++                    }
++                }
++            }
++            .listStyle(GroupedListStyle())
++            .navigationBarTitle("Critters")
++        } else {
++            List {
++                Section(header: Text("Custom Designs")) {
++                    Button("Add Custom Design") {
++                        showAddDesign = true
++                    }
++                    if collection.designs.isEmpty {
++                        MessageView(string: "No designs saved yet.")
++                    } else {
++                        ForEach(collection.designs) { design in
++                            DesignRowView(viewModel: DesignRowViewModel(design: design))
++                        }
++                        .onDelete { indexes in
++                            collection.designs.remove(atOffsets: indexes)
++                            collection.save()
++                        }
++                    }
++                }
++            }
++            .listStyle(GroupedListStyle())
++            .navigationBarTitle("Custom Designs")
++            .sheet(isPresented: $showAddDesign) {
++                DesignFormView(viewModel: DesignFormViewModel(design: nil))
++                    .environmentObject(collection)
++            }
++        }
++    }
++}
++"""
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'r') as f:
++    orig = f.read()
++
++import re
++orig = re.sub(r'public struct CollectionMoreDetailView: View \{.*\}\n\nwith', new_code + '\nwith', orig, flags=re.DOTALL)
++# actually the above regex might not work properly if "with" is not there. Wait, I'll just rewrite CollectionMoreDetailView in Python by splitting.
++
+diff --git a/move_sheet.py b/move_sheet.py
+new file mode 100644
+index 0000000..b3539d7
+--- /dev/null
++++ b/move_sheet.py
+@@ -0,0 +1,11 @@
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'r') as f:
++    text = f.read()
++
++# remove from AnyView(List...
++text = text.replace('.sheet(isPresented: $showAddDesign) {\n                DesignFormView(viewModel: DesignFormViewModel(design: nil))\n                    .environmentObject(collection)\n            })', '})')
++# add to body
++text = text.replace('        }\n    }\n    \n    private func destination', '        }\n        .sheet(isPresented: $showAddDesign) {\n            DesignFormView(viewModel: DesignFormViewModel(design: nil))\n                .environmentObject(collection)\n        }\n    }\n    \n    private func destination')
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'w') as f:
++    f.write(text)
++
+diff --git a/rewrite_more_view.py b/rewrite_more_view.py
+new file mode 100644
+index 0000000..12f05f2
+--- /dev/null
++++ b/rewrite_more_view.py
+@@ -0,0 +1,75 @@
++import sys, re
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'r') as f:
++    text = f.read()
++
++start = text.find('public struct CollectionMoreDetailView: View {')
++end = text.find('struct CollectionListView: View {')
++
++if start != -1 and end != -1:
++    new_text = text[:start] + """public struct CollectionMoreDetailView: View {
++    @ObservedObject public var viewModel = CollectionMoreDetailViewModel()
++    @EnvironmentObject private var collection: UserCollection
++    @State private var showAddDesign = false
++    
++    public init() {}
++    
++    public var body: some View {
++        ForEach(viewModel.rows) { row in
++            NavigationLink(destination: destination(for: row)) {
++                Text(LocalizedStringKey(row.rawValue.capitalized))
++            }
++        }
++    }
++    
++    private func destination(for row: CollectionMoreDetailViewModel.Row) -> AnyView {
++        if row == .critters {
++            if collection.critters.isEmpty {
++                return AnyView(MessageView(collectionName: "critters")
++                    .navigationBarTitle("Critters")
++                    .frame(maxWidth: .infinity, maxHeight: .infinity))
++            } else {
++                return AnyView(List {
++                    ForEach(collection.critters) { critter in
++                        NavigationLink(destination: ItemDetailView(item: critter)) {
++                            ItemRowView(displayMode: .large, item: critter)
++                        }
++                    }
++                }
++                .listStyle(GroupedListStyle())
++                .navigationBarTitle("Critters"))
++            }
++        } else {
++            return AnyView(List {
++                Section(header: Text("Custom Designs")) {
++                    Button("Add Custom Design") {
++                        showAddDesign = true
++                    }
++                    if collection.designs.isEmpty {
++                        MessageView(string: "No designs saved yet.")
++                    } else {
++                        ForEach(collection.designs) { design in
++                            DesignRowView(viewModel: DesignRowViewModel(design: design))
++                        }
++                        .onDelete { indexes in
++                            collection.designs.remove(atOffsets: indexes)
++                            collection.save()
++                        }
++                    }
++                }
++            }
++            .listStyle(GroupedListStyle())
++            .navigationBarTitle("Custom Designs", displayMode: .inline)
++            .sheet(isPresented: $showAddDesign) {
++                DesignFormView(viewModel: DesignFormViewModel(design: nil))
++                    .environmentObject(collection)
++            })
++        }
++    }
++}
++
++""" + text[end:]
++
++    with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'w') as f:
++        f.write(new_text)
++
+diff --git a/run_tests.sh b/run_tests.sh
+new file mode 100644
+index 0000000..b87a27a
+--- /dev/null
++++ b/run_tests.sh
+@@ -0,0 +1,2 @@
++cd ACHNBrowserUI
++swift test --package-path packages/Backend || echo "Backend test failed"
+diff --git a/update_views.py b/update_views.py
+new file mode 100644
+index 0000000..83e162b
+--- /dev/null
++++ b/update_views.py
+@@ -0,0 +1,211 @@
++import re
++
++design_code = """
++import Combine
++
++public struct MessageView: View {
++    public let message: String
++    
++    public init(string: String) {
++        self.message = string
++    }
++    
++    public init(collectionName: String) {
++        self.message = "When you stars some \(collectionName), they'll be displayed here."
++    }
++    
++    public init(noResultsFor: String) {
++        self.message = "No results for \(noResultsFor)"
++    }
++    
++    public var body: some View {
++        Text(message)
++            .foregroundColor(.acSecondaryText)
++    }
++}
++
++public class DesignRowViewModel: ObservableObject {
++    @Published public var design: Design
++    
++    public init(design: Design) {
++        self.design = design
++    }
++    
++    public var category: String {
++        let codeUpper = design.code.uppercased()
++        if codeUpper.hasPrefix("MA") { return "Creator" }
++        if codeUpper.hasPrefix("MO") { return "Item" }
++        return "Unknown"
++    }
++    
++    public var code: String {
++        let clean = design.code.uppercased().replacingOccurrences(of: "-", with: "")
++        guard clean.count >= 2 else { return clean }
++        let prefix = String(clean.prefix(2))
++        let rest = String(clean.dropFirst(2))
++        var chunks = [String]()
++        var currentChunk = ""
++        for (i, char) in rest.enumerated() {
++            currentChunk.append(char)
++            if (i + 1) % 4 == 0 {
++                chunks.append(currentChunk)
++                currentChunk = ""
++            }
++        }
++        if !currentChunk.isEmpty {
++            chunks.append(currentChunk)
++        }
++        return prefix + "-" + chunks.joined(separator: "-")
++    }
++}
++
++public class DesignFormViewModel: ObservableObject {
++    @Published public var design: Design?
++    
++    public init(design: Design?) {
++        self.design = design
++    }
++}
++
++public class CollectionMoreDetailViewModel: ObservableObject {
++    public enum Row: String, CaseIterable, Identifiable {
++        case critters, designs
++        public var id: String { rawValue }
++    }
++    
++    @Published public var rows: [Row] = [.critters, .designs]
++}
++
++public struct DesignRowView: View {
++    @ObservedObject var viewModel: DesignRowViewModel
++    
++    public var body: some View {
++        VStack(alignment: .leading, spacing: 5) {
++            Text(viewModel.design.title).font(.headline)
++            Text(viewModel.category).font(.subheadline)
++            Text(viewModel.code).font(.subheadline).foregroundColor(.secondary)
++            if !viewModel.design.description.isEmpty {
++                Text(viewModel.design.description).font(.body)
++            }
++        }
++        .padding(.vertical, 8)
++    }
++}
++
++struct DesignFormView: View {
++    @Environment(\\ .presentationMode) var presentationMode
++    @EnvironmentObject private var collection: UserCollection
++    @ObservedObject var viewModel: DesignFormViewModel
++    
++    @State private var title: String = ""
++    @State private var code: String = ""
++    @State private var desc: String = ""
++    
++    var body: some View {
++        NavigationView {
++            Form {
++                Section(header: Text("Design Details")) {
++                    TextField("Title", text: $title)
++                    TextField("Code (MA-... / MO-...)", text: $code)
++                        .autocapitalization(.allCharacters)
++                    TextField("Description", text: $desc)
++                }
++            }
++            .navigationBarTitle(viewModel.design == nil ? "New Design" : "Edit Design", displayMode: .inline)
++            .navigationBarItems(
++                leading: Button("Cancel") { presentationMode.wrappedValue.dismiss() },
++                trailing: Button("Save") { save() }.disabled(title.isEmpty || code.isEmpty)
++            )
++        }
++        .onAppear {
++            if let design = viewModel.design {
++                title = design.title
++                code = design.code
++                desc = design.description
++            }
++        }
++    }
++    
++    private func save() {
++        let design = Design(title: title, code: code, description: desc)
++        if design.hasValidCode {
++            if let idx = collection.designs.firstIndex(where: { $0.id == viewModel.design?.id }) {
++                collection.designs[idx] = design
++            } else {
++                collection.designs.append(design)
++            }
++            // We shouldn't invoke save() manually here since it's an EnvironmentObject but since it's our structure we appended it
++            presentationMode.wrappedValue.dismiss()
++        }
++    }
++}
++
++struct CollectionMoreDetailView: View {
++    @ObservedObject var viewModel = CollectionMoreDetailViewModel()
++    @EnvironmentObject private var collection: UserCollection
++    @State private var showAddDesign = false
++    
++    var body: some View {
++        List {
++            ForEach(viewModel.rows) { row in
++                if row == .critters {
++                    if collection.critters.isEmpty {
++                        MessageView(collectionName: "critters")
++                    } else {
++                        ForEach(collection.critters) { critter in
++                            NavigationLink(destination: ItemDetailView(item: critter)) {
++                                ItemRowView(displayMode: .large, item: critter)
++                            }
++                        }
++                    }
++                } else if row == .designs {
++                    Section(header: Text("Custom Designs")) {
++                        Button(action: { showAddDesign = true }) {
++                            Text("Add Custom Design").foregroundColor(.blue)
++                        }
++                        if collection.designs.isEmpty {
++                            MessageView(string: "No designs saved yet.")
++                        } else {
++                            ForEach(collection.designs) { design in
++                                DesignRowView(viewModel: DesignRowViewModel(design: design))
++                            }
++                            .onDelete { indexes in
++                                collection.designs.remove(atOffsets: indexes)
++                            }
++                        }
++                    }
++                }
++            }
++        }
++        .listStyle(GroupedListStyle())
++        .navigationBarTitle("More", displayMode: .inline)
++        .sheet(isPresented: $showAddDesign) {
++            DesignFormView(viewModel: DesignFormViewModel(design: nil))
++                .environmentObject(collection)
++        }
++    }
++}
++"""
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'r') as f:
++    orig = f.read()
++
++# Replace Tab enum
++orig = re.sub(r'enum Tabs: String, CaseIterable \{\n    case items, villagers, critters, lists\n\}',
++              'enum Tabs: String, CaseIterable {\n    case items, villagers, lists, more\n}',
++              orig)
++
++# In CollectionListView body, replace critters with more
++orig = re.sub(r'\} else if selectedTab == \.critters && !collection.critters.isEmpty \{[^}]+(?:\n\s+[^}]+)+\}',
++              '} else if selectedTab == .more {\n                        CollectionMoreDetailView()\n                    ', orig)
++
++orig = orig.replace('import Backend', 'import Backend\n' + design_code)
++
++orig = orig.replace('private var emptyView: some View {', '''private var emptyView: some View {
++        return MessageView(collectionName: NSLocalizedString(selectedTab.rawValue, comment: ""))
++    }
++    private var old_emptyView: some View {''')
++
++with open('./ACHNBrowserUI/ACHNBrowserUI/views/collection/CollectionListView.swift', 'w') as f:
++    f.write(orig)
++

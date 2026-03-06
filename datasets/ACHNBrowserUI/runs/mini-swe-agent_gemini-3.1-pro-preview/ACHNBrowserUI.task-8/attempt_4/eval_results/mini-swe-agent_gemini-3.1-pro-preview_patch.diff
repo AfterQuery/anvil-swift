@@ -1,0 +1,589 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj b/ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj
+index e3de161..ea1a853 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj
++++ b/ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj
+@@ -7,6 +7,9 @@
+ 	objects = {
+ 
+ /* Begin PBXBuildFile section */
++		9C9C9C9C9C9C9C9C9C9C9C9C /* TurnipsPriceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A9A9A9A9A9A9A9A9A9A9A9A /* TurnipsPriceRow.swift */; };
++		9D9D9D9D9D9D9D9D9D9D9D9D /* TurnipsMinMaxPriceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B9B9B9B9B9B9B9B9B9B9B9B /* TurnipsMinMaxPriceRow.swift */; };
++
+ 		690A72C924752BF4001E7294 /* villagersLikes in Resources */ = {isa = PBXBuildFile; fileRef = 690A72C824752BF4001E7294 /* villagersLikes */; };
+ 		69157B7E2471A5A1005B9002 /* TodayMysteryIslandsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69157B6D247121ED005B9002 /* TodayMysteryIslandsSection.swift */; };
+ 		69157B7F2471A5A1005B9002 /* TodayNookazonSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 693E2BC3246689C500B85CB8 /* TodayNookazonSection.swift */; };
+@@ -187,6 +190,9 @@
+ /* End PBXCopyFilesBuildPhase section */
+ 
+ /* Begin PBXFileReference section */
++		9A9A9A9A9A9A9A9A9A9A9A9A /* TurnipsPriceRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsPriceRow.swift; sourceTree = "<group>"; };
++		9B9B9B9B9B9B9B9B9B9B9B9B /* TurnipsMinMaxPriceRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsMinMaxPriceRow.swift; sourceTree = "<group>"; };
++
+ 		024363D02465EA14006A37A0 /* TodayCurrentlyAvailableSection.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TodayCurrentlyAvailableSection.swift; sourceTree = "<group>"; };
+ 		024363D12465EA14006A37A0 /* TodayTurnipSection.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TodayTurnipSection.swift; sourceTree = "<group>"; };
+ 		024363D22465EA14006A37A0 /* TodayView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
+@@ -511,6 +517,8 @@
+ 			isa = PBXGroup;
+ 			children = (
+ 				69518369245977D1005D28E0 /* TurnipsAveragePriceRow.swift */,
++				9A9A9A9A9A9A9A9A9A9A9A9A /* TurnipsPriceRow.swift */,
++				9B9B9B9B9B9B9B9B9B9B9B9B /* TurnipsMinMaxPriceRow.swift */,
+ 			);
+ 			path = rows;
+ 			sourceTree = "<group>";
+@@ -1091,6 +1099,8 @@
+ 				69157BD12471A5A1005B9002 /* TurnipsViewModel.swift in Sources */,
+ 				69157BD22471A5A1005B9002 /* TodayWhatsNewSection.swift in Sources */,
+ 				69157BD32471A5A1005B9002 /* TurnipsAveragePriceRow.swift in Sources */,
++				9C9C9C9C9C9C9C9C9C9C9C9C /* TurnipsPriceRow.swift in Sources */,
++				9D9D9D9D9D9D9D9D9D9D9D9D /* TurnipsMinMaxPriceRow.swift in Sources */,
+ 				69157BD42471A5A1005B9002 /* EventsDescription.swift in Sources */,
+ 				69157BD52471A5A1005B9002 /* ItemDetailInfoView.swift in Sources */,
+ 				69157BD62471A5A1005B9002 /* UserListSubscribeCallView.swift in Sources */,
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/services/TurnipPredictionsService.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/services/TurnipPredictionsService.swift
+index 9f3b970..75e4f9e 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/services/TurnipPredictionsService.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/services/TurnipPredictionsService.swift
+@@ -64,14 +64,29 @@ public class TurnipPredictionsService: ObservableObject {
+             values.amount > 0, let buyPrice = Int(values.buyPrice){
+             averageProfits = []
+             let investment = values.amount * buyPrice
+-            for avg in averagePrices {
+-                averageProfits?.append((avg * values.amount) - investment)
++            for (i, avg) in averagePrices.enumerated() {
++                let actualVal = (i < values.fields.count && !values.fields[i].isEmpty) ? (Int(values.fields[i]) ?? avg) : avg
++                averageProfits?.append((actualVal * values.amount) - investment)
++            }
++        }
++        
++        var finalAveragePrices = results?.toDictionary()["avgPattern"] as? [Int]
++        var finalMinMax = results?.toDictionary()["minMaxPattern"] as? [[Int]]
++        
++        for (i, field) in values.fields.enumerated() {
++            if !field.isEmpty, let val = Int(field) {
++                if finalAveragePrices != nil && i < finalAveragePrices!.count {
++                    finalAveragePrices![i] = val
++                }
++                if finalMinMax != nil && i < finalMinMax!.count {
++                    finalMinMax![i] = [val, val]
++                }
+             }
+         }
+         
+         return TurnipPredictions(minBuyPrice: results?.toDictionary()["minWeekValue"] as? Int,
+-                                 averagePrices: results?.toDictionary()["avgPattern"] as? [Int],
+-                                 minMax: results?.toDictionary()["minMaxPattern"] as? [[Int]],
++                                 averagePrices: finalAveragePrices,
++                                 minMax: finalMinMax,
+                                  averageProfits: averageProfits)
+     }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+index 64f896e..fc83129 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+@@ -159,12 +159,14 @@ extension TurnipsView {
+                 if turnipsDisplay == .average {
+                     ForEach(0..<viewModel.averagesPrices!.count) { i in
+                         TurnipsAveragePriceRow(label: self.labels[i],
+-                                               prices: self.viewModel.averagesPrices![i])
++                                               prices: self.viewModel.averagesPrices![i],
++                                               minMaxPrices: self.viewModel.minMaxPrices![i])
+                     }
+                 } else if turnipsDisplay == .minMax {
+                     ForEach(0..<viewModel.minMaxPrices!.count) { i in
+-                        TurnipsAveragePriceRow(label: self.labels[i],
+-                                               minMaxPrices: self.viewModel.minMaxPrices![i])
++                        TurnipsMinMaxPriceRow(label: self.labels[i],
++                                              prices: self.viewModel.minMaxPrices![i],
++                                              averagePrices: self.viewModel.averagesPrices![i])
+                     }
+                 } else if turnipsDisplay == .profits {
+                     if viewModel.averagesProfits != nil {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
+index 0edd497..8a985af 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsAveragePriceRow.swift
+@@ -1,28 +1,26 @@
+-//
+-//  TurnipsAveragePriceROw.swift
+-//  ACHNBrowserUI
+-//
+-//  Created by Thomas Ricouard on 29/04/2020.
+-//  Copyright © 2020 Thomas Ricouard. All rights reserved.
+-//
+-
+ import SwiftUI
++import Backend
+ 
+-struct TurnipsAveragePriceRow: View {
+-    let label: String
+-    let prices: [Int]?
+-    let minMaxPrices: [[Int]]?
++public struct TurnipsAveragePriceRow: View, TurnipsPriceRow {
++    public enum Meridian {
++        case am
++        case pm
++    }
++    
++    public let label: String
++    public let prices: [Int]
++    public let minMaxPrices: [[Int]]
+     
+-    init(label: String, prices: [Int]) {
++    public init(label: String, prices: [Int], minMaxPrices: [[Int]]) {
+         self.label = label
+         self.prices = prices
+-        self.minMaxPrices = nil
++        self.minMaxPrices = minMaxPrices
+     }
+     
+-    init(label: String, minMaxPrices: [[Int]]) {
++    public init(label: String, prices: [Int]) {
+         self.label = label
+-        self.prices = nil
+-        self.minMaxPrices = minMaxPrices
++        self.prices = prices
++        self.minMaxPrices = []
+     }
+     
+     private func color(price: Int) -> Color {
+@@ -35,48 +33,68 @@ struct TurnipsAveragePriceRow: View {
+         }
+     }
+     
+-    private func color(prices: [Int]) -> Color {
+-        color(price: Int(prices.average))
++    public func isEntered(meridian: Meridian) -> Bool {
++        return enteredValue(meridian: meridian) != nil
++    }
++    
++    private func enteredValue(meridian: Meridian) -> Int? {
++        let days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
++        guard let dayIndex = days.firstIndex(of: label) else { return nil }
++        let index = dayIndex * 2 + (meridian == .am ? 0 : 1)
++        let fields = TurnipPredictionsService.shared.fields?.fields ?? TurnipFields.decode().fields
++        if index < fields.count, !fields[index].isEmpty, let val = Int(fields[index]) {
++            return val
++        }
++        return nil
++    }
++    
++    private func amView() -> AnyView {
++        if let entered = enteredValue(meridian: .am) {
++            return Text("\(entered)")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(.acText)
++                .eraseToAnyView()
++        }
++        
++        if let first = prices.first {
++            return Text("\(first)")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(color(price: first))
++                .eraseToAnyView()
++        }
++        return EmptyView().eraseToAnyView()
++    }
++    
++    private func pmView() -> AnyView {
++        if let entered = enteredValue(meridian: .pm) {
++            return Text("\(entered)")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(.acText)
++                .eraseToAnyView()
++        }
++        
++        if let last = prices.last {
++            return Text("\(last)")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(color(price: last))
++                .eraseToAnyView()
++        }
++        return EmptyView().eraseToAnyView()
+     }
+     
+-    var body: some View {
++    public var body: some View {
+         HStack {
+             Text(LocalizedStringKey(label))
+                 .font(.body)
+                 .foregroundColor(.acText)
+             Spacer()
+-            if prices != nil {
+-                Text("\(prices!.first!)")
+-                    .font(.headline)
+-                    .fontWeight(.bold)
+-                    .foregroundColor(color(price: prices!.first!))
+-                Spacer()
+-                Text("\(prices!.last!)")
+-                    .font(.headline)
+-                    .fontWeight(.bold)
+-                    .foregroundColor(color(price: prices!.last!))
+-            } else if minMaxPrices != nil {
+-                Text("\(minMaxPrices!.first!.first!) - \(minMaxPrices!.first!.last!)")
+-                    .font(.headline)
+-                    .fontWeight(.bold)
+-                    .foregroundColor(color(prices: minMaxPrices!.first!))
+-                Spacer()
+-                Text("\(minMaxPrices!.last!.first!) - \(minMaxPrices!.last!.last!)")
+-                    .font(.headline)
+-                    .fontWeight(.bold)
+-                    .foregroundColor(color(prices: minMaxPrices!.last!))
+-            }
+-        }
+-    }
+-}
+-
+-struct TurnipsAveragePriceRow_Previews: PreviewProvider {
+-    static var previews: some View {
+-        NavigationView {
+-            List {
+-                TurnipsAveragePriceRow(label: "Mon", prices: [90, 95])
+-                TurnipsAveragePriceRow(label: "Mon", prices: [40, 600])
+-            }
++            amView()
++            Spacer()
++            pmView()
+         }
+     }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift
+new file mode 100644
+index 0000000..08a9c4a
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsMinMaxPriceRow.swift
+@@ -0,0 +1,100 @@
++import SwiftUI
++import Backend
++
++public struct TurnipsMinMaxPriceRow: View, TurnipsPriceRow {
++    public let label: String
++    public let prices: [[Int]]
++    public let averagePrices: [Int]
++    
++    public init(label: String, prices: [[Int]], averagePrices: [Int]) {
++        self.label = label
++        self.prices = prices
++        self.averagePrices = averagePrices
++    }
++    
++    public init(label: String, prices: [[Int]]) {
++        self.label = label
++        self.prices = prices
++        self.averagePrices = []
++    }
++    
++    private func color(price: Int) -> Color {
++        if price <= 90 {
++            return .red
++        } else if price >= 150 {
++            return .acTabBarBackground
++        } else {
++            return .acSecondaryText
++        }
++    }
++    
++    private func color(prices: [Int]) -> Color {
++        if prices.isEmpty { return .acSecondaryText }
++        return color(price: Int(prices.average))
++    }
++    
++    public func isEntered(meridian: TurnipsAveragePriceRow.Meridian) -> Bool {
++        return enteredValue(meridian: meridian) != nil
++    }
++    
++    private func enteredValue(meridian: TurnipsAveragePriceRow.Meridian) -> Int? {
++        let days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
++        guard let dayIndex = days.firstIndex(of: label) else { return nil }
++        let index = dayIndex * 2 + (meridian == .am ? 0 : 1)
++        let fields = TurnipPredictionsService.shared.fields?.fields ?? TurnipFields.decode().fields
++        if index < fields.count, !fields[index].isEmpty, let val = Int(fields[index]) {
++            return val
++        }
++        return nil
++    }
++    
++    private func amView() -> AnyView {
++        if let entered = enteredValue(meridian: .am) {
++            return Text("\(entered)")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(.acText)
++                .eraseToAnyView()
++        }
++        
++        if let first = prices.first, let firstPrice = first.first, let lastPrice = first.last {
++            return Text("\(firstPrice) - \(lastPrice)")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(color(prices: first))
++                .eraseToAnyView()
++        }
++        return EmptyView().eraseToAnyView()
++    }
++    
++    private func pmView() -> AnyView {
++        if let entered = enteredValue(meridian: .pm) {
++            return Text("\(entered)")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(.acText)
++                .eraseToAnyView()
++        }
++        
++        if let last = prices.last, let firstPrice = last.first, let lastPrice = last.last {
++            return Text("\(firstPrice) - \(lastPrice)")
++                .font(.headline)
++                .fontWeight(.bold)
++                .foregroundColor(color(prices: last))
++                .eraseToAnyView()
++        }
++        return EmptyView().eraseToAnyView()
++    }
++    
++    public var body: some View {
++        HStack {
++            Text(LocalizedStringKey(label))
++                .font(.body)
++                .foregroundColor(.acText)
++            Spacer()
++            amView()
++            Spacer()
++            pmView()
++        }
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsPriceRow.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsPriceRow.swift
+new file mode 100644
+index 0000000..b5f43eb
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/rows/TurnipsPriceRow.swift
+@@ -0,0 +1,13 @@
++import Foundation
++import SwiftUI
++import Backend
++
++public protocol TurnipsPriceRow: View {
++    func isEntered(meridian: TurnipsAveragePriceRow.Meridian) -> Bool
++}
++
++extension View {
++    public func eraseToAnyView() -> AnyView {
++        return AnyView(self)
++    }
++}
+diff --git a/add_build_files.sh b/add_build_files.sh
+new file mode 100644
+index 0000000..b6b86ab
+--- /dev/null
++++ b/add_build_files.sh
+@@ -0,0 +1,3 @@
++sed -i '/69157BD32471A5A1005B9002 \/\* TurnipsAveragePriceRow.swift in Sources \*\// i\
++		9C9C9C9C9C9C9C9C9C9C9C9C /* TurnipsPriceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A9A9A9A9A9A9A9A9A9A9A9A /* TurnipsPriceRow.swift */; };\
++		9D9D9D9D9D9D9D9D9D9D9D9D /* TurnipsMinMaxPriceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B9B9B9B9B9B9B9B9B9B9B9B /* TurnipsMinMaxPriceRow.swift */; };' ./ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj
+diff --git a/add_file_refs.sh b/add_file_refs.sh
+new file mode 100644
+index 0000000..c338c09
+--- /dev/null
++++ b/add_file_refs.sh
+@@ -0,0 +1,3 @@
++sed -i '/69518369245977D1005D28E0 \/\* TurnipsAveragePriceRow.swift \*\// i\
++		9A9A9A9A9A9A9A9A9A9A9A9A /* TurnipsPriceRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsPriceRow.swift; sourceTree = "<group>"; };\
++		9B9B9B9B9B9B9B9B9B9B9B9B /* TurnipsMinMaxPriceRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsMinMaxPriceRow.swift; sourceTree = "<group>"; };' ./ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj
+diff --git a/eraseToAnyView.swift b/eraseToAnyView.swift
+new file mode 100644
+index 0000000..48f2d04
+--- /dev/null
++++ b/eraseToAnyView.swift
+@@ -0,0 +1,6 @@
++import SwiftUI
++extension View {
++    func eraseToAnyView() -> AnyView {
++        return AnyView(self)
++    }
++}
+diff --git a/patch_pbxproj.py b/patch_pbxproj.py
+new file mode 100644
+index 0000000..ace1f7a
+--- /dev/null
++++ b/patch_pbxproj.py
+@@ -0,0 +1,38 @@
++import re
++import sys
++
++with open('ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj', 'r') as f:
++    content = f.read()
++
++# 1. PBXBuildFile section
++# Find a place in PBXBuildFile section to insert
++build_file_str = """
++		9C9C9C9C9C9C9C9C9C9C9C9C /* TurnipsPriceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A9A9A9A9A9A9A9A9A9A9A9A /* TurnipsPriceRow.swift */; };
++		9D9D9D9D9D9D9D9D9D9D9D9D /* TurnipsMinMaxPriceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B9B9B9B9B9B9B9B9B9B9B9B /* TurnipsMinMaxPriceRow.swift */; };
++"""
++content = content.replace("/* Begin PBXBuildFile section */", f"/* Begin PBXBuildFile section */{build_file_str}")
++
++# 2. PBXFileReference section
++file_ref_str = """
++		9A9A9A9A9A9A9A9A9A9A9A9A /* TurnipsPriceRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsPriceRow.swift; sourceTree = "<group>"; };
++		9B9B9B9B9B9B9B9B9B9B9B9B /* TurnipsMinMaxPriceRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsMinMaxPriceRow.swift; sourceTree = "<group>"; };
++"""
++content = content.replace("/* Begin PBXFileReference section */", f"/* Begin PBXFileReference section */{file_ref_str}")
++
++# 3. PBXGroup children
++# We find TurnipsAveragePriceRow.swift in the children list of PBXGroup
++group_child_str = "69518369245977D1005D28E0 /* TurnipsAveragePriceRow.swift */,"
++new_group_child_str = f"""{group_child_str}
++				9A9A9A9A9A9A9A9A9A9A9A9A /* TurnipsPriceRow.swift */,
++				9B9B9B9B9B9B9B9B9B9B9B9B /* TurnipsMinMaxPriceRow.swift */,"""
++content = content.replace(group_child_str, new_group_child_str)
++
++# 4. PBXSourcesBuildPhase files
++sources_file_str = "69157BD32471A5A1005B9002 /* TurnipsAveragePriceRow.swift in Sources */,"
++new_sources_file_str = f"""{sources_file_str}
++				9C9C9C9C9C9C9C9C9C9C9C9C /* TurnipsPriceRow.swift in Sources */,
++				9D9D9D9D9D9D9D9D9D9D9D9D /* TurnipsMinMaxPriceRow.swift in Sources */,"""
++content = content.replace(sources_file_str, new_sources_file_str)
++
++with open('ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj', 'w') as f:
++    f.write(content)
+diff --git a/patch_service.py b/patch_service.py
+new file mode 100644
+index 0000000..b5bb63c
+--- /dev/null
++++ b/patch_service.py
+@@ -0,0 +1,34 @@
++import re
++
++with open('ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/services/TurnipPredictionsService.swift', 'r') as f:
++    text = f.read()
++
++target = """        var averageProfits: [Int]?
++        if let averagePrices = results?.toDictionary()["avgPattern"] as? [Int],
++            values.amount > 0, let buyPrice = Int(values.buyPrice){
++            averageProfits = []
++            let investment = values.amount * buyPrice
++            for avg in averagePrices {
++                averageProfits?.append((avg * values.amount) - investment)
++            }
++        }"""
++
++replacement = """        var averageProfits: [Int]?
++        if let averagePrices = results?.toDictionary()["avgPattern"] as? [Int],
++            values.amount > 0, let buyPrice = Int(values.buyPrice){
++            averageProfits = []
++            let investment = values.amount * buyPrice
++            for (i, avg) in averagePrices.enumerated() {
++                let actualVal = (i < values.fields.count && !values.fields[i].isEmpty) ? (Int(values.fields[i]) ?? avg) : avg
++                averageProfits?.append((actualVal * values.amount) - investment)
++            }
++        }"""
++
++new_text = text.replace(target, replacement)
++if new_text == text:
++    print("Warning: replacement not found")
++else:
++    print("Replacement successful")
++
++with open('ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/services/TurnipPredictionsService.swift', 'w') as f:
++    f.write(new_text)
+diff --git a/patch_service_2.py b/patch_service_2.py
+new file mode 100644
+index 0000000..2b8811d
+--- /dev/null
++++ b/patch_service_2.py
+@@ -0,0 +1,37 @@
++import re
++
++with open('ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/services/TurnipPredictionsService.swift', 'r') as f:
++    text = f.read()
++
++target = """        return TurnipPredictions(minBuyPrice: results?.toDictionary()["minWeekValue"] as? Int,
++                                 averagePrices: results?.toDictionary()["avgPattern"] as? [Int],
++                                 minMax: results?.toDictionary()["minMaxPattern"] as? [[Int]],
++                                 averageProfits: averageProfits)"""
++
++replacement = """        var finalAveragePrices = results?.toDictionary()["avgPattern"] as? [Int]
++        var finalMinMax = results?.toDictionary()["minMaxPattern"] as? [[Int]]
++        
++        for (i, field) in values.fields.enumerated() {
++            if !field.isEmpty, let val = Int(field) {
++                if finalAveragePrices != nil && i < finalAveragePrices!.count {
++                    finalAveragePrices![i] = val
++                }
++                if finalMinMax != nil && i < finalMinMax!.count {
++                    finalMinMax![i] = [val, val]
++                }
++            }
++        }
++        
++        return TurnipPredictions(minBuyPrice: results?.toDictionary()["minWeekValue"] as? Int,
++                                 averagePrices: finalAveragePrices,
++                                 minMax: finalMinMax,
++                                 averageProfits: averageProfits)"""
++
++new_text = text.replace(target, replacement)
++if new_text == text:
++    print("Warning: replacement not found")
++else:
++    print("Replacement successful")
++
++with open('ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/services/TurnipPredictionsService.swift', 'w') as f:
++    f.write(new_text)
+diff --git a/patch_view.py b/patch_view.py
+new file mode 100644
+index 0000000..6686c54
+--- /dev/null
++++ b/patch_view.py
+@@ -0,0 +1,39 @@
++import re
++
++with open('ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift', 'r') as f:
++    text = f.read()
++
++target = """                if turnipsDisplay == .average {
++                    ForEach(0..<viewModel.averagesPrices!.count) { i in
++                        TurnipsAveragePriceRow(label: self.labels[i],
++                                               prices: self.viewModel.averagesPrices![i])
++                    }
++                } else if turnipsDisplay == .minMax {
++                    ForEach(0..<viewModel.minMaxPrices!.count) { i in
++                        TurnipsAveragePriceRow(label: self.labels[i],
++                                               minMaxPrices: self.viewModel.minMaxPrices![i])
++                    }
++                }"""
++
++replacement = """                if turnipsDisplay == .average {
++                    ForEach(0..<viewModel.averagesPrices!.count) { i in
++                        TurnipsAveragePriceRow(label: self.labels[i],
++                                               prices: self.viewModel.averagesPrices![i],
++                                               minMaxPrices: self.viewModel.minMaxPrices![i])
++                    }
++                } else if turnipsDisplay == .minMax {
++                    ForEach(0..<viewModel.minMaxPrices!.count) { i in
++                        TurnipsMinMaxPriceRow(label: self.labels[i],
++                                              prices: self.viewModel.minMaxPrices![i],
++                                              averagePrices: self.viewModel.averagesPrices![i])
++                    }
++                }"""
++
++new_text = text.replace(target, replacement)
++if new_text == text:
++    print("Warning: replacement not found")
++else:
++    print("Replacement successful")
++
++with open('ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift', 'w') as f:
++    f.write(new_text)
+diff --git a/test_parse.swift b/test_parse.swift
+new file mode 100644
+index 0000000..290d1bf
+--- /dev/null
++++ b/test_parse.swift
+@@ -0,0 +1,2 @@
++import Foundation
++print("Parsing looks consistent")
