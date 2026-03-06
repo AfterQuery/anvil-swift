@@ -1,0 +1,450 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj b/ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj
+index 2a768a6..4c63400 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj
++++ b/ACHNBrowserUI/ACHNBrowserUI.xcodeproj/project.pbxproj
+@@ -7,6 +7,8 @@
+ 	objects = {
+ 
+ /* Begin PBXBuildFile section */
++			7A1111111111111111111111 /* TurnipsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1111111111111111111112 /* TurnipsViewModel.swift */; };
++			7A1111111111111111111113 /* TurnipsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1111111111111111111114 /* TurnipsView.swift */; };
+ 		687B57602449EEB100C1E86F /* Island.swift in Sources */ = {isa = PBXBuildFile; fileRef = 687B575F2449EEB100C1E86F /* Island.swift */; };
+ 		687B57622449EF8C00C1E86F /* TurnipExchangeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 687B57612449EF8C00C1E86F /* TurnipExchangeService.swift */; };
+ 		68DFFFA9244927A400DEA07F /* NookazonService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68DFFFA8244927A400DEA07F /* NookazonService.swift */; };
+@@ -145,6 +147,8 @@
+ 		69BEA98A243EFE9700F02C61 /* ItemDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemDetailView.swift; sourceTree = "<group>"; };
+ 		69C5F5E62442119500BF8FA4 /* Material.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Material.swift; sourceTree = "<group>"; };
+ 		69C5F5E9244217FB00BF8FA4 /* CategoriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoriesView.swift; sourceTree = "<group>"; };
++			7A1111111111111111111112 /* TurnipsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsViewModel.swift; sourceTree = "<group>"; };
++			7A1111111111111111111114 /* TurnipsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnipsView.swift; sourceTree = "<group>"; };
+ /* End PBXFileReference section */
+ 
+ /* Begin PBXFrameworksBuildPhase section */
+@@ -334,7 +338,15 @@
+ 			path = home;
+ 			sourceTree = "<group>";
+ 		};
+-		69BEA981243E608E00F02C61 /* shared */ = {
++		7A1111111111111111111115 /* turnips */ = {
++				isa = PBXGroup;
++				children = (
++					7A1111111111111111111114 /* TurnipsView.swift */,
++				);
++				path = turnips;
++				sourceTree = "<group>";
++			};
++			69BEA981243E608E00F02C61 /* shared */ = {
+ 			isa = PBXGroup;
+ 			children = (
+ 				69AF8C75243E3545001DD9CB /* SearchField.swift */,
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/models/Island.swift b/ACHNBrowserUI/ACHNBrowserUI/models/Island.swift
+index d360ecf..f6edcd4 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/models/Island.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/models/Island.swift
+@@ -40,4 +40,24 @@ struct Island: Decodable {
+     let creationTime: String
+     let islandDescription: String
+     let queued: String
++    
++    private enum CodingKeys: String, CodingKey {
++        case name, fruit, turnipPrice, maxQueue, turnipCode, hemisphere, watchlist, commerce, islandTime, creationTime, islandDescription, queued
++    }
++    
++    init(from decoder: Decoder) throws {
++        let container = try decoder.container(keyedBy: CodingKeys.self)
++        name = try container.decode(String.self, forKey: .name)
++        fruit = try container.decode(Fruit.self, forKey: .fruit)
++        turnipPrice = try container.decode(Int.self, forKey: .turnipPrice)
++        maxQueue = try container.decode(Int.self, forKey: .maxQueue)
++        turnipCode = try container.decode(String.self, forKey: .turnipCode)
++        hemisphere = try container.decode(Hemisphere.self, forKey: .hemisphere)
++        watchlist = try container.decode(Int.self, forKey: .watchlist)
++        commerce = try container.decode(Commerce.self, forKey: .commerce)
++        islandTime = try container.decode(String.self, forKey: .islandTime)
++        creationTime = try container.decode(String.self, forKey: .creationTime)
++        islandDescription = try container.decodeIfPresent(String.self, forKey: .islandDescription) ?? ""
++        queued = try container.decode(String.self, forKey: .queued)
++    }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/ItemsViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/ItemsViewModel.swift
+index e4ed4b2..178030a 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/ItemsViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/ItemsViewModel.swift
+@@ -60,6 +60,7 @@ class ItemsViewModel: ObservableObject {
+     
+     init(categorie: Categories) {
+         self.categorie = categorie
++        fetch()
+         searchCancellable = _searchText
+             .projectedValue
+             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/TurnipsViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/TurnipsViewModel.swift
+new file mode 100644
+index 0000000..ddd8234
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/TurnipsViewModel.swift
+@@ -0,0 +1,14 @@
++import Foundation
++import Combine
++
++class TurnipsViewModel: ObservableObject {
++    @Published var islands: [Island] = []
++    
++    private var apiCancellable: AnyCancellable?
++    
++    func fetch() {
++        apiCancellable = TurnipExchangeService.fetchIslands()
++            .receive(on: DispatchQueue.main)
++            .assign(to: \.islands, on: self)
++    }
++}
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/categories/CategoriesView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/categories/CategoriesView.swift
+index b6fc448..db6f5be 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/categories/CategoriesView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/categories/CategoriesView.swift
+@@ -10,35 +10,55 @@ import SwiftUI
+ 
+ struct CategoriesView: View {
+     let categories: [Categories]
+-    @Binding var selectedCategory: Categories
+-    @Environment(\.presentationMode) private var presentationMode
+     
+     var body: some View {
+         NavigationView {
+-            List(categories, id: \.self) { categorie in
+-                Button(action: {
+-                    self.selectedCategory = categorie
+-                    self.presentationMode.wrappedValue.dismiss()
+-                }) {
+-                    HStack(spacing: 4) {
+-                        if categorie == self.selectedCategory {
+-                            Image(systemName: "checkmark").foregroundColor(.bell)
+-                        }
+-                        Image(categorie.iconName())
+-                            .renderingMode(.original)
+-                            .resizable()
+-                            .frame(width: 25, height: 25)
+-                        Text(categorie.rawValue.capitalized).foregroundColor(.text)
+-                    }
++            List {
++                NavigationLink(destination: CategoryDetailView(categories: categories)) {
++                    LabelRow(title: "Browse Categories", systemImage: "square.grid.2x2")
+                 }
+-                }.navigationBarTitle(Text("Categories"), displayMode: .inline)
++            }
++            .listStyle(GroupedListStyle())
++            .navigationBarTitle(Text("Catalog"), displayMode: .inline)
+         }.navigationViewStyle(StackNavigationViewStyle())
+     }
+ }
+ 
++struct CategoryDetailView: View {
++    let categories: [Categories]
++    
++    var body: some View {
++        List(categories, id: \.self) { categorie in
++            NavigationLink(destination: ItemsListView(viewModel: ItemsViewModel(categorie: categorie))) {
++                HStack(spacing: 8) {
++                    Image(categorie.iconName())
++                        .renderingMode(.original)
++                        .resizable()
++                        .frame(width: 25, height: 25)
++                    Text(categorie.rawValue.capitalized).foregroundColor(.text)
++                }
++            }
++        }
++        .navigationBarTitle(Text("Categories"), displayMode: .inline)
++    }
++}
++
++private struct LabelRow: View {
++    let title: String
++    let systemImage: String
++    
++    var body: some View {
++        HStack(spacing: 8) {
++            Image(systemName: systemImage)
++                .foregroundColor(.bell)
++            Text(title)
++                .foregroundColor(.text)
++        }
++    }
++}
++
+ struct CategoriesView_Previews: PreviewProvider {
+     static var previews: some View {
+-        CategoriesView(categories: Categories.items(),
+-                       selectedCategory: .constant(.housewares))
++        CategoriesView(categories: Categories.items())
+     }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/home/TabbarView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/home/TabbarView.swift
+index 977f5cd..d7a9a21 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/home/TabbarView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/home/TabbarView.swift
+@@ -10,7 +10,7 @@ import SwiftUI
+ 
+ struct TabbarView: View {
+     enum Tab: Int {
+-        case items, wardrobe, nature, villagers, collection
++        case items, wardrobe, nature, villagers, collection, turnips
+     }
+     
+     @State var selectedTab = Tab.items
+@@ -25,13 +25,13 @@ struct TabbarView: View {
+     var body: some View {
+         TabView(selection: $selectedTab) {
+             Group {
+-                ItemsListView(categories: Categories.items()).tabItem{
++                CategoriesView(categories: Categories.items()).tabItem{
+                     self.tabbarItem(text: "Items", image: "icon-leaf")
+                 }.tag(Tab.items)
+-                ItemsListView(categories: Categories.wardrobe()).tabItem{
++                CategoriesView(categories: Categories.wardrobe()).tabItem{
+                     self.tabbarItem(text: "Wardrobe", image: "icon-top")
+                 }.tag(Tab.wardrobe)
+-                ItemsListView(categories: Categories.nature()).tabItem{
++                CategoriesView(categories: Categories.nature()).tabItem{
+                     self.tabbarItem(text: "Nature", image: "icon-fossil")
+                 }.tag(Tab.nature)
+                 VillagersListView().tabItem{
+@@ -40,6 +40,9 @@ struct TabbarView: View {
+                 CollectionListView().tabItem{
+                     self.tabbarItem(text: "Collection", image: "icon-cardboard")
+                 }.tag(Tab.collection)
++                TurnipsView().tabItem{
++                    self.tabbarItem(text: "Turnips", image: "icon-miles")
++                }.tag(Tab.turnips)
+             }
+         }.accentColor(.white)
+     }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/items/ItemsListView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/items/ItemsListView.swift
+index 1c9899d..0e06a13 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/items/ItemsListView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/items/ItemsListView.swift
+@@ -9,30 +9,16 @@
+ import SwiftUI
+ 
+ struct ItemsListView: View {
+-    @ObservedObject private var viewModel = ItemsViewModel(categorie: .housewares)
+-    @State private var showFilterSheet = false
++    @ObservedObject var viewModel: ItemsViewModel
+     @State private var showSortSheet = false
+     
+     var currentItems: [Item] {
+-        get {
+-            if !viewModel.searchText.isEmpty {
+-                return viewModel.searchItems
+-            } else if viewModel.sort != nil {
+-                return viewModel.sortedItems
+-            } else {
+-                return viewModel.items
+-            }
+-        }
+-    }
+-    
+-    let categories: [Categories]
+-    
+-    private var filterButton: some View {
+-        Button(action: {
+-            self.showFilterSheet.toggle()
+-        }) {
+-            Image(systemName: "line.horizontal.3.decrease.circle")
+-                .font(.title)
++        if !viewModel.searchText.isEmpty {
++            return viewModel.searchItems
++        } else if viewModel.sort != nil {
++            return viewModel.sortedItems
++        } else {
++            return viewModel.items
+         }
+     }
+     
+@@ -40,80 +26,74 @@ struct ItemsListView: View {
+         Button(action: {
+             self.showSortSheet.toggle()
+         }) {
+-            Image(systemName: viewModel.sort == nil ? "arrow.up.arrow.down.circle" : "arrow.up.arrow.down.circle.fill")
++            Image(systemName: "arrow.up.arrow.down.circle")
+                 .font(.title)
+         }
+     }
+     
+-    private var sortSheet: ActionSheet {
++    var sortSheet: ActionSheet {
+         var buttons: [ActionSheet.Button] = []
+         for sort in ItemsViewModel.Sort.allCases {
+-            buttons.append(.default(Text(sort.rawValue.localizedCapitalized),
+-                                    action: {
+-                                        self.viewModel.sort = sort
+-            }))
+-        }
+-        
+-        if viewModel.sort != nil {
+-            buttons.append(.default(Text("Clear Selection"), action: {
+-                self.viewModel.sort = nil
+-                self.viewModel.fetch()
+-            }))
++            buttons.append(.default(Text(sort.rawValue.capitalized)) {
++                self.viewModel.sort = sort
++            })
+         }
+-        
+         buttons.append(.cancel())
+-        
+-        let title = Text("Sort items")
+-        
+-        if let currentSort = viewModel.sort {
+-            return ActionSheet(title: title,
+-                               message: Text("Current Sort: \(currentSort.rawValue.localizedCapitalized)"),
+-                               buttons: buttons)
+-        }
+-        
+-        return ActionSheet(title: title, buttons: buttons)
++        return ActionSheet(title: Text("Sort by"), buttons: buttons)
+     }
+     
+-    private var placeholderView: some View {
+-        Text("Please choose an item.")
+-            .foregroundColor(.secondary)
+-            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+-            .background(Color.dialogue)
++    var placeholderView: some View {
++        Group {
++            if currentItems.count == 0 {
++                VStack {
++                    Text("No item(s) found")
++                    Image("icon-no-results")
++                        .resizable()
++                        .frame(width: 50, height: 50)
++                }
++                .foregroundColor(.text)
++                .font(.custom("FinkHeavy", size: 28))
++            }
++        }
+     }
+     
+     var body: some View {
+-        NavigationView {
+-            List {
+-                SearchField(searchText: $viewModel.searchText)
+-                    .listRowBackground(Color.grass)
+-                    .foregroundColor(.white)
+-                ForEach(currentItems) { item in
+-                    NavigationLink(destination: ItemDetailView(itemsViewModel: self.viewModel,
+-                                                               itemViewModel: ItemDetailViewModel(item: item))) {
+-                        ItemRowView(item: item)
+-                            .environmentObject(ItemDetailViewModel(item: item))
+-                            .listRowBackground(Color.dialogue)
++        ZStack {
++            VStack(spacing: 0) {
++                SearchField(text: $viewModel.searchText)
++                    .padding([.horizontal, .top])
++                    .padding(.bottom, 10)
++                    .background(Color.grass)
++                    .foregroundColor(.text)
++                List {
++                    ForEach(currentItems) { item in
++                        NavigationLink(destination: ItemDetailView(itemsViewModel: self.viewModel,
++                                                                   itemViewModel: ItemDetailViewModel(item: item))) {
++                            ItemRowView(item: item)
++                                .environmentObject(ItemDetailViewModel(item: item))
++                                .listRowBackground(Color.dialogue)
++                        }
+                     }
+                 }
+             }
+             .id(viewModel.sort)
+             .background(Color.dialogue)
+-            .navigationBarItems(leading: sortButton, trailing: filterButton)
++            .navigationBarItems(trailing: sortButton)
+             .navigationBarTitle(Text(viewModel.categorie.rawValue.capitalized),
+                                 displayMode: .inline)
+-            .sheet(isPresented: $showFilterSheet, content: { CategoriesView(categories: self.categories,
+-                                                                            selectedCategory: self.$viewModel.categorie) })
+             .actionSheet(isPresented: $showSortSheet, content: { self.sortSheet })
+             placeholderView
+         }.onAppear {
+-            self.viewModel.categorie = self.categories.first!
++            self.viewModel.fetch()
+         }
+     }
+ }
+ 
+ struct ItemsListViewPreviews: PreviewProvider {
+     static var previews: some View {
+-        ItemsListView(categories: Categories.items())
+-            .environmentObject(CollectionViewModel())
++        NavigationView {
++            ItemsListView(viewModel: ItemsViewModel(categorie: .housewares))
++                .environmentObject(CollectionViewModel())
++        }
+     }
+ }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+new file mode 100644
+index 0000000..8bcf50b
+--- /dev/null
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/turnips/TurnipsView.swift
+@@ -0,0 +1,61 @@
++import SwiftUI
++
++struct TurnipsView: View {
++    @ObservedObject private var viewModel = TurnipsViewModel()
++    
++    var body: some View {
++        NavigationView {
++            Group {
++                if viewModel.islands.isEmpty {
++                    VStack(spacing: 12) {
++                        ProgressView()
++                        Text("Loading turnip listings...")
++                            .foregroundColor(.text)
++                    }
++                    .frame(maxWidth: .infinity, maxHeight: .infinity)
++                    .background(Color.dialogue)
++                } else {
++                    List(viewModel.islands.indices, id: \.self) { index in
++                        IslandRowView(island: self.viewModel.islands[index])
++                            .listRowBackground(Color.dialogue)
++                    }
++                }
++            }
++            .background(Color.dialogue)
++            .navigationBarTitle(Text("Turnips"), displayMode: .inline)
++        }
++        .navigationViewStyle(StackNavigationViewStyle())
++        .onAppear {
++            self.viewModel.fetch()
++        }
++    }
++}
++
++private struct IslandRowView: View {
++    let island: Island
++    
++    var body: some View {
++        VStack(alignment: .leading, spacing: 6) {
++            HStack {
++                Text(island.name)
++                    .font(.headline)
++                    .foregroundColor(.text)
++                Spacer()
++                Text("\(island.turnipPrice)")
++                    .font(.headline)
++                    .foregroundColor(.bell)
++            }
++            Text("Code: \(island.turnipCode) • Queue: \(island.queued)/\(island.maxQueue)")
++                .font(.subheadline)
++                .foregroundColor(.secondaryText)
++            Text("\(island.hemisphere.rawValue.capitalized) • \(island.fruit.rawValue.capitalized) • Watchlist: \(island.watchlist)")
++                .font(.subheadline)
++                .foregroundColor(.secondaryText)
++            if !island.islandDescription.isEmpty {
++                Text(island.islandDescription)
++                    .foregroundColor(.text)
++            }
++        }
++        .padding(.vertical, 4)
++    }
++}

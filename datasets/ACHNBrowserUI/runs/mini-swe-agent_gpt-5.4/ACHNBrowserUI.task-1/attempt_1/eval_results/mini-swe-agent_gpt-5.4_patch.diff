@@ -1,0 +1,155 @@
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+index 03834a4..9a621f2 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
++++ b/ACHNBrowserUI/ACHNBrowserUI/fr.lproj/Localizable.strings
+@@ -129,6 +129,8 @@ You can cancel anytime with your iTunes account settings. Any unused portion of
+ "You caught them all!" = "Vous les avez tous attrapés!";
+ "New this month" = "Nouveau ce mois-ci";
+ "To catch" = "À attraper";
++"To catch now" = "À attraper maintenant";
++"To catch later" = "À attraper plus tard";
+ "Leaving this month" = "Dernière chance";
+ "Caught" = "Attrapés";
+ 
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
+index 451a265..7495e65 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/extensions/Collection.swift
+@@ -13,6 +13,10 @@ public extension BidirectionalCollection where Element == Item {
+     func filterActive() -> [Item] {
+         self.filter({ $0.isActive() })
+     }
++    
++    func filterActiveThisMonth() -> [Item] {
++        self.filter({ $0.isActiveThisMonth() })
++    }
+ }
+ 
+ public extension Collection where Element: Numeric {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
+index 69bc1e8..e4cf24f 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/packages/Backend/Sources/Backend/models/Item.swift
+@@ -160,10 +160,52 @@ public extension Item {
+         return nil
+     }
+     
+-    func isActive() -> Bool {
++    func isActiveThisMonth() -> Bool {
+         let currentMonth = Int(Item.monthFormatter.string(from: Date()))!
+         return activeMonthsCalendar?.contains(currentMonth - 1) == true
+-           
++    }
++    
++    func isActive() -> Bool {
++        isActiveThisMonth()
++    }
++    
++    func isActiveAtThisHour() -> Bool {
++        guard isActiveThisMonth() else { return false }
++        guard let activeTimes = activeMonths?.first?.value.activeTimes,
++              let startTime = activeTimes.first,
++              let endTime = activeTimes.last else {
++            return true
++        }
++        
++        if Int(startTime) == 0 && Int(endTime) == 0 {
++            return true
++        }
++        
++        func parseHour(_ value: String) -> Int? {
++            let lowercased = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
++            let digits = lowercased.prefix { $0.isNumber }
++            guard var hour = Int(digits) else { return nil }
++            if lowercased.hasSuffix("am") {
++                if hour == 12 { hour = 0 }
++            } else if lowercased.hasSuffix("pm") {
++                if hour != 12 { hour += 12 }
++            }
++            return hour % 24
++        }
++        
++        guard let startHour = parseHour(startTime),
++              let endHour = parseHour(endTime) else {
++            return true
++        }
++        
++        let currentHour = Calendar.current.component(.hour, from: Date())
++        if startHour == endHour {
++            return true
++        } else if startHour < endHour {
++            return currentHour >= startHour && currentHour < endHour
++        } else {
++            return currentHour >= startHour || currentHour < endHour
++        }
+     }
+     
+     func isNewThisMonth() -> Bool {
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift b/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
+index 08c305e..bf3c9c8 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/viewModels/ActiveCrittersViewModel.swift
+@@ -37,7 +37,8 @@ class ActiveCrittersViewModel: ObservableObject {
+         let new: [Item]
+         let leaving: [Item]
+         let caught: [Item]
+-        let toCatch: [Item]
++        let toCatchNow: [Item]
++        let toCatchLater: [Item]
+     }
+     
+     @Published var crittersInfo: [CritterType: CritterInfo] = [:]
+@@ -55,11 +56,13 @@ class ActiveCrittersViewModel: ObservableObject {
+             .receive(on: DispatchQueue.main)
+             .sink { [weak self] (items, critters) in
+                 for type in CritterType.allCases {
+-                    var active = items[type.category()]?.filterActive() ?? []
++                    var active = items[type.category()]?.filterActiveThisMonth() ?? []
+                     var new = active.filter{ $0.isNewThisMonth() }
+                     var leaving = active.filter{ $0.leavingThisMonth() }
+                     let caught = active.filter{ critters.contains($0) }
+                     let toCatch = active.filter{ !critters.contains($0) }
++                    let toCatchNow = toCatch.filter{ $0.isActiveAtThisHour() }
++                    let toCatchLater = toCatch.filter{ !$0.isActiveAtThisHour() }
+                     
+                     if filterOutInCollection {
+                         new = new.filter{ !critters.contains($0) }
+@@ -71,7 +74,8 @@ class ActiveCrittersViewModel: ObservableObject {
+                                                            new: new,
+                                                            leaving: leaving,
+                                                            caught: caught,
+-                                                           toCatch: toCatch)
++                                                           toCatchNow: toCatchNow,
++                                                           toCatchLater: toCatchLater)
+                 }
+         }
+     }
+diff --git a/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift b/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
+index 75df943..224525b 100644
+--- a/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
++++ b/ACHNBrowserUI/ACHNBrowserUI/views/critters/ActiveCrittersView.swift
+@@ -34,9 +34,12 @@ struct ActiveCritterSections: View {
+             makeSectionOrPlaceholder(title: "New this month",
+                                      icon: "calendar.badge.plus",
+                                      critters: viewModel.crittersInfo[selectedTab]?.new ?? [])
+-            makeSectionOrPlaceholder(title: "To catch",
++            makeSectionOrPlaceholder(title: "To catch now",
++                                     icon: "clock",
++                                     critters: viewModel.crittersInfo[selectedTab]?.toCatchNow ?? [])
++            makeSectionOrPlaceholder(title: "To catch later",
+                                      icon: "calendar",
+-                                     critters: viewModel.crittersInfo[selectedTab]?.toCatch ?? [])
++                                     critters: viewModel.crittersInfo[selectedTab]?.toCatchLater ?? [])
+             makeSectionOrPlaceholder(title: "Leaving this month",
+                                      icon: "calendar.badge.minus",
+                                      critters: viewModel.crittersInfo[selectedTab]?.leaving ?? [])
+@@ -56,7 +59,8 @@ struct ActiveCrittersView: View {
+     
+     var body: some View {
+         List {
+-            if (viewModel.crittersInfo[.fish]?.toCatch.isEmpty == true || viewModel.crittersInfo[.bugs]?.toCatch.isEmpty == true) &&
++            if ((viewModel.crittersInfo[.fish]?.toCatchNow.isEmpty == true && viewModel.crittersInfo[.fish]?.toCatchLater.isEmpty == true) ||
++                (viewModel.crittersInfo[.bugs]?.toCatchNow.isEmpty == true && viewModel.crittersInfo[.bugs]?.toCatchLater.isEmpty == true)) &&
+                 (viewModel.crittersInfo[.fish]?.caught.isEmpty == true || viewModel.crittersInfo[.bugs]?.caught.isEmpty == true) {
+                 RowLoadingView(isLoading: .constant(true))
+             } else {
