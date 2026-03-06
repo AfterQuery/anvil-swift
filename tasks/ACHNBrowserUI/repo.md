@@ -113,6 +113,10 @@ anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model 
 
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.5 --n-attempts 4 --no-continue
 
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/anthropic/claude-sonnet-4.6 --n-attempts 4 --no-continue
+
+anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/openai/gpt-5.4 --n-attempts 4 --no-continue
+
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/openai/gpt-5.2 --n-attempts 4 --no-continue
 
 anvil run-evals --dataset datasets/ACHNBrowserUI --agent mini-swe-agent --model openrouter/openai/gpt-5.2-codex --n-attempts 4 --no-continue
