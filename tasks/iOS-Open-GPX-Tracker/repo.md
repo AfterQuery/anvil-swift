@@ -87,6 +87,9 @@ python3 scripts/fetch_merged_prs.py merlos/iOS-Open-GPX-Tracker --min-changes 20
 ```bash
 source .venv/bin/activate
 
+# Step 0: Clone source repo (required before running any commands)
+git clone https://github.com/merlos/iOS-Open-GPX-Tracker repos/iOS-Open-GPX-Tracker
+
 # Step 1: Convert dataset (reads tasks/, writes to datasets/)
 anvil convert-dataset --dataset tasks/iOS-Open-GPX-Tracker
 

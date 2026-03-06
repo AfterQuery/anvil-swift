@@ -31,7 +31,17 @@ Copy `.env.example` to `.env` and fill in:
 - `REGISTRY_USERNAME` - your Docker Hub username
 - `REGISTRY_PASSWORD` - a Docker Hub [access token](https://hub.docker.com/settings/security)
 
-**4. Authenticate services**
+**4. Clone source repositories**
+
+Clone the repos you want to evaluate into the `repos/` directory:
+
+```bash
+git clone https://github.com/Dimillian/ACHNBrowserUI repos/ACHNBrowserUI
+git clone https://github.com/mozilla-mobile/firefox-ios repos/firefox-ios
+git clone https://github.com/merlos/iOS-Open-GPX-Tracker repos/iOS-Open-GPX-Tracker
+```
+
+**5. Authenticate services**
 
 Make sure Docker is running locally, then:
 
@@ -40,7 +50,7 @@ modal setup          # Modal account for sandboxed agent execution
 docker login         # Docker Hub for image pulls
 ```
 
-**5. Create a private Docker Hub repository**
+**6. Create a private Docker Hub repository**
 
 Go to [hub.docker.com](https://hub.docker.com) and create a new **private** repository (e.g., `anvil-images`).
 

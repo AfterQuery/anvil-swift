@@ -97,6 +97,9 @@ python3 scripts/fetch_merged_prs.py mozilla-mobile/firefox-ios --min-changes 200
 
 ```bash
 
+# Step 0: Clone source repo (required before running any commands)
+git clone https://github.com/mozilla-mobile/firefox-ios repos/firefox-ios
+
 # Step 1: (Run only once) Warm Xcode build cache (~5 min per unique base commit)
 anvil warm-xcode-cache --dataset datasets/firefox-ios
 
